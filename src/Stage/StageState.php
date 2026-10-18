@@ -22,17 +22,26 @@ use MissionGaming\Tactician\Standings\Adjustment;
  * first-class verb. It records the *pairings* played (not just their
  * results), so repeat avoidance works even when no results are recorded,
  * and it serializes (toArray()/fromArray()/JSON) so platforms persist
- * state between rounds instead of re-deriving it.
+ * state between rounds instead of re-deriving it. An application that
+ * keeps the rounds and results in rows of its own stores no state at all
+ * and builds one from them on each request with fromHistory(); either way
+ * an engine reads the same thing.
  *
  * The driver loop every platform writes:
  *
  *     $state = StageState::start($participants);
  *     while (!$engine->isComplete($state)) {
  *         $pairing = $engine->pairNextRound($state);
+ *         $state = $state->withRoundPaired($pairing);  // recorded when it is drawn
  *         $results = playRound($pairing);              // application-side
- *         $state = $state->withRoundPlayed($pairing, $results);
+ *         $state = $state->withAdditionalResults($results);
  *     }
  *     $outcome = $engine->getOutcome($state);
+ *
+ * A round is recorded when it is paired, so that a withdrawal or an
+ * adjustment made while it is played is recorded after it (see
+ * withRoundPaired()). withRoundPlayed() records a round with its results
+ * in one call, where nothing can happen in between.
  *
  * @experimental
  */
@@ -47,6 +56,12 @@ final readonly class StageState
      * @param array<string, Participant> $adjustedParticipants The participant each adjustment is
      *                                                         for, by ID, so that one who has
      *                                                         withdrawn since is still known
+     * @param list<Participant> $entrants The active participants and, each in the place it had,
+     *                                    those who withdrew: from the live stage, or before the
+     *                                    first round was recorded (out of the draw until that
+     *                                    round names them)
+     * @param list<Withdrawal> $withdrawals The withdrawal of every entrant in that list who is not
+     *                                      active, with its round, in the order they happened
      */
     private function __construct(
         private array $participants,
@@ -54,7 +69,9 @@ final readonly class StageState
         private array $results = [],
         private ?string $engineFingerprint = null,
         private array $adjustments = [],
-        private array $adjustedParticipants = []
+        private array $adjustedParticipants = [],
+        private array $entrants = [],
+        private array $withdrawals = []
     ) {}
 
     /**
@@ -81,16 +98,414 @@ final readonly class StageState
             );
         }
 
-        return new self($participants);
+        return new self($participants, entrants: $participants);
     }
 
     /**
-     * Record a completed round: its pairing (including any byes it awarded)
-     * and the results of its events.
+     * Build the state of a stage from a history the application holds: the
+     * entrants, the rounds that were paired and whatever results exist.
      *
-     * Recording no results is legal — the pairing's events still count as
-     * played, which is what whole-schedule generation without outcomes
-     * relies on. Rounds are recorded in play order: a round number is 1 or
+     * This is the entry point for an application that keeps its fixtures
+     * and results in its own storage and stores no state: on every request
+     * it maps its rows to these arguments, and the engine reads the state
+     * as it reads one recorded verb by verb. The state it returns is equal
+     * to the one built by start(), then withRoundPlayed() for each round in
+     * order with its results in the order of its events, with
+     * withoutParticipant() for each withdrawal and withAdjustment() for
+     * each adjustment at the moment it says it happened.
+     *
+     * What is supplied is a fact and is kept as supplied: a round is never
+     * paired again and never compared with what an engine would have
+     * paired here. An engine reads the recorded rounds and derives only
+     * the round that does not exist yet; a round it would have paired
+     * otherwise is reported by HistoryReadingEngine::getRecordedRounds()
+     * as manual, and is no error. A round with some or none of its
+     * results is normal.
+     *
+     * The order the rounds and the results are supplied in does not
+     * matter: the rounds are put in the order of their numbers, and the
+     * results in the order of their rounds and, inside a round, of the
+     * events they belong to (a result is matched to its event by round
+     * number, participants in either order and tie leg, not by object).
+     * The order of the events inside a round is part of the round and is
+     * kept; no engine reads a recorded round by it.
+     *
+     * Three rules are checked that the verbs do not check, because rows
+     * can state what no engine paired:
+     *
+     * - the round numbers are 1, 2, 3 and so on, with none left out or
+     *   given twice (`RoundOutOfSequence`);
+     * - every participant of an event, a bye, a result, a withdrawal or an
+     *   adjustment is one of the entrants, by ID
+     *   (`ParticipantNotAnEntrant`);
+     * - nobody is in a round twice: in two events against different
+     *   opponents, in an event and among the byes, or in one event listed
+     *   twice (`ParticipantTwiceInRound`). The two legs of a tie, marked 1
+     *   and 2 under `tie_leg` in the metadata of their events, are one
+     *   appearance.
+     *
+     * An event with two results is refused as well (`DuplicateResult`).
+     * Everything withRoundPlayed() checks is checked by it here too, with
+     * the reason it gives.
+     *
+     * The entrants are the list the first round was paired from, in that
+     * order: an entrant who has withdrawn since stays in it and is named
+     * among the withdrawals, so that it keeps its place (see
+     * withoutParticipant()). An entrant who withdrew before the draw may be
+     * left out of the list, or listed with a Withdrawal after round 0 that
+     * the first round does not name: either way it is no entrant.
+     *
+     * When a withdrawal or an adjustment happened is part of the history,
+     * and the verbs record it by themselves (the number of the last round
+     * recorded at that moment). Here the application says it: a withdrawal
+     * as a Withdrawal with its round, an adjustment with
+     * Adjustment::madeAfterRound(). The withdrawals are put in the order of
+     * their rounds, and those after the same round stay in the order
+     * given. A round stated here is 0 or one of the supplied rounds
+     * (`ValueOutOfRange` otherwise).
+     *
+     * Once the history holds a round, every withdrawal states its round: a
+     * plain participant among the withdrawals is refused
+     * (`WithdrawalWithoutRound`). Which of two entrants of a bracket tie
+     * went on, or whether the tie is void, depends on when each left, and
+     * rows that do not say it were read otherwise than the stage was played
+     * as soon as two withdrawals met in one tie. With no round supplied a
+     * plain participant is a withdrawal after round 0, which is the only
+     * time it can be.
+     *
+     * The same holds for an adjustment: once the history holds a round,
+     * every adjustment states the round it was made after
+     * (Adjustment::madeAfterRound()), and one that does not is refused
+     * (`AdjustmentWithoutRound`). A round is ranked and shown from the
+     * adjustments made before it was paired, and that is not known of an
+     * adjustment without its round. With no round supplied an adjustment
+     * without one is recorded as made after round 0.
+     *
+     * The state carries no engine fingerprint; stamp it with
+     * withEngineFingerprint() where the application keeps one.
+     *
+     * @param array<Participant> $entrants The list the stage was drawn from, in its order
+     * @param array<RoundPairing> $rounds The rounds that were paired, in any order
+     * @param array<Result> $results The results recorded so far, of any of the rounds, in any order
+     * @param array<Participant|Withdrawal> $withdrawals The entrants who have withdrawn, each as a
+     *                                                   Withdrawal with the round it withdrew
+     *                                                   after; a plain participant only where no
+     *                                                   round is supplied
+     * @param array<Adjustment> $adjustments The adjustments made, in the order they are to be kept
+     *                                       in, each with the round it was made after
+     *                                       (Adjustment::madeAfterRound()); one without it only
+     *                                       where no round is supplied
+     *
+     * @throws InvalidConfigurationException When two entrants share an ID
+     *                                       (`DuplicateParticipantIds`), one of the three rules
+     *                                       above is broken, an event has two results
+     *                                       (`DuplicateResult`), the history holds rounds and a
+     *                                       withdrawal that does not say its round
+     *                                       (`WithdrawalWithoutRound`, with the participant and
+     *                                       the last round in the context) or an adjustment that
+     *                                       does not (`AdjustmentWithoutRound`, the same context),
+     *                                       a withdrawal or an adjustment
+     *                                       states a round after the last one supplied
+     *                                       (`ValueOutOfRange`), or the history is one
+     *                                       withRoundPlayed() refuses (`ValueOutOfRange`,
+     *                                       `EventNotInRound`, `EventWithoutRoundNumber`). The
+     *                                       context names the round and the participants
+     * @throws InvalidInputException When an adjustment names an entrant who withdrew before any
+     *                               round was supplied, and is therefore no longer in the stage
+     */
+    public static function fromHistory(
+        array $entrants,
+        array $rounds,
+        array $results = [],
+        array $withdrawals = [],
+        array $adjustments = []
+    ): self {
+        $state = self::start($entrants);
+
+        $entrantIds = [];
+        foreach ($state->entrants as $entrant) {
+            $entrantIds[$entrant->getId()] = true;
+        }
+        $requireEntrant = static function (Participant $participant, string $role, ?int $round) use ($entrantIds): void {
+            if (!isset($entrantIds[$participant->getId()])) {
+                throw new InvalidConfigurationException(
+                    "The history names participant {$participant->getId()} ({$role}), who is not one of the entrants",
+                    ['participant' => $participant->getId(), 'role' => $role, 'round' => $round],
+                    reason: InvalidConfigurationReason::ParticipantNotAnEntrant
+                );
+            }
+        };
+
+        $rounds = array_values($rounds);
+        usort(
+            $rounds,
+            static fn(RoundPairing $first, RoundPairing $second): int => $first->getRoundNumber() <=> $second->getRoundNumber()
+        );
+
+        $positions = [];
+        foreach ($rounds as $index => $pairing) {
+            $number = $pairing->getRoundNumber();
+            // A number below 1 is left to withRoundPlayed(), which has a
+            // reason of its own for it.
+            if ($number >= 1 && $number !== $index + 1) {
+                throw new InvalidConfigurationException(
+                    'The rounds of a history are numbered 1, 2, 3 and so on: round ' . ($index + 1)
+                        . " is missing or round {$number} is given twice",
+                    [
+                        'expected_round' => $index + 1,
+                        'round' => $number,
+                        'round_numbers' => array_map(
+                            static fn(RoundPairing $round): int => $round->getRoundNumber(),
+                            $rounds
+                        ),
+                    ],
+                    reason: InvalidConfigurationReason::RoundOutOfSequence
+                );
+            }
+
+            $positions += $state->positionsOfSoundRound($pairing, $requireEntrant);
+        }
+
+        // The results in the order the verbs would have recorded them:
+        // round by round, and in a round by the event they belong to. A
+        // result of no recorded event goes last, where the replay finds it
+        // and refuses it with the verb's reason.
+        $ordered = [];
+        $seen = [];
+        foreach (array_values($results) as $index => $result) {
+            $event = $result->getEvent();
+            foreach ($event->getParticipants() as $participant) {
+                $requireEntrant($participant, 'in a result', $event->getRound()?->getNumber());
+            }
+
+            $key = $state->eventKey($event);
+            if (isset($seen[$key])) {
+                throw new InvalidConfigurationException(
+                    'The history holds two results for one event',
+                    [
+                        'round' => $event->getRound()?->getNumber(),
+                        'participants' => array_map(
+                            static fn(Participant $participant): string => $participant->getId(),
+                            array_values($event->getParticipants())
+                        ),
+                    ],
+                    reason: InvalidConfigurationReason::DuplicateResult
+                );
+            }
+            $seen[$key] = true;
+
+            $ordered[] = [$positions[$key] ?? [PHP_INT_MAX, PHP_INT_MAX], $index, $result];
+        }
+        usort($ordered, static fn(array $first, array $second): int => [$first[0], $first[1]] <=> [$second[0], $second[1]]);
+
+        $state = self::recorded(
+            $state->participants,
+            $rounds,
+            array_map(static fn(array $row): Result => $row[2], $ordered),
+            null,
+            [],
+            $state->entrants
+        );
+
+        $lastRound = $state->getLastRound()?->getRoundNumber() ?? 0;
+        $requireRecordedRound = static function (int $afterRound, string $what, string $id) use ($lastRound): void {
+            if ($afterRound > $lastRound) {
+                throw new InvalidConfigurationException(
+                    "The history says that {$what} participant {$id} happened after round {$afterRound}, and its last"
+                        . " round is round {$lastRound}",
+                    ['participant' => $id, 'after_round' => $afterRound, 'last_round' => $lastRound],
+                    reason: InvalidConfigurationReason::ValueOutOfRange
+                );
+            }
+        };
+
+        // The withdrawals in the order they happened: by round, and those
+        // of one round in the order given. Once there are rounds, each says
+        // which it happened after; before them it can only be before the
+        // first.
+        $timed = [];
+        foreach (array_values($withdrawals) as $index => $withdrawal) {
+            $withdrawn = $withdrawal instanceof Withdrawal ? $withdrawal->getParticipant() : $withdrawal;
+            $requireEntrant($withdrawn, 'as withdrawn', null);
+
+            if (!$withdrawal instanceof Withdrawal) {
+                if ($lastRound > 0) {
+                    throw new InvalidConfigurationException(
+                        "The history holds rounds and the withdrawal of participant {$withdrawn->getId()}, which does not say"
+                            . ' after which round it happened. Give it as a Withdrawal with the number of the last round'
+                            . ' recorded when the participant withdrew (0 before the first): a tie both of whose entrants'
+                            . ' withdrew is read from when they did.',
+                        ['participant' => $withdrawn->getId(), 'last_round' => $lastRound],
+                        reason: InvalidConfigurationReason::WithdrawalWithoutRound
+                    );
+                }
+
+                $withdrawal = new Withdrawal($withdrawn, 0);
+            }
+
+            $requireRecordedRound($withdrawal->getAfterRound(), 'the withdrawal of', $withdrawn->getId());
+            $timed[] = [$withdrawal->getAfterRound(), $index, $withdrawal];
+        }
+        usort($timed, static fn(array $first, array $second): int => [$first[0], $first[1]] <=> [$second[0], $second[1]]);
+        foreach ($timed as [, , $withdrawal]) {
+            $state = $state->withdrawn($withdrawal->getParticipant(), $withdrawal->getAfterRound());
+        }
+
+        foreach ($adjustments as $adjustment) {
+            $id = $adjustment->getParticipantId();
+            if (!isset($entrantIds[$id])) {
+                throw new InvalidConfigurationException(
+                    "The history names participant {$id} (in an adjustment), who is not one of the entrants",
+                    ['participant' => $id, 'role' => 'in an adjustment', 'round' => null],
+                    reason: InvalidConfigurationReason::ParticipantNotAnEntrant
+                );
+            }
+            // Once there are rounds, an adjustment says which it was made
+            // after; before them it can only be before the first
+            $afterRound = $adjustment->getAfterRound();
+            if ($afterRound === null) {
+                if ($lastRound > 0) {
+                    throw new InvalidConfigurationException(
+                        "The history holds rounds and an adjustment for participant {$id} that does not say after which"
+                            . ' round it was made. Give it with Adjustment::madeAfterRound() and the number of the last round'
+                            . ' recorded when it was made (0 before the first): a round is read from the adjustments made'
+                            . ' before it was paired.',
+                        ['participant' => $id, 'last_round' => $lastRound],
+                        reason: InvalidConfigurationReason::AdjustmentWithoutRound
+                    );
+                }
+
+                $adjustment = $adjustment->madeAfterRound(0);
+                $afterRound = 0;
+            }
+            $requireRecordedRound($afterRound, 'the adjustment for', $id);
+
+            $participant = null;
+            foreach ($state->getAllSeenParticipants() as $seen) {
+                if ($seen->getId() === $id) {
+                    $participant = $seen;
+                    break;
+                }
+            }
+            if ($participant === null) {
+                throw new InvalidInputException("Adjustment references participant {$id} who is not in the stage");
+            }
+            $state = $state->adjustedBy($adjustment, $participant);
+        }
+
+        return $state;
+    }
+
+    /**
+     * Check one round of a supplied history against the rules that concern
+     * it alone, and say where each of its events stands.
+     *
+     * @param \Closure(Participant, string, int|null): void $requireEntrant
+     *
+     * @return array<string, array{int, int}> The round number and the place in the round of
+     *                                        every event, by event key
+     *
+     * @throws InvalidConfigurationException When a participant is no entrant or is in the round twice
+     */
+    private function positionsOfSoundRound(RoundPairing $pairing, \Closure $requireEntrant): array
+    {
+        $number = $pairing->getRoundNumber();
+        $positions = [];
+        $tieOf = [];
+
+        foreach (array_values($pairing->getEvents()) as $place => $event) {
+            $ids = array_map(
+                static fn(Participant $participant): string => $participant->getId(),
+                array_values($event->getParticipants())
+            );
+            $tie = PairKey::of(...$ids);
+            $key = $this->eventKey($event);
+
+            foreach ($event->getParticipants() as $participant) {
+                $requireEntrant($participant, 'in an event', $number);
+
+                // The same opponents again are the other leg of the tie,
+                // unless it is the same leg again
+                if ((isset($tieOf[$participant->getId()]) && $tieOf[$participant->getId()] !== $tie) || isset($positions[$key])) {
+                    throw self::twiceInRound($participant, $number);
+                }
+            }
+            foreach ($ids as $id) {
+                $tieOf[$id] = $tie;
+            }
+
+            $positions[$key] = [$number, $place];
+        }
+
+        foreach ($pairing->getByes() as $bye) {
+            $requireEntrant($bye, 'with a bye', $number);
+            if (isset($tieOf[$bye->getId()])) {
+                throw self::twiceInRound($bye, $number);
+            }
+            $tieOf[$bye->getId()] = '';
+        }
+
+        return $positions;
+    }
+
+    private static function twiceInRound(Participant $participant, int $round): InvalidConfigurationException
+    {
+        return new InvalidConfigurationException(
+            "Participant {$participant->getId()} is in round {$round} twice",
+            ['round' => $round, 'participant' => $participant->getId()],
+            reason: InvalidConfigurationReason::ParticipantTwiceInRound
+        );
+    }
+
+    /**
+     * Record a round that has been paired and not played yet: its pairing,
+     * including any byes it awarded, with none of its results.
+     *
+     * This is how a round is recorded where things can happen while it is
+     * played. The state's clock is the rounds it holds: a withdrawal or an
+     * adjustment is recorded with the number of the last round recorded at
+     * that moment (Withdrawal, Adjustment::getAfterRound()), and an engine
+     * reads a recorded round from what was recorded before it. Recorded
+     * when it is paired, the round comes before everything that happens
+     * while it is played, as it did. The results are added as they come
+     * with withAdditionalResults(), which reaches the last recorded round:
+     *
+     *     $pairing = $engine->pairNextRound($state);
+     *     $state = $state->withRoundPaired($pairing);    // the draw is published
+     *     // ...the round is played; withdrawals and adjustments as they happen...
+     *     $state = $state->withAdditionalResults($results);
+     *
+     * It is withRoundPlayed() with no results, and is checked the same way.
+     * The state it returns is the state that verb returns, stores the same
+     * (a round with no results is a round like any other) and is read the
+     * same: an engine waits for the results of the round before it pairs a
+     * further one (see withRoundPlayed()). The verb is pairwise-neutral: it
+     * records the pairing as given, whatever the size of its events.
+     *
+     * @throws InvalidConfigurationException When withRoundPlayed() refuses the pairing (a round
+     *                                       number below 1, `ValueOutOfRange`; out of sequence,
+     *                                       `RoundOutOfSequence`; an event of another round,
+     *                                       `EventNotInRound` or `EventWithoutRoundNumber`)
+     */
+    public function withRoundPaired(RoundPairing $pairing): self
+    {
+        return $this->withRoundPlayed($pairing, []);
+    }
+
+    /**
+     * Record a round: its pairing (including any byes it awarded) and the
+     * results of its events that exist.
+     *
+     * Recording some of the results, or none, is legal. A round recorded
+     * once it has been played comes, to the state, after everything that
+     * happened while it was played: record the round when it is paired
+     * (withRoundPaired()) and add its results as they come
+     * (withAdditionalResults()) where withdrawals or adjustments can be
+     * made while a round is played. The pairing's events count as paired
+     * from then on, and an engine waits for the missing results before it
+     * pairs a further round, unless it is told that the stage has none
+     * (SwissPairingEngine in results-free mode, which whole-schedule
+     * generation relies on). Rounds are recorded in play order: a round number is 1 or
      * above and must exceed the last recorded one, and every event and result
      * in the pairing must carry that round number, so the history can
      * never contradict itself.
@@ -142,13 +557,38 @@ final readonly class StageState
 
         $this->assertResultsBelongTo($pairing, $results);
 
+        // The first round says who was in the draw: of those who withdrew
+        // before it was recorded, the ones it names keep their place, and
+        // the others withdrew before the draw and are no entrants
+        $entrants = $this->entrants;
+        $withdrawals = $this->withdrawals;
+        if ($this->roundsPlayed === [] && $withdrawals !== []) {
+            $outOfTheDraw = [];
+            foreach ($withdrawals as $withdrawal) {
+                $id = $withdrawal->getParticipant()->getId();
+                if (!self::names($pairing, $id)) {
+                    $outOfTheDraw[$id] = true;
+                }
+            }
+            $entrants = array_values(array_filter(
+                $entrants,
+                static fn(Participant $entrant): bool => !isset($outOfTheDraw[$entrant->getId()])
+            ));
+            $withdrawals = array_values(array_filter(
+                $withdrawals,
+                static fn(Withdrawal $withdrawal): bool => !isset($outOfTheDraw[$withdrawal->getParticipant()->getId()])
+            ));
+        }
+
         return new self(
             $this->participants,
             [...$this->roundsPlayed, $pairing],
             [...$this->results, ...array_values($results)],
             $this->engineFingerprint,
             $this->adjustments,
-            $this->adjustedParticipants
+            $this->adjustedParticipants,
+            $entrants,
+            $withdrawals
         );
     }
 
@@ -208,6 +648,13 @@ final readonly class StageState
      * engines report such rounds as partially resolved until the missing
      * results arrive here.
      *
+     * Only the last recorded round is reached. A result of a round before
+     * it is refused, and the refusal says where it goes: a state can await
+     * one there when the round after it was paired early
+     * (SwissPairingEngine::pairNextRoundOnIncompleteResults()), and it is
+     * then supplied with the history (fromHistory() takes the results of
+     * any round).
+     *
      * @param array<Result> $results
      * @throws InvalidConfigurationException When no round is recorded (reason `NoRoundRecorded`) or
      *                                       a result belongs to a different round or to an event
@@ -226,6 +673,24 @@ final readonly class StageState
             );
         }
 
+        $recordedRounds = [];
+        foreach ($this->roundsPlayed as $pairing) {
+            $recordedRounds[$pairing->getRoundNumber()] = true;
+        }
+        foreach ($results as $result) {
+            $resultRound = $result->getEvent()->getRound()?->getNumber();
+            if ($resultRound !== null && $resultRound !== $lastRound->getRoundNumber() && isset($recordedRounds[$resultRound])) {
+                throw new InvalidConfigurationException(
+                    "Result belongs to a different round than the last recorded one: round {$resultRound} is recorded, and results"
+                        . " are added to the last recorded round only (round {$lastRound->getRoundNumber()}). Supply the result with"
+                        . ' the history (StageState::fromHistory() takes the results of any round), or rebuild the state from its'
+                        . ' rounds with the result in its place.',
+                    ['pairing_round' => $lastRound->getRoundNumber(), 'result_round' => $resultRound],
+                    reason: InvalidConfigurationReason::EventNotInRound
+                );
+            }
+        }
+
         $this->assertResultsBelongTo($lastRound, $results);
 
         return new self(
@@ -234,7 +699,9 @@ final readonly class StageState
             [...$this->results, ...array_values($results)],
             $this->engineFingerprint,
             $this->adjustments,
-            $this->adjustedParticipants
+            $this->adjustedParticipants,
+            $this->entrants,
+            $this->withdrawals
         );
     }
 
@@ -334,7 +801,9 @@ final readonly class StageState
             $results,
             $this->engineFingerprint,
             $this->adjustments,
-            $this->adjustedParticipants
+            $this->adjustedParticipants,
+            $this->entrants,
+            $this->withdrawals
         );
     }
 
@@ -345,20 +814,216 @@ final readonly class StageState
      * The participant is found by ID. Withdrawing one that is not active
      * changes nothing and is not an error. There is no verb that puts a
      * withdrawn participant back.
+     *
+     * Every withdrawal is recorded with its time: the number of the last
+     * round recorded at this moment, 0 before the first (see
+     * getWithdrawals() and Withdrawal). The state needs no argument for
+     * it, because it knows its rounds.
+     *
+     * Once a round is recorded the stage is live, and a participant who
+     * withdraws from it keeps its place in the entrant list (see
+     * getEntrants()): nothing that was drawn from the list is drawn
+     * again. A bracket engine reads the place and sends the opponent of a
+     * withdrawn entrant on without an event. Where both entrants of a tie
+     * its results do not decide have withdrawn, the one still in the stage
+     * when its next tie was paired went on, and where neither was, the tie
+     * is void: it sends nobody on (see Withdrawal). A last tie, which has
+     * no next tie, is decided the moment one of its entrants leaves while
+     * the other is in the stage, and once a bracket is over a withdrawal
+     * takes nothing back: the order of withdrawals is kept
+     * (getWithdrawals()). Before the first round
+     * is recorded nothing has been drawn as far as the state knows: the
+     * participant is out of the draw (getEntrants() does not list it), and
+     * the first round is paired from those who remain. The first round,
+     * once recorded, says whether it was in the draw after all.
+     *
+     * A round that is recorded after this call and names the participant
+     * (it was paired before the withdrawal and is recorded once it has
+     * been played) is read as paired while the participant was in the
+     * stage: the tie it holds for the participant is given away, and the
+     * round is not read as paired without it. That holds for the first
+     * round as well: a participant it names keeps its place in the entrant
+     * list, with its withdrawal after round 0, and one it does not name
+     * withdrew before the draw, is no entrant and keeps no withdrawal.
+     *
+     * A round is not to name a participant who had left before it was
+     * paired, among byes listed as everyone without an event for example.
+     * An engine reads such a participant as in the stage for that round
+     * and for every round before it, whatever round the withdrawal states:
+     * the rounds between are then compared with rounds that pair the
+     * participant (RecordedRound::isManual()), and a bracket is read with
+     * the participant still in it, which a double elimination engine can
+     * refuse.
      */
     public function withoutParticipant(Participant $participant): self
     {
+        return $this->withdrawn($participant, $this->getLastRound()?->getRoundNumber() ?? 0);
+    }
+
+    /**
+     * The state without a participant, who is said to have withdrawn after
+     * the given round (0 before the first round was recorded).
+     *
+     * A participant who is not active has nothing to withdraw from, and
+     * the state is returned as it is. One who withdrew after round 0 and
+     * whom the first round, recorded already, does not name was not in the
+     * draw: it is removed from the entrant list, and no withdrawal is
+     * kept. Every other withdrawal is kept with its round, and the entrant
+     * keeps its place.
+     */
+    private function withdrawn(Participant $participant, int $afterRound): self
+    {
+        $withdrawing = null;
+        foreach ($this->participants as $active) {
+            if ($active->getId() === $participant->getId()) {
+                $withdrawing = $active;
+            }
+        }
+        if ($withdrawing === null) {
+            return $this;
+        }
+
+        $remains = static fn(Participant $other): bool => $other->getId() !== $participant->getId();
+        $beforeTheDraw = $afterRound === 0
+            && $this->roundsPlayed !== []
+            && !self::names($this->roundsPlayed[0], $participant->getId());
+
         return new self(
-            array_values(array_filter(
-                $this->participants,
-                fn(Participant $active) => $active->getId() !== $participant->getId()
-            )),
+            array_values(array_filter($this->participants, $remains)),
             $this->roundsPlayed,
             $this->results,
             $this->engineFingerprint,
             $this->adjustments,
-            $this->adjustedParticipants
+            $this->adjustedParticipants,
+            $beforeTheDraw ? array_values(array_filter($this->entrants, $remains)) : $this->entrants,
+            $beforeTheDraw ? $this->withdrawals : [...$this->withdrawals, new Withdrawal($withdrawing, $afterRound)]
         );
+    }
+
+    /**
+     * Whether a round names a participant, in an event or as a bye.
+     */
+    private static function names(RoundPairing $pairing, string $id): bool
+    {
+        foreach ($pairing->getEvents() as $event) {
+            foreach ($event->getParticipants() as $participant) {
+                if ($participant->getId() === $id) {
+                    return true;
+                }
+            }
+        }
+        foreach ($pairing->getByes() as $bye) {
+            if ($bye->getId() === $id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The withdrawals from the stage, each with the round it happened
+     * after, in the order they happened; empty when there are none.
+     *
+     * Every entrant among getWithdrawnEntrants() has one, with the number
+     * of the last round recorded when it withdrew. While no round is
+     * recorded the withdrawals are after round 0, and their participants
+     * are out of the draw: getEntrants() does not list them until the first
+     * round is recorded and names them. A participant the first round does
+     * not name withdrew before the draw, and its withdrawal is not kept. A
+     * state stored by 0.2.x has none: a participant who had withdrawn then
+     * has no place and no time.
+     *
+     * @return list<Withdrawal>
+     */
+    public function getWithdrawals(): array
+    {
+        return $this->withdrawals;
+    }
+
+    /**
+     * The entrant list of the stage: the active participants in the order
+     * the stage was started with and, each in the place it had, the
+     * participants who withdrew from the live stage, the first round
+     * included where that round names them. Before the first round is
+     * recorded it is the list that round is paired from: a participant who
+     * has withdrawn is not in it.
+     *
+     * A bracket is folded from this list, so that a withdrawal does not
+     * move anybody. getParticipants() is this list without the withdrawn.
+     * A state read from data that an earlier release stored does not know
+     * the place of a participant who had withdrawn: such a participant is
+     * not in the list, and it is the active list.
+     *
+     * @return list<Participant>
+     */
+    public function getEntrants(): array
+    {
+        if ($this->roundsPlayed !== [] || $this->withdrawals === []) {
+            return $this->entrants;
+        }
+
+        // Before the first round is recorded, whoever has withdrawn is out
+        // of the draw until that round names it
+        $withdrawn = [];
+        foreach ($this->withdrawals as $withdrawal) {
+            $withdrawn[$withdrawal->getParticipant()->getId()] = true;
+        }
+
+        return array_values(array_filter(
+            $this->entrants,
+            static fn(Participant $entrant): bool => !isset($withdrawn[$entrant->getId()])
+        ));
+    }
+
+    /**
+     * The entrants who have withdrawn and kept their place in the entrant
+     * list, in the order of that list; empty when there are none.
+     *
+     * @return list<Participant>
+     */
+    public function getWithdrawnEntrants(): array
+    {
+        $active = [];
+        foreach ($this->participants as $participant) {
+            $active[$participant->getId()] = true;
+        }
+
+        return array_values(array_filter(
+            $this->getEntrants(),
+            static fn(Participant $entrant): bool => !isset($active[$entrant->getId()])
+        ));
+    }
+
+    /**
+     * Every event of a recorded round that has no recorded result, in play
+     * order; empty when every recorded event has one.
+     *
+     * A result is matched to its event by round number, participants in
+     * either order and tie leg, so a state that came back from storage
+     * answers the same. Whether such an event still awaits a result is the
+     * engine's to say (HistoryReadingEngine::getReadiness()): a bracket
+     * awaits none for a tie an entrant has withdrawn from.
+     *
+     * @return list<Event>
+     */
+    public function getEventsWithoutResult(): array
+    {
+        $resolved = [];
+        foreach ($this->results as $result) {
+            $resolved[$this->eventKey($result->getEvent())] = true;
+        }
+
+        $events = [];
+        foreach ($this->roundsPlayed as $pairing) {
+            foreach ($pairing->getEvents() as $event) {
+                if (!isset($resolved[$this->eventKey($event)])) {
+                    $events[] = $event;
+                }
+            }
+        }
+
+        return $events;
     }
 
     /**
@@ -374,13 +1039,29 @@ final readonly class StageState
      * (StandingEntry::getAdjustment()) and is ordered by what it earned
      * plus that sum. So an adjustment recorded between two rounds of a
      * Swiss stage changes the rounds paired after it and none of those
-     * recorded before: a Swiss round is paired once and is a fact once
-     * recorded. An elimination bracket that re-seeds each round is the
-     * exception. It ranks the survivors of every round again on every
-     * call, with every adjustment the state holds, so one recorded after
-     * its second round was paired can change a round already played, and
-     * the engine then refuses the state (`RecordedRoundMismatch`). Record
-     * the adjustments of such a bracket before its second round is paired.
+     * recorded before: a round is paired once and is a fact once
+     * recorded. That holds for an elimination bracket that re-seeds each
+     * round too: the round paired next is folded from the adjusted totals,
+     * and a round already recorded is ranked from the adjustments made
+     * before it was paired, and from no later one.
+     *
+     * The state says when: an adjustment given here without a round is
+     * recorded as made after the last round the state holds at this moment
+     * (Adjustment::getAfterRound(); 0 before the first round), so no
+     * argument is needed between rounds. One that states a round keeps it,
+     * which is how an adjustment that was made earlier is recorded late;
+     * the round may not be after the last recorded one. getAdjustments()
+     * therefore returns the adjustment with its round, which is another
+     * object than the one given when that one had none.
+     *
+     * The last round the state holds is the last one recorded, so record
+     * a round when it is paired (withRoundPaired()) and add its results as
+     * they come (withAdditionalResults()). An adjustment made while a round
+     * is played is then recorded after that round, and is not read as known
+     * when the round was paired. A round recorded only once it has been
+     * played comes after such an adjustment, and the adjustment is read as
+     * known when the round was paired: nothing in a round says which
+     * adjustments it was paired from.
      *
      * Adjustments are kept in the order recorded and are never merged: two
      * for one participant are two entries of getAdjustments(), and the
@@ -393,7 +1074,8 @@ final readonly class StageState
      * recorded round, a result or an earlier adjustment. One that withdraws
      * afterwards keeps its adjustment and stays among the participants seen.
      *
-     * @throws InvalidInputException When the adjustment names a participant the stage has not seen
+     * @throws InvalidInputException When the adjustment names a participant the stage has not seen,
+     *                               or states a round after the last recorded one
      */
     public function withAdjustment(Adjustment $adjustment): self
     {
@@ -413,6 +1095,18 @@ final readonly class StageState
             );
         }
 
+        $lastRound = $this->getLastRound()?->getRoundNumber() ?? 0;
+        $afterRound = $adjustment->getAfterRound();
+        if ($afterRound === null) {
+            $adjustment = $adjustment->madeAfterRound($lastRound);
+        } elseif ($afterRound > $lastRound) {
+            throw new InvalidInputException(
+                "The adjustment for participant {$id} is said to be made after round {$afterRound}, and the last round"
+                    . " recorded is round {$lastRound}: an adjustment is made after a round that is recorded, or after"
+                    . ' round 0 before the first'
+            );
+        }
+
         return $this->adjustedBy($adjustment, $participant);
     }
 
@@ -429,7 +1123,9 @@ final readonly class StageState
             $this->results,
             $this->engineFingerprint,
             [...$this->adjustments, $adjustment],
-            $this->adjustedParticipants + [$participant->getId() => $participant]
+            $this->adjustedParticipants + [$participant->getId() => $participant],
+            $this->entrants,
+            $this->withdrawals
         );
     }
 
@@ -487,7 +1183,9 @@ final readonly class StageState
             $this->results,
             $fingerprint,
             $this->adjustments,
-            $this->adjustedParticipants
+            $this->adjustedParticipants,
+            $this->entrants,
+            $this->withdrawals
         );
     }
 
@@ -698,6 +1396,12 @@ final readonly class StageState
             $add($participant);
         }
 
+        // An entrant who withdrew from a live stage and is named by nothing
+        // recorded is still an entrant of it
+        foreach ($this->getEntrants() as $participant) {
+            $add($participant);
+        }
+
         return $participants;
     }
 
@@ -712,8 +1416,23 @@ final readonly class StageState
      * stamped (see withEngineFingerprint()), and the `adjustments` key only
      * when an adjustment is recorded (see withAdjustment()), so a state
      * with neither has the keys it has always had after the version. A
-     * result carries an `award` key only when it is awarded, and a
-     * `decider` key only when it carries the decision of a level tie.
+     * result carries an `award` key only when it is awarded and a
+     * `decider` key only when it carries the decision of a level tie, and
+     * a round a `paired_on_incomplete_results` key only when it carries
+     * that mark.
+     * The `entrants` key, the IDs of the entrant list in its order (see
+     * getEntrants()), is present only when an entrant has withdrawn and
+     * kept its place: `active` is then that list without the withdrawn,
+     * and a state nobody has withdrawn from says its entrant list with
+     * `active` alone, as it always did. Before the first round is recorded
+     * the list holds a participant who has withdrawn, in its place, until
+     * that round says whether it was in the draw.
+     * The `withdrawals` key is present only when somebody has withdrawn
+     * (see getWithdrawals()): one entry for each entrant in `entrants` who
+     * is not in `active`, in the order they happened, with the ID under
+     * `participant` and the round under `after_round`, 0 before the first
+     * round. Every adjustment carries an `after_round` key: a state records
+     * after which round each was made.
      *
      * The first key is `format_version`, the version of this form (1). It
      * says how the array is to be read and is written once, here: the
@@ -724,7 +1443,7 @@ final readonly class StageState
      * the other, as the scheme did in 0.3.0 while this form stayed at
      * version 1.
      *
-     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}, decider?: array{participants: list<string>, label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null}>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}, decider?: array{participants: list<string>, label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null, after_round?: int}>, entrants?: list<string>, withdrawals?: list<array{participant: string, after_round: int}>}
      */
     public function toArray(): array
     {
@@ -749,6 +1468,9 @@ final readonly class StageState
             }
         }
         foreach ($this->adjustedParticipants as $participant) {
+            $registry[$participant->getId()] ??= $participant;
+        }
+        foreach ($this->entrants as $participant) {
             $registry[$participant->getId()] ??= $participant;
         }
 
@@ -800,6 +1522,23 @@ final readonly class StageState
             $data['adjustments'] = $adjustments;
         }
 
+        if (count($this->entrants) !== count($this->participants)) {
+            $data['entrants'] = array_map(
+                static fn(Participant $participant): string => $participant->getId(),
+                $this->entrants
+            );
+        }
+
+        if ($this->withdrawals !== []) {
+            $data['withdrawals'] = array_map(
+                static fn(Withdrawal $withdrawal): array => [
+                    'participant' => $withdrawal->getParticipant()->getId(),
+                    'after_round' => $withdrawal->getAfterRound(),
+                ],
+                $this->withdrawals
+            );
+        }
+
         return $data;
     }
 
@@ -811,14 +1550,37 @@ final readonly class StageState
      * unstamped state. So is `adjustments`: data without it, which is all
      * data stored before adjustments existed, loads as a state with none.
      * Every adjustment must name a participant of the `participants`
-     * registry. So is `format_version`: data without it is read as
-     * version 1, the form the releases before 0.3.0 wrote. A version this
-     * release does not know is refused.
+     * registry. So is `entrants`: data without it, which is all data
+     * stored before the key existed, loads with the active list as its
+     * entrant list, so a participant who had withdrawn has no place in it
+     * (see getEntrants()). So is `withdrawals`: data without it, which is
+     * all data stored before it existed, loads with no withdrawal, and a
+     * participant who had withdrawn then (0.2.x wrote neither key) is read
+     * with no place and no time, and nothing is assumed about when it left.
+     * The `after_round` of an adjustment is required where the state holds
+     * a round, and read as 0 where it holds none (0.2.x wrote no
+     * adjustments). So is
+     * `format_version`: data without it is read as version 1, the form the
+     * releases before 0.3.0 wrote. A version this release does not know is
+     * refused.
      *
      * The shape is checked, that the data holds no key but the version and
-     * the six toArray() writes, that every ID resolves in the `participants`
-     * registry, and that no ID is listed twice in `participants` or in
-     * `active`.
+     * the eight toArray() writes, that every ID resolves in the `participants`
+     * registry, that no ID is listed twice in `participants`, in `active`, in
+     * `entrants` or in `withdrawals`, that `entrants` holds every active
+     * participant in the order of `active`, that each entry of
+     * `withdrawals` names an entrant who is not active, with a round from 0
+     * to the last recorded one that is not below the round of the entry
+     * before it (and round 0 only for a participant the first recorded
+     * round names, where one is recorded), and that every entrant who is
+     * not active has an entry there. Every adjustment of a state with a
+     * recorded round says its round, which may not be after the last
+     * recorded round either.
+     *
+     * This is the reader of what toArray() wrote. An application that
+     * holds its rounds and results in rows of its own does not build this
+     * array: it calls fromHistory(), which records the history through the
+     * same verbs and checks three rules more.
      *
      * The history is checked as the verbs check it, because it is
      * recorded again through withRoundPlayed(): rounds in play order with
@@ -843,7 +1605,7 @@ final readonly class StageState
     {
         PlainData::checkFields(
             $data,
-            ['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments'],
+            ['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments', 'entrants', 'withdrawals'],
             'stage state data'
         );
 
@@ -885,6 +1647,36 @@ final readonly class StageState
                 );
             }
             $active[$activeId] = $registry[$activeId];
+        }
+        $entrants = null;
+        $entrantIds = $data['entrants'] ?? null;
+        if ($entrantIds !== null) {
+            if (!is_array($entrantIds)) {
+                throw new InvalidInputException('Stage state entrant list must be an array');
+            }
+            $entrants = [];
+            foreach ($entrantIds as $entrantId) {
+                if (!is_string($entrantId) || !isset($registry[$entrantId])) {
+                    throw new InvalidInputException(
+                        'Stage state references unknown entrant ' . var_export($entrantId, true)
+                    );
+                }
+                if (isset($entrants[$entrantId])) {
+                    throw new InvalidInputException(
+                        'Stage state lists entrant ' . var_export($entrantId, true) . ' twice'
+                    );
+                }
+                $entrants[$entrantId] = $registry[$entrantId];
+            }
+
+            // The active participants are the entrants who have not
+            // withdrawn, in the order of the entrant list
+            if (array_keys(array_intersect_key($entrants, $active)) !== array_keys($active)) {
+                throw new InvalidInputException(
+                    'Stage state entrant list must hold every active participant, in the order of the active list'
+                );
+            }
+            $entrants = array_values($entrants);
         }
         $active = array_values($active);
 
@@ -938,7 +1730,107 @@ final readonly class StageState
             $adjustments[] = ['adjustment' => $adjustment, 'participant' => $registry[$adjustedId]];
         }
 
-        return self::recorded($active, $rounds, $results, $fingerprint, $adjustments);
+        $lastRound = 0;
+        foreach ($rounds as $round) {
+            $lastRound = max($lastRound, $round->getRoundNumber());
+        }
+        foreach ($adjustments as $index => ['adjustment' => $adjustment]) {
+            $afterRound = $adjustment->getAfterRound();
+            if ($afterRound === null) {
+                // Only a revision before 0.3.0 that was never released wrote
+                // an adjustment without its round; 0.2.x wrote none at all
+                if ($lastRound > 0) {
+                    throw new InvalidInputException(
+                        "Stage state adjustment for participant {$adjustment->getParticipantId()} does not say after which"
+                            . ' round it was made, and the state holds rounds: every adjustment of a state with rounds has'
+                            . ' an after_round'
+                    );
+                }
+                $adjustments[$index]['adjustment'] = $adjustment->madeAfterRound(0);
+            } elseif ($afterRound > $lastRound) {
+                throw new InvalidInputException(
+                    "Stage state adjustment for participant {$adjustment->getParticipantId()} is said to be made after round"
+                        . " {$afterRound}, and the last recorded round is round {$lastRound}"
+                );
+            }
+        }
+
+        $withdrawalsData = $data['withdrawals'] ?? [];
+        if (!is_array($withdrawalsData)) {
+            throw new InvalidInputException('Stage state withdrawals must be an array');
+        }
+        $activeIds = [];
+        foreach ($active as $participant) {
+            $activeIds[$participant->getId()] = true;
+        }
+        $entrantIds = [];
+        foreach ($entrants ?? $active as $entrant) {
+            $entrantIds[$entrant->getId()] = true;
+        }
+        $withdrawals = [];
+        $withdrawnIds = [];
+        $previousRound = 0;
+        foreach ($withdrawalsData as $withdrawalData) {
+            if (!is_array($withdrawalData)) {
+                throw new InvalidInputException('Each stage state withdrawal must be an array');
+            }
+            $unknown = array_diff(array_map(strval(...), array_keys($withdrawalData)), ['participant', 'after_round']);
+            if ($unknown !== []) {
+                throw new InvalidInputException(
+                    "Unknown key in stage state withdrawal data: '" . implode("', '", $unknown)
+                        . "' (the known keys are 'participant', 'after_round')"
+                );
+            }
+
+            $withdrawnId = $withdrawalData['participant'] ?? null;
+            if (!is_string($withdrawnId) || !isset($registry[$withdrawnId])) {
+                throw new InvalidInputException(
+                    'Stage state withdrawal references unknown participant ' . var_export($withdrawnId, true)
+                );
+            }
+            if (isset($activeIds[$withdrawnId])) {
+                throw new InvalidInputException("Stage state withdrawal names participant {$withdrawnId}, who is active");
+            }
+            if (!isset($entrantIds[$withdrawnId])) {
+                throw new InvalidInputException(
+                    "Stage state withdrawal names participant {$withdrawnId}, who is not one of the entrants"
+                );
+            }
+            if (isset($withdrawnIds[$withdrawnId])) {
+                throw new InvalidInputException("Stage state lists the withdrawal of participant {$withdrawnId} twice");
+            }
+            $withdrawnIds[$withdrawnId] = true;
+
+            $afterRound = $withdrawalData['after_round'] ?? null;
+            if (!is_int($afterRound) || $afterRound < $previousRound || $afterRound > $lastRound) {
+                throw new InvalidInputException(
+                    "Stage state withdrawal of participant {$withdrawnId} requires the round it happened after: an integer"
+                        . " from 0 to the last recorded round ({$lastRound}), not below the round of the withdrawal listed"
+                        . ' before it'
+                );
+            }
+            if ($afterRound === 0 && $rounds !== [] && !self::names($rounds[0], $withdrawnId)) {
+                throw new InvalidInputException(
+                    "Stage state withdrawal of participant {$withdrawnId} after round 0 is of a participant the first round"
+                        . ' does not name: such a participant withdrew before the draw and is no entrant'
+                );
+            }
+            $previousRound = $afterRound;
+
+            $withdrawals[] = new Withdrawal($registry[$withdrawnId], $afterRound);
+        }
+
+        // Every entrant who is not active withdrew at a time the state knows
+        foreach (array_keys($entrantIds) as $entrantId) {
+            if (!isset($activeIds[$entrantId]) && !isset($withdrawnIds[$entrantId])) {
+                throw new InvalidInputException(
+                    "In the stage state, participant {$entrantId} is not active and has no withdrawal: every entrant who"
+                        . ' has withdrawn is listed under withdrawals with the round it happened after'
+                );
+            }
+        }
+
+        return self::recorded($active, $rounds, $results, $fingerprint, $adjustments, $entrants ?? $active, $withdrawals);
     }
 
     /**
@@ -1008,6 +1900,9 @@ final readonly class StageState
      * @param array<RoundPairing> $rounds
      * @param list<Result> $results
      * @param list<array{adjustment: Adjustment, participant: Participant}> $adjustments
+     * @param list<Participant> $entrants The entrant list: the active participants and, in their
+     *                                    places, those who withdrew from the live stage
+     * @param list<Withdrawal> $withdrawals The withdrawals whose round is known, in their order
      *
      * @throws InvalidConfigurationException When the history is one the verbs refuse
      */
@@ -1016,9 +1911,11 @@ final readonly class StageState
         array $rounds,
         array $results,
         ?string $fingerprint,
-        array $adjustments = []
+        array $adjustments,
+        array $entrants,
+        array $withdrawals = []
     ): self {
-        $state = new self($active);
+        $state = new self($active, entrants: $entrants);
 
         $next = 0;
         $count = count($results);
@@ -1061,7 +1958,9 @@ final readonly class StageState
             $state->results,
             $fingerprint,
             $state->adjustments,
-            $state->adjustedParticipants
+            $state->adjustedParticipants,
+            $state->entrants,
+            $withdrawals
         );
     }
 }

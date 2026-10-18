@@ -106,13 +106,27 @@ DB::transaction(function () use ($stageId): void {
         // create one match model per event: round number, label, both roles
     }
 
-    $stage->update(['state_json' => $state->withRoundPlayed($pairing, [])->toJson()]);
+    // Recorded as paired: whatever happens while it is played comes after it
+    $stage->update(['state_json' => $state->withRoundPaired($pairing)->toJson()]);
 });
 ```
+
+The round is recorded in the step that pairs it, with
+`withRoundPaired()`, and its results in later steps with
+`withAdditionalResults()`. A withdrawal or an adjustment recorded while the
+round is played then comes after the round, as it did.
 
 Keep `state_json` as a plain string column or cast, and let only
 `StageState::toJson()` write it. A job that pairs a round is safe to
 retry only if the lock and the write are in one transaction, as above.
+
+An application whose match models already hold every round and result
+needs no `state_json` column: build the state from them on each request
+with `StageState::fromHistory()`. Before pairing, ask
+`getReadiness()` whether the round before is finished; it lists the
+events that still await a result, where `pairNextRound()` would throw an
+`UnresolvedRoundException`. The Symfony guide has the adapter and the
+rules ([Where the state lives](symfony.md#where-the-state-lives)).
 
 ## Errors at the boundary
 

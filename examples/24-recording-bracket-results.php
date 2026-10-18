@@ -113,7 +113,8 @@ try {
 }
 
 // 2. A level event recorded without naming who advances. The state accepts
-//    the result, because it does not know the format; the engine refuses it.
+//    the result, because it does not know the format; the tie then awaits
+//    its decider, and the engine refuses the round after it.
 $undecided = StageState::start($entrants)->withRoundPlayed($semifinals, [
     new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1]),
     new Result($beaVsCai, $bea, ['bea' => 2, 'cai' => 0]),

@@ -47,13 +47,27 @@ the optional keys 0.3.0 added, most of them before the key existed
 (`strategy_seed` in
 round-robin options, `seed` in Swiss options, `ties`, `comparison` and
 `decisions` in a rank range selector, `third_place` in elimination options,
-`award` and `decider` in a result, `adjustments` in a stage state, `bye`
-in a win-draw-loss ranking and `objectives` in repack options). Each of
-those may be left out and is then read
+`award` and `decider` in a result, `adjustments`, `entrants` and
+`withdrawals` in a stage state, `after_round` in an adjustment,
+`paired_on_incomplete_results` in a round pairing, `bye` in a
+win-draw-loss ranking and `objectives` in repack options). Each of those
+may be left out and is then read
 as 0.2.x behaved, so an array without the version key is read as version 1,
 under the rules of version 1, and data stored by 0.2.x keeps loading.
 One form that is written and never read has a key 0.2.x did not write: the
 `metrics` of a repack outcome.
+Two of them say when something happened, and what leaving them out means
+is stated where it is decided
+([ADR 0007](0007-recorded-rounds-are-read-not-derived.md), "A state says
+when", and [ADR 0012](0012-a-withdrawal-states-its-round.md)): a stage
+state with a recorded round requires `after_round` of every adjustment, and
+reads one without it in a state with no round as made after round 0 (no
+release wrote an adjustment without it). A withdrawal has its time
+wherever the state has the entrant list: `entrants` and `withdrawals` come
+together, with an entry under `withdrawals` (`after_round` from 0) for every
+entrant who is not active ([ADR 0012](0012-a-withdrawal-states-its-round.md)),
+and data that has neither (0.2.x) is read with the withdrawn participants of
+unknown time.
 `tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,
 and a test reads it on every run. From 0.3.0 on a key is not added to a
 form without the form taking its next version (see "Changing a form").

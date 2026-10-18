@@ -311,36 +311,113 @@ There are two ways, and both give the engine the same thing.
   loads as version 1, and one written by a later release that changed
   the form is refused and not guessed at
   ([Format Versions](../USAGE.md#format-versions)).
-- **Rebuild the state from your own rows** on each request:
-  `StageState::start($participants)`, then `withRoundPlayed()` once for
-  every round you hold, each with a `RoundPairing` you construct
-  (`new RoundPairing($roundNumber, $label, $events, $byes)`) and the
-  results recorded so far. A state rebuilt this way pairs the same next
-  round as the stored one when your rows give back all of this:
-  - **The entrants as the stage was opened with them, in that order.** A
-    bracket is replayed from the list on every call. Passed only the
-    entrants still in it, the engine sees a smaller bracket and offers
-    its first round again; passed the same entrants in another order, it
-    looks for ties that were never played. The single-elimination engine
-    then refuses the state (`RecordedRoundMismatch`); the
-    double-elimination engine reports the round as still in play
-    (`RoundPartiallyResolved`). A Swiss stage reads the same order
-    wherever its table leaves participants level.
+- **Build the state from your own rows** on each request, with
+  `StageState::fromHistory()`, and store no state at all. Your match
+  entities are then the only record of the stage, and a corrected result
+  is simply another row on the next request. The adapter is mapping and
+  nothing else:
+
+*From `examples/27-stage-from-application-rows.php`:*
+
+<!-- excerpt: examples/27-stage-from-application-rows.php -->
+```php
+$stateFromRows = static function (array $playerRows, array $fixtureRows, array $byeRows, array $withdrawalRows): StageState {
+    usort($playerRows, static fn(array $one, array $other): int => $one['seeding'] <=> $other['seeding']);
+
+    $players = [];
+    foreach ($playerRows as $row) {
+        // An ID is a string: cast the integer key
+        $players[$row['id']] = new Participant((string) $row['id'], $row['name']);
+    }
+
+    $events = [];
+    $labels = [];
+    $results = [];
+    foreach ($fixtureRows as $row) {
+        $event = new Event(
+            [$players[$row['first']], $players[$row['second']]],
+            new Round($row['round'], ['label' => $row['label']])
+        );
+        $events[$row['round']][] = $event;
+        $labels[$row['round']] = $row['label'];
+
+        if ($row['winner'] !== null) {
+            $results[] = new Result($event, $players[$row['winner']]);
+        }
+    }
+
+    $byes = [];
+    foreach ($byeRows as $row) {
+        $byes[$row['round']][] = $players[$row['player']];
+    }
+
+    $rounds = [];
+    foreach ($events as $number => $ofRound) {
+        $rounds[] = new RoundPairing($number, $labels[$number], $ofRound, $byes[$number] ?? []);
+    }
+
+    return StageState::fromHistory(
+        entrants: array_values($players),
+        rounds: $rounds,
+        results: $results,
+        // Each withdrawal with the round it happened after, so that the
+        // engine reads every round from who was in the stage at the time
+        withdrawals: array_map(
+            static fn(array $row): Withdrawal => new Withdrawal($players[$row['player']], $row['after_round']),
+            $withdrawalRows
+        )
+    );
+};
+```
+
+  The rounds you give it are facts. The engine reads them as they are and
+  derives only the round that does not exist yet, so a new release of the
+  library cannot disagree with fixtures you have already published. What
+  your rows have to give back:
+  - **The entrants the first round was paired from, in that order**, also
+    those who have withdrawn since, whom you name under `withdrawals`.
+    The order places the entrants of a bracket and decides every order
+    that results leave open.
+  - **When each of them withdrew**: the number of the last round that
+    was on record at that moment (0 before the first), as a
+    `Withdrawal`, and those after one round in the order they happened.
+    An engine reads a round from who was in the stage when it was paired,
+    whether a tie both entrants left is void from when each left, and who
+    has a last tie of a bracket from which of its two entrants left first.
+    Once your rows hold a round, a withdrawal given as a plain
+    participant is refused (`WithdrawalWithoutRound`; see
+    [When a Withdrawal or an Adjustment Happened](../USAGE.md#when-a-withdrawal-or-an-adjustment-happened)).
   - **Their IDs, and nothing else about them, for the pairing order.**
     No stage reads a label or a seed attribute to order entrants, so a
-    club renamed in mid-stage changes no pairing of a rebuilt state.
-    (A constraint the engine was given reads what it reads: seed
-    protection the seed attribute, a metadata constraint its key.) The
-    stored JSON keeps each participant as it was when the stage opened,
-    so it does not show the new name.
+    club renamed in mid-stage changes no pairing. (A constraint the
+    engine was given reads what it reads: seed protection the seed
+    attribute, a metadata constraint its key.)
   - **For every round**, its number and label, the two participants of
-    every event in their order, the event's metadata (a two-legged tie
-    carries its leg number there as `tie_leg`, and the engine reads it)
-    and the participants who had a bye.
+    every event, the event's metadata (a two-legged tie carries its leg
+    number there as `tie_leg`, a third-place tie its mark as
+    `bracket_tie`, and the engine reads both) and the participants who
+    had a bye. A bye is no event, so it needs a row of its own (the
+    `$byeRows` above): a Swiss table counts it, and a bracket reads from
+    it who went on without playing. The rows of a round may come back in
+    any order.
   - **Every result whole**: its event, its winner or none, its scores
     and its metadata, which is where a level event names who advanced.
-  - **Withdrawals.** Call `withoutParticipant()` for each entrant who
-    has left a Swiss stage, as the stored state had it.
+    A result finds its event by round number, participants and leg.
+  - **Adjustments**, where you make any, each with the round it was made
+    after (`Adjustment::madeAfterRound()`): a round is ranked from the
+    adjustments made before it was paired. Once your rows hold a round,
+    an adjustment without it is refused (`AdjustmentWithoutRound`).
+
+  `fromHistory()` checks what rows can get wrong and a stored state
+  cannot: round numbers that are not 1, 2, 3 and so on
+  (`RoundOutOfSequence`), a participant who is not an entrant
+  (`ParticipantNotAnEntrant`), a participant in a round twice
+  (`ParticipantTwiceInRound`) and two results for one event
+  (`DuplicateResult`). A round that only pairs the entrants otherwise than
+  the engine would have, because an organiser drew it by hand, is not an
+  error: `getRecordedRounds()` reports it as manual
+  (`RecordedRound::isManual()`), with the engine's own round beside it
+  for your audit trail, and the later rounds follow from what was played.
 
 `RoundPairing::getByes()` returns the participants who sit a round out.
 They are not events.
@@ -396,25 +473,43 @@ same events as they come back in a restored state. Round numbers are the
 engine's.
 
 `pairNextRound()` does not change the state: asked twice, it returns the
-same round. The round becomes part of the state when you call
-`withRoundPlayed($pairing, $results)`. When results arrive one at a
-time, record the pairing as soon as you show it, with the results you
-have (none is allowed), and add the others with
-`withAdditionalResults()` as they come. Two things follow from that:
+same round. The round becomes part of the state when you record it, or
+when its fixtures are among the rows you build the state from. Record it
+as soon as you show it, with `withRoundPaired($pairing)`, and add its
+results with `withAdditionalResults()` as they come: a withdrawal or an
+adjustment recorded while the round is played then comes after the round,
+as it did. (`withRoundPlayed($pairing, $results)` records a round with its
+results in one call, for a round nothing can happen during.) Three things
+follow from that:
 
-- **A bracket waits.** While a round has some of its results and not all
-  of them, an elimination engine answers `pairNextRound()`,
-  `isComplete()` and `getOutcome()` with an
-  `InvalidConfigurationException` whose reason is
-  `RoundPartiallyResolved`. That is the round still being played, not an
-  error to show. A round with no result at all is offered again
-  unchanged.
-- **Swiss does not wait.** A Swiss round counts as played once it is
-  recorded, with or without results, and the engine pairs the next round
-  from the table as it stands. Whether every result is in is for the
-  application to check before it asks for the next round. With a
-  `Randomizer`, pairing the same state again gives another round, so
-  record the pairing before you show it.
+- **Every engine waits for the round to finish.** While an event of a
+  recorded round has no result, `pairNextRound()` is refused with an
+  `UnresolvedRoundException`: an `InvalidConfigurationException` whose
+  reason is `RoundPartiallyResolved`, and which carries the events it is
+  waiting for (`getUnresolvedEvents()`). That is the round still being
+  played, not an error to show. A recorded round is not offered again:
+  read it from the state (`getLastRound()`) or from your own rows.
+- **Reading never throws for it.** `isComplete()` is false,
+  `getOutcome()` is null, and `getStandings()` gives the table so far.
+  Ask `getReadiness()` before you pair: it says whether the next round
+  can be paired and, when it cannot, lists the events that await a
+  result, without an exception to catch. A page that shows the bracket
+  needs nothing else.
+- **Pairing a Swiss round early is said in so many words.** Call
+  `pairNextRoundOnIncompleteResults()` to pair from the table as it
+  stands; the round it returns is marked
+  (`isPairedOnIncompleteResults()`), and the mark is stored with it.
+  With a `Randomizer`, pairing the same state again gives another
+  round, so record the pairing before you show it.
+
+An entrant who withdraws from a bracket under way keeps its slot
+(`withoutParticipant()`, or the `withdrawals` of a history). The tie it
+was in is not played, its opponent advances, and no fixture you have
+published moves; the events of that tie which you had created are listed
+by `RecordedRound::getUncontestedEvents()`, for you to cancel. Where both
+entrants of a tie withdraw before either went through it, the tie is void
+and nobody advances: the entrant who would have met its winner goes on
+alone ([Withdrawals from a Bracket](../USAGE.md#withdrawals-from-a-bracket)).
 
 **One result for each event is yours to guarantee.**
 `withAdditionalResults()` adds what it is given and does not look for a
@@ -452,7 +547,8 @@ $this->entityManager->wrapInTransaction(function () use ($stageId): void {
         // create one Match entity per event: round number, label, both roles
     }
 
-    $stage->setStateJson($state->withRoundPlayed($pairing, [])->toJson());
+    // Recorded as paired: whatever happens while it is played comes after it
+    $stage->setStateJson($state->withRoundPaired($pairing)->toJson());
 });
 ```
 
@@ -498,9 +594,11 @@ $database['bracket'] = $state->toJson();
   who advanced.
 - A decider settles a level tie and nothing else: one on an event that has
   a winner is refused by the engine with the reason `InvalidResult`.
-- A level event with no decider is refused by the engine with the reason
-  `UndecidedTie`; the context of the exception holds the round and the
-  two participants. Show it to the operator as "choose who advances".
+- A level event with no decider awaits one: the bracket is not complete,
+  `getReadiness()` lists the event under `getUndecidedEvents()`, and
+  `pairNextRound()` refuses with the reason `UndecidedTie`; the context
+  of the exception holds the round and the two participants. Show it to
+  the operator as "choose who advances".
 - A two-legged tie (`EliminationOptions(legsPerTie: 2)`) that is level
   after both legs is decided the same way, by a decider on one leg's
   result: the second, where it is recorded when the tie ends.
@@ -921,8 +1019,11 @@ an operator's to fix: `TooFewParticipants`,
 `UndecidedTie`, `TimelineCapacityExceeded`, `TimeRuleViolation`,
 `UnparseableTime` for a date that was typed in. Some are a programmer's:
 `UnsupportedOptions`, `WrongValueType`, `EngineFingerprintMismatch`,
-`EventNotInRound`. One is neither: `RoundPartiallyResolved` is a bracket
-round still in play. A `match` over the reason needs a `default` arm,
+`EventNotInRound`, and the reasons a history built from your rows is
+refused with (`ParticipantNotAnEntrant`, `ParticipantTwiceInRound`). One
+is neither: `RoundPartiallyResolved` is a round still in play, and
+`getReadiness()` tells you so before you ask for the next one. A `match`
+over the reason needs a `default` arm,
 because a release may add a case.
 [Configuration Errors](../USAGE.md#configuration-errors) lists every
 reason.

@@ -95,8 +95,9 @@ $knockoutRounds = [];
 
 while (!$knockout->isComplete($state)) {
     $pairing = $knockout->pairNextRound($state);
+    $state = $state->withRoundPaired($pairing);
     $results = $playEvents($pairing->getEvents());
-    $state = $state->withRoundPlayed($pairing, $results);
+    $state = $state->withAdditionalResults($results);
 
     $knockoutRounds[ucfirst((string) $pairing->getLabel())] = $results;
 }

@@ -18,7 +18,12 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
  * application's to resolve under its own rules, which Tactician never
  * owns and never asks about: it records the decision as the decider of a
  * result of the tie (DTO\Decider, on Result). A level tie with no recorded
- * decision is an error: an elimination tie must send one participant on.
+ * decision is undecided, and this class refuses to name an advancer for it
+ * (`UndecidedTie`): an elimination tie must send one participant on. What a
+ * caller makes of that is its own: the bracket engines read such a tie as
+ * one that awaits its decision, so the bracket is not complete and only the
+ * pairing of the next round is refused, while MatchOutcomeSelector, which
+ * reads a round that is over, refuses the selection.
  *
  * The decider of a tie:
  *

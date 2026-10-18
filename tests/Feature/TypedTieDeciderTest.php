@@ -10,10 +10,12 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\TacticianException;
+use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\HistoryReadingEngine;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
@@ -138,8 +140,11 @@ describe('a single-leg tie that finishes level', function (): void {
         'double elimination' => [fn() => new DoubleEliminationEngine(), 'p1 v p3'],
     ]);
 
-    it('is reported unresolved without a decider, with a reason code, its round and its participants', function (
-        StageEngineInterface $engine
+    // A level tie that nobody has decided yet awaits a fact, as a tie
+    // without a result does: reading the bracket throws nothing, and only
+    // the next round is refused.
+    it('awaits its decider: the bracket is read, and the next round is refused with a reason code, its round and its participants', function (
+        StageEngineInterface&HistoryReadingEngine $engine
     ): void {
         $state = StageState::start(deciderField(4));
         $first = $engine->pairNextRound($state);
@@ -151,15 +156,39 @@ describe('a single-leg tie that finishes level', function (): void {
             new Result($p2VsP3, $p2, ['p2' => 2, 'p3' => 0]),
         ]);
 
-        foreach (deciderRefusals($engine, $state) as $call => $refusal) {
-            expect($refusal)->not->toBeNull("{$call}() resolved a level tie that nobody decided.")
-                ->and($refusal?->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
-                ->and($refusal?->getReason()?->value)->toBe('undecided_tie')
-                ->and($refusal?->getContext())->toBe(['round' => 1, 'participants' => ['p1', 'p4']])
-                ->and($refusal?->getConfigurationIssue())->toBe(
-                    'Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as the decider of its result'
-                );
-        }
+        $refusals = deciderRefusals($engine, $state);
+        $refusal = $refusals['pairNextRound'];
+        $readiness = $engine->getReadiness($state);
+        $recorded = $engine->getRecordedRounds($state)[0];
+
+        expect($refusals['isComplete'])->toBeNull()
+            ->and($refusals['getOutcome'])->toBeNull()
+            ->and($engine->isComplete($state))->toBeFalse()
+            ->and($engine->getOutcome($state))->toBeNull()
+            ->and($engine->getStandings($state)->getEntries())->toHaveCount(4)
+            ->and($readiness->isReady())->toBeFalse()
+            ->and($readiness->isComplete())->toBeFalse()
+            ->and($readiness->isAwaitingResults())->toBeTrue()
+            ->and($readiness->getRoundNumber())->toBe(1)
+            ->and($readiness->getUndecidedEvents())->toBe([$p1VsP4])
+            ->and($readiness->getUnresolvedEvents())->toBe([])
+            ->and($recorded->getUndecidedEvents())->toBe([$p1VsP4])
+            ->and($recorded->isResolved())->toBeFalse()
+            ->and($refusal)->not->toBeNull()
+            ->and($refusal)->not->toBeInstanceOf(UnresolvedRoundException::class)
+            ->and($refusal?->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
+            ->and($refusal?->getReason()?->value)->toBe('undecided_tie')
+            ->and($refusal?->getContext())->toBe(['round' => 1, 'participants' => ['p1', 'p4']])
+            ->and($refusal?->getConfigurationIssue())->toBe(
+                'Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as the decider of its result'
+            );
+
+        // The decision arrives: the same draw, with its decider
+        $decided = $state->withResultReplaced(new Result($p1VsP4, null, ['p1' => 1, 'p4' => 1], [], null, new Decider(['p4'])));
+
+        expect($engine->getReadiness($decided)->isReady())->toBeTrue()
+            ->and($engine->getReadiness($decided)->getUndecidedEvents())->toBe([])
+            ->and($engine->getRecordedRounds($decided)[0]->isResolved())->toBeTrue();
     })->with([
         'single elimination' => [fn() => new SingleEliminationEngine()],
         'double elimination' => [fn() => new DoubleEliminationEngine()],
@@ -182,7 +211,7 @@ describe('a single-leg tie that finishes level', function (): void {
 
             // Level, and nobody decided it: the engine says which tie
             $undecided = $state->withRoundPlayed($pairing, [new Result($event)]);
-            $rounds[] = deciderRefusals($engine, $undecided)['isComplete']?->getContext();
+            $rounds[] = deciderRefusals($engine, $undecided)['pairNextRound']?->getContext();
 
             $state = $state->withRoundPlayed($pairing, [
                 new Result($event, null, [], [], null, new Decider([$event->getParticipants()[$advancing]->getId()])),
@@ -340,11 +369,16 @@ describe('a two-legged tie that finishes level', function (): void {
         $legacy = TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($byMetadata));
         assert($outcome instanceof StageOutcome && $legacy instanceof StageOutcome);
 
+        // The selector reads the tie as the engine settled it for the
+        // outcome, which is where the key was read: it raises nothing here,
+        // and does where it reads the results itself
+        $byHand = new StageOutcome($legacy->getStandings(), $legacy->getResults(), $legacy->getByes(), $legacy->getFinalRound());
+
         expect(TieWinnerDeprecation::once(fn(): bool => $engine->isComplete($byMetadata)))->toBeTrue()
             ->and($table($legacy))->toBe($table($outcome))
             ->and($legacy->getStandings()->getTiers())->toBe($outcome->getStandings()->getTiers())
-            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::winners()->select($legacy))[0]->getId())
-            ->toBe(MatchOutcomeSelector::winners()->select($outcome)[0]->getId())
+            ->and(MatchOutcomeSelector::winners()->select($legacy)[0]->getId())->toBe($advances)
+            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::winners()->select($byHand))[0]->getId())->toBe($advances)
             ->and(MatchOutcomeSelector::winners()->select($outcome)[0]->getId())->toBe($advances);
     })->with(['p1', 'p2']);
 
@@ -355,13 +389,18 @@ describe('a two-legged tie that finishes level', function (): void {
         expect($table($engine->getOutcome($onFirst)))->toBe($table($engine->getOutcome($onSecond)));
     });
 
-    it('is unresolved without a decider, with a reason code, its round and its participants', function () use ($legEach): void {
+    it('awaits its decider, both legs of it, and refuses the next round with a reason code, its round and its participants', function () use ($legEach): void {
         [$engine, $state] = $legEach('none', 'p1');
+        $refusals = deciderRefusals($engine, $state);
 
-        foreach (deciderRefusals($engine, $state) as $refusal) {
-            expect($refusal?->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
-                ->and($refusal?->getContext())->toBe(['round' => 1, 'participants' => ['p1', 'p2']]);
-        }
+        expect($refusals['isComplete'])->toBeNull()
+            ->and($refusals['getOutcome'])->toBeNull()
+            ->and($engine->isComplete($state))->toBeFalse()
+            ->and($engine->getOutcome($state))->toBeNull()
+            ->and($engine->getReadiness($state)->getUndecidedEvents())->toBe($state->getLastRound()?->getEvents())
+            ->and($engine->getReadiness($state)->getUnresolvedEvents())->toBe([])
+            ->and($refusals['pairNextRound']?->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
+            ->and($refusals['pairNextRound']?->getContext())->toBe(['round' => 1, 'participants' => ['p1', 'p2']]);
     });
 
     it('is incomplete, and not yet decided, while the decider is on a leg and the other leg has no result', function (): void {
@@ -373,9 +412,12 @@ describe('a two-legged tie that finishes level', function (): void {
 
         $oneLeg = $state->withRoundPlayed($final, [new Result($leg1, $p1, [], [], null, new Decider(['p2']))]);
 
-        // No tie of the round is resolved yet, so the round is still to play
+        // The round is recorded and awaits the second leg: it is a result
+        // that is missing, and no decision
         expect($engine->isComplete($oneLeg))->toBeFalse()
-            ->and($engine->pairNextRound($oneLeg)->getRoundNumber())->toBe(1);
+            ->and($engine->getReadiness($oneLeg)->getUnresolvedEvents())->toBe([$leg2])
+            ->and($engine->getReadiness($oneLeg)->getUndecidedEvents())->toBe([])
+            ->and(fn() => $engine->pairNextRound($oneLeg))->toThrow(UnresolvedRoundException::class);
 
         // The second leg levels the tie, and the decider then settles it
         $both = $oneLeg->withAdditionalResults([new Result($leg2, $p2)]);
@@ -599,7 +641,9 @@ describe('the third-place tie', function (): void {
         ))))->toBe(['p1 v p2', 'p4 v p3']);
 
         $undecided = $state->withRoundPlayed($last, array_map(static fn(Event $event): Result => new Result($event), $last->getEvents()));
-        expect(deciderRefusals($engine, $undecided)['getOutcome']?->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
+        expect(deciderRefusals($engine, $undecided)['pairNextRound']?->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
+            ->and($engine->getOutcome($undecided))->toBeNull()
+            ->and($engine->getReadiness($undecided)->getUndecidedEvents())->toBe($last->getEvents());
 
         // p2 takes the final and p3 the third-place tie, each on the last leg
         $decided = $state->withRoundPlayed($last, array_map(

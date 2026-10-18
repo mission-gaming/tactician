@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Decider;
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -14,9 +15,12 @@ use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
+use MissionGaming\Tactician\Stage\RecordedRound;
+use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Tests\Support\AwkwardIds;
 use MissionGaming\Tactician\Tests\Support\TieWinnerDeprecation;
 use PHPUnit\Framework\Assert;
@@ -1045,6 +1049,523 @@ it('settles a bracket through the decider as it settles it through the deprecate
     ['single, two legs'],
     ['single, third place'],
     ['single, two legs, re-seeded, third place'],
+    ['double'],
+    ['double, two legs'],
+    ['double, no reset'],
+]);
+
+// Sweeps over what was known when a round was paired. A stage state records
+// after which round each adjustment was made and each participant withdrew,
+// and an engine reads a recorded round from the adjustments and the
+// entrants of that moment (ADR 0001, ADR 0007). So nothing that is recorded
+// later may change what a recorded round is read as: not its label, not the
+// round the engine would have paired in its place, not who went out in it.
+
+/**
+ * The pairs and the byes of a round, as sorted lists of IDs: what two
+ * rounds are compared by.
+ *
+ * @return array{list<string>, list<string>}
+ */
+function knownThenShape(RoundPairing $pairing): array
+{
+    $pairs = [];
+    foreach ($pairing->getEvents() as $event) {
+        $ids = array_map(static fn(Participant $participant): string => $participant->getId(), array_values($event->getParticipants()));
+        sort($ids);
+        $pairs[implode(' v ', $ids)] = true;
+    }
+    $pairs = array_keys($pairs);
+    sort($pairs);
+
+    $byes = array_map(static fn(Participant $participant): string => $participant->getId(), array_values($pairing->getByes()));
+    sort($byes);
+
+    return [$pairs, $byes];
+}
+
+/**
+ * What an engine reads of the rounds a state holds, as plain values: for
+ * each, its label as the engine reads it, the round the engine would have
+ * paired, whether the two differ, and the events nobody played.
+ *
+ * @return list<array<string, mixed>>
+ *
+ * @throws InvalidConfigurationException When the engine refuses the state
+ */
+function knownThenRounds(SingleEliminationEngine|DoubleEliminationEngine $engine, StageState $state): array
+{
+    return array_map(
+        static fn(RecordedRound $round): array => [
+            'round' => $round->getRoundNumber(),
+            'read as' => $round->getDerivation()?->getLabel(),
+            'derivation' => $round->getDerivation() instanceof RoundPairing ? knownThenShape($round->getDerivation()) : null,
+            'manual' => $round->isManual(),
+            'uncontested' => count($round->getUncontestedEvents()),
+        ],
+        $engine->getRecordedRounds($state)
+    );
+}
+
+/**
+ * The tier of every participant of a bracket's table, by ID.
+ *
+ * @return array<string, int>
+ *
+ * @throws InvalidConfigurationException When the engine refuses the state
+ */
+function knownThenTiers(SingleEliminationEngine|DoubleEliminationEngine $engine, StageState $state): array
+{
+    $table = $engine->getStandings($state);
+    $tiers = [];
+    foreach (array_values($table->getEntries()) as $index => $entry) {
+        $tiers[$entry->getParticipant()->getId()] = $table->getTiers()[$index] ?? -1;
+    }
+    ksort($tiers);
+
+    return $tiers;
+}
+
+/**
+ * Play a bracket to its end through the verbs, with withdrawals and
+ * adjustments at any moment: before a round is paired, while it is being
+ * played, and after the bracket is over. The check is given every state
+ * the bracket goes through.
+ *
+ * @param array<Participant> $field
+ * @param Closure(StageState): void $check
+ *
+ * @return array{StageState, int, int} The final state, and how many withdrawals and adjustments it holds
+ *
+ * @throws InvalidConfigurationException When the engine or the state refuses a step
+ * @throws LogicException When the bracket does not end
+ */
+function knownThenPlay(
+    SingleEliminationEngine|DoubleEliminationEngine $engine,
+    array $field,
+    int $seed,
+    Closure $check
+): array {
+    $rng = new Randomizer(new Mt19937($seed));
+    $field = array_values($field);
+    $state = StageState::start($field);
+    $adjustments = 0;
+
+    $disturb = static function (StageState $state) use ($rng, $field, &$adjustments, $check): StageState {
+        if ($state->getRoundsPlayed() !== [] && $rng->getInt(0, 3) === 0 && count($state->getParticipants()) > 0) {
+            $active = array_values($state->getParticipants());
+            $state = $state->withoutParticipant($active[$rng->getInt(0, count($active) - 1)]);
+            $check($state);
+        }
+        if ($rng->getInt(0, 2) === 0) {
+            $state = $state->withAdjustment(
+                new Adjustment($field[$rng->getInt(0, count($field) - 1)]->getId(), [-4.0, -1.0, 0.5, 1.0, 4.0][$rng->getInt(0, 4)])
+            );
+            ++$adjustments;
+            $check($state);
+        }
+
+        return $state;
+    };
+
+    for ($guard = 0; !$engine->isComplete($state); ++$guard) {
+        if ($guard > 60) {
+            throw new LogicException('The bracket did not end.');
+        }
+
+        // The round is recorded when it is paired, so that what happens
+        // while it is played comes after it
+        $pairing = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($pairing);
+        $check($state);
+
+        // The results come one tie at a time, with a withdrawal or an
+        // adjustment between them now and then. A tie an entrant has left
+        // is not played.
+        $ties = [];
+        foreach ($pairing->getEvents() as $event) {
+            $ids = array_map(static fn(Participant $participant): string => $participant->getId(), array_values($event->getParticipants()));
+            sort($ids);
+            $ties[implode(' ', $ids)][] = $event;
+        }
+        foreach ($rng->shuffleArray(array_values($ties)) as $legs) {
+            $state = $disturb($state);
+
+            $active = array_map(static fn(Participant $participant): string => $participant->getId(), $state->getParticipants());
+            $entrants = array_values($legs[0]->getParticipants());
+            if (!in_array($entrants[0]->getId(), $active, true) || !in_array($entrants[1]->getId(), $active, true)) {
+                continue;
+            }
+
+            // One of the two wins every leg
+            $winner = $entrants[$rng->getInt(0, 1)];
+            $state = $state->withAdditionalResults(array_map(static fn(Event $leg): Result => new Result($leg, $winner), $legs));
+            $check($state);
+        }
+
+        $state = $disturb($state);
+    }
+
+    // After the end: whoever withdraws now, and whatever is adjusted
+    $state = $disturb($disturb($state));
+
+    return [$state, count($state->getWithdrawals()), $adjustments];
+}
+
+// Before this was held, a re-seeded bracket ranked every recorded round
+// with every adjustment the state held, also those made later, and where
+// an entrant had withdrawn before a round, a later adjustment could make
+// the engine read that round as another one. A wider run compared the
+// engines, after every step, with a model of the bracket that knows when
+// everything happened: 3,380 single and 1,500 double elimination stages of
+// 2 to 17 entrants, with rounds drawn by hand among them. Before, 89 of the
+// 727 rounds that re-seeded brackets with an adjustment had paired
+// themselves were reported as paired by hand, and 31 single elimination
+// stages were read otherwise than they were played. After, no round an
+// engine paired was reported as manual (of 9,326 and 9,519) and no stage
+// was read otherwise.
+it('reads every round it paired as its own round, whatever is recorded afterwards', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $rounds = 0;
+    $withdrawals = 0;
+    $adjustments = 0;
+
+    foreach ([3, 5, 8, 11, 16] as $fieldSize) {
+        foreach ([1, 2, 3, 4] as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $before = [];
+
+            $check = static function (StageState $state) use ($engine, $where, &$before): void {
+                $read = knownThenRounds($engine, $state);
+
+                foreach ($engine->getRecordedRounds($state) as $index => $round) {
+                    $derivation = $round->getDerivation();
+                    assert($derivation instanceof RoundPairing);
+
+                    // The engine paired the round: it is the round it would pair
+                    expect($round->isManual())->toBeFalse("{$where}, round {$round->getRoundNumber()}")
+                        ->and($derivation->getLabel())->toBe($round->getPairing()->getLabel(), $where)
+                        ->and(knownThenShape($derivation))->toBe(knownThenShape($round->getPairing()), $where);
+                    unset($read[$index]['uncontested']);
+                }
+
+                // And it is read the same at every later moment
+                expect(array_slice($read, 0, count($before)))->toBe($before, $where);
+                $before = $read;
+            };
+
+            [$state, $withdrawn, $adjusted] = knownThenPlay($engine, invariantField($fieldSize), 1000 * $fieldSize + $seed, $check);
+
+            // The rows of an application say the same, and so does the stored state
+            $fromRows = StageState::fromHistory(
+                invariantField($fieldSize),
+                $state->getRoundsPlayed(),
+                $state->getResults(),
+                $state->getWithdrawals(),
+                $state->getAdjustments()
+            );
+            expect(knownThenRounds($engine, $fromRows))->toBe(knownThenRounds($engine, $state), $where)
+                ->and(knownThenTiers($engine, $fromRows))->toBe(knownThenTiers($engine, $state), $where)
+                ->and(knownThenTiers($engine, StageState::fromJson($state->toJson())))->toBe(knownThenTiers($engine, $state), $where)
+                ->and($engine->isComplete($state))->toBeTrue($where);
+
+            $rounds += count($state->getRoundsPlayed());
+            $withdrawals += $withdrawn;
+            $adjustments += $adjusted;
+        }
+    }
+
+    // The sweep is of brackets that had rounds, withdrawals and adjustments
+    expect($rounds)->toBeGreaterThan(40)
+        ->and($withdrawals)->toBeGreaterThan(10)
+        ->and($adjustments)->toBeGreaterThan(20);
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, two legs'],
+    ['single, third place'],
+    ['single, two legs, re-seeded, third place'],
+    ['double'],
+    ['double, two legs'],
+    ['double, no reset'],
+]);
+
+// An adjustment recorded now belongs to the round that is paired next and
+// to the tables. It decides nothing about a round that exists: the bracket
+// stays where it is, with the same entrants still in it and the same ones
+// out, each in the round it went out in. A re-seeded bracket may fold the
+// next round otherwise; it does not pair another round than the one due.
+it('leaves the bracket where it is when an adjustment is recorded, at every point of it', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $points = 0;
+
+    foreach ([4, 7, 9, 16] as $fieldSize) {
+        foreach ([1, 2, 3] as $seed) {
+            $field = invariantField($fieldSize);
+            $rng = new Randomizer(new Mt19937(77 * $fieldSize + $seed));
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+
+            $check = static function (StageState $state) use ($engine, $field, $rng, $where, &$points): void {
+                $adjusted = $state;
+                foreach ([1, 2, 3] as $ignored) {
+                    $adjusted = $adjusted->withAdjustment(
+                        new Adjustment($field[$rng->getInt(0, count($field) - 1)]->getId(), [-9.0, -4.0, 1.0, 4.0, 9.0][$rng->getInt(0, 4)])
+                    );
+                }
+
+                $next = static function (StageState $state) use ($engine): array {
+                    $readiness = $engine->getReadiness($state);
+                    if (!$readiness->isReady()) {
+                        return [$readiness->isComplete(), $readiness->getRoundNumber(), count($readiness->getUnresolvedEvents())];
+                    }
+
+                    $pairing = $engine->pairNextRound($state);
+                    $in = [];
+                    foreach ($pairing->getEvents() as $event) {
+                        foreach ($event->getParticipants() as $participant) {
+                            $in[$participant->getId()] = true;
+                        }
+                    }
+                    foreach ($pairing->getByes() as $bye) {
+                        $in[$bye->getId()] = true;
+                    }
+                    ksort($in);
+
+                    return [$pairing->getRoundNumber(), $pairing->getLabel(), array_keys($in)];
+                };
+
+                expect(knownThenRounds($engine, $adjusted))->toBe(knownThenRounds($engine, $state), $where)
+                    ->and(knownThenTiers($engine, $adjusted))->toBe(knownThenTiers($engine, $state), $where)
+                    ->and($next($adjusted))->toBe($next($state), $where);
+                ++$points;
+            };
+
+            knownThenPlay($engine, $field, 500 * $fieldSize + $seed, $check);
+        }
+    }
+
+    expect($points)->toBeGreaterThan(100);
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, two legs, re-seeded, third place'],
+    ['double'],
+]);
+
+/**
+ * Whether the last tie of a finished bracket was decided by its results:
+ * the tie between the two who met in it last, unless that meeting was a
+ * grand final the losers champion won, which makes a reset due.
+ */
+function knownThenLastTiePlayed(StageState $state, Participant $winner, Participant $loser, bool $resetDue): bool
+{
+    $last = null;
+    foreach ($state->getResults() as $result) {
+        $ids = array_map(static fn(Participant $participant): string => $participant->getId(), array_values($result->getEvent()->getParticipants()));
+        if (in_array($winner->getId(), $ids, true) && in_array($loser->getId(), $ids, true)) {
+            $last = $result;
+        }
+    }
+    if ($last === null) {
+        return false;
+    }
+
+    // A grand final the losers champion (named second) won makes the reset the last tie
+    $grandFinal = $last->getEvent()->getRound()?->getMetadataValue('label') === 'grand final';
+    $first = array_values($last->getEvent()->getParticipants())[$last->getEvent()->getMetadataValue('tie_leg') === 2 ? 1 : 0];
+
+    return !$grandFinal || !$resetDue || $last->getWinner()?->getId() === $first->getId();
+}
+
+// A withdrawal gives away the ties the entrant has not finished. Once the
+// bracket is over nothing is left to give away: its last tie was decided,
+// by a result or by the withdrawal of one of its entrants, and a later
+// withdrawal belongs to whatever comes next (ADR 0013). So every entrant
+// still in the stage withdraws from a finished bracket, one after another,
+// the winner among them, and the bracket reads the same after each: the
+// outcome, its table and settled ties, the selector, the recorded rounds.
+it('takes back nothing once the bracket is over when entrants withdraw, the winner of the bracket included', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $finished = 0;
+    $winnersWithdrawn = 0;
+    $givenAway = 0;
+
+    foreach ([3, 4, 5, 6, 8, 13] as $fieldSize) {
+        foreach ([1, 2, 3] as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            [$state] = knownThenPlay($engine, invariantField($fieldSize), 300 * $fieldSize + $seed, static function (): void {});
+
+            $outcome = $engine->getOutcome($state);
+            assert($outcome instanceof StageOutcome);
+            $tiers = knownThenTiers($engine, $state);
+            $rounds = $engine->getRecordedRounds($state);
+            $winners = MatchOutcomeSelector::winners()->select($outcome);
+            $losers = MatchOutcomeSelector::losers()->select($outcome);
+
+            // The selector gives the entrant the table has in its first tier
+            // and the one it beat
+            expect(array_map(static fn(Participant $participant): string => $participant->getId(), $winners))
+                ->toBe(array_keys($tiers, 0, true), $where)
+                ->and($winners)->toHaveCount(1, $where);
+            foreach ($losers as $loser) {
+                expect($tiers[$loser->getId()])->toBe(1, $where);
+            }
+            if (!knownThenLastTiePlayed($state, $winners[0], $losers[0] ?? $winners[0], !str_contains($variant, 'no reset'))) {
+                ++$givenAway;
+            }
+
+            foreach ($state->getParticipants() as $leaving) {
+                $state = $state->withoutParticipant($leaving);
+                $after = $engine->getOutcome($state);
+                assert($after instanceof StageOutcome);
+
+                expect($engine->isComplete($state))->toBeTrue($where)
+                    ->and(knownThenTiers($engine, $state))->toBe($tiers, "{$where}: {$leaving->getId()} withdrew")
+                    ->and($after->getStandings())->toEqual($outcome->getStandings(), $where)
+                    ->and($after->getSettledTies())->toEqual($outcome->getSettledTies(), $where)
+                    ->and(MatchOutcomeSelector::winners()->select($after))->toEqual($winners, $where)
+                    ->and(MatchOutcomeSelector::losers()->select($after))->toEqual($losers, $where)
+                    ->and($engine->getRecordedRounds($state))->toEqual($rounds, $where);
+                $winnersWithdrawn += $leaving->getId() === $winners[0]->getId() ? 1 : 0;
+            }
+            ++$finished;
+        }
+    }
+
+    // Some of the brackets of the sweep end with a last tie that was given away
+    expect($finished)->toBe(18)
+        ->and($winnersWithdrawn)->toBeGreaterThan(5)
+        ->and($givenAway)->toBeGreaterThanOrEqual(1);
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, two legs'],
+    ['single, third place'],
+    ['double'],
+    ['double, no reset'],
+]);
+
+// To a state a round is paired when it is recorded, and an application may
+// record a round only once it has been played. An entrant who withdraws in
+// between is then recorded as withdrawn before the round. The round names
+// it, so it was in the bracket when the round was paired: the bracket is
+// read the same as where the round was recorded first and the withdrawals
+// after it, round by round to its end.
+it('reads a bracket the same whether a round or the withdrawals during it are recorded first', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $rounds = 0;
+    $between = 0;
+
+    $next = static function (StageState $state) use ($engine): array {
+        $readiness = $engine->getReadiness($state);
+        if (!$readiness->isReady()) {
+            return [$readiness->isComplete(), $readiness->getRoundNumber(), count($readiness->getUnresolvedEvents())];
+        }
+
+        return [$engine->pairNextRound($state)->getRoundNumber(), knownThenShape($engine->pairNextRound($state))];
+    };
+
+    foreach ([3, 4, 6, 8, 13] as $fieldSize) {
+        foreach ([1, 2, 3, 4] as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $rng = new Randomizer(new Mt19937(900 * $fieldSize + $seed));
+
+            // The same history twice: a round recorded when it is paired, and when it has been played
+            $whenPaired = $whenPlayed = StageState::start(invariantField($fieldSize));
+
+            for ($guard = 0; !$engine->isComplete($whenPaired); ++$guard) {
+                if ($guard > 60) {
+                    throw new LogicException('The bracket did not end.');
+                }
+
+                $pairing = $engine->pairNextRound($whenPaired);
+                expect(knownThenShape($engine->pairNextRound($whenPlayed)))->toBe(knownThenShape($pairing), $where);
+
+                // Up to two of those still in the stage leave while the round is played,
+                // the first round included: a state that holds no round keeps the
+                // withdrawal with round 0, and the first round says the entrant was in
+                // the draw
+                // In double elimination they are entrants the round names: a
+                // round of one bracket does not name an entrant of the other,
+                // and the limit that leaves is pinned in StageTimesTest ("a
+                // round that is recorded after it was paired")
+                $leaving = [];
+                $active = array_values($whenPaired->getParticipants());
+                if (str_starts_with($variant, 'double')) {
+                    $named = [];
+                    foreach ($pairing->getEvents() as $event) {
+                        foreach ($event->getParticipants() as $participant) {
+                            $named[$participant->getId()] = true;
+                        }
+                    }
+                    foreach ($pairing->getByes() as $participant) {
+                        $named[$participant->getId()] = true;
+                    }
+                    $active = array_values(array_filter(
+                        $active,
+                        static fn(Participant $participant): bool => isset($named[$participant->getId()])
+                    ));
+                }
+                for ($i = $rng->getInt(0, 2); $i > 0 && count($active) > count($leaving); --$i) {
+                    $leaving[$active[$rng->getInt(0, count($active) - 1)]->getId()] = true;
+                }
+                $leaving = array_values(array_filter(
+                    $whenPaired->getParticipants(),
+                    static fn(Participant $participant): bool => isset($leaving[$participant->getId()])
+                ));
+                $between += count($leaving);
+
+                $whenPaired = $whenPaired->withRoundPlayed($pairing, []);
+                foreach ($leaving as $participant) {
+                    $whenPaired = $whenPaired->withoutParticipant($participant);
+                    $whenPlayed = $whenPlayed->withoutParticipant($participant);
+                }
+                $whenPlayed = $whenPlayed->withRoundPlayed($pairing, []);
+
+                // The results of the ties both entrants are still in, one of the two winning every leg
+                $gone = array_map(static fn(Participant $participant): string => $participant->getId(), $whenPaired->getWithdrawnEntrants());
+                $ties = [];
+                foreach ($pairing->getEvents() as $event) {
+                    $ids = array_map(static fn(Participant $participant): string => $participant->getId(), array_values($event->getParticipants()));
+                    sort($ids);
+                    $ties[implode(' ', $ids)][] = $event;
+                }
+                $results = [];
+                foreach ($ties as $legs) {
+                    $entrants = array_values($legs[0]->getParticipants());
+                    if (in_array($entrants[0]->getId(), $gone, true) || in_array($entrants[1]->getId(), $gone, true)) {
+                        continue;
+                    }
+                    $winner = $entrants[$rng->getInt(0, 1)];
+                    foreach ($legs as $leg) {
+                        $results[] = new Result($leg, $winner);
+                    }
+                }
+                $whenPaired = $whenPaired->withAdditionalResults($results);
+                $whenPlayed = $whenPlayed->withAdditionalResults($results);
+
+                // Every round is listed, each as the round the engine paired
+                $read = knownThenRounds($engine, $whenPlayed);
+                expect($read)->toHaveCount(count($whenPlayed->getRoundsPlayed()), $where)
+                    ->and($read)->toBe(knownThenRounds($engine, $whenPaired), $where)
+                    ->and(array_column($read, 'manual'))->toBe(array_fill(0, count($read), false), $where)
+                    ->and($read[count($read) - 1]['derivation'])->toBe(knownThenShape($pairing), $where)
+                    ->and(knownThenTiers($engine, $whenPlayed))->toBe(knownThenTiers($engine, $whenPaired), $where)
+                    ->and($next($whenPlayed))->toBe($next($whenPaired), $where);
+                ++$rounds;
+            }
+
+            expect($engine->isComplete($whenPlayed))->toBeTrue($where);
+        }
+    }
+
+    expect($rounds)->toBeGreaterThan(40)
+        ->and($between)->toBeGreaterThan(20);
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, two legs'],
+    ['single, third place'],
     ['double'],
     ['double, two legs'],
     ['double, no reset'],

@@ -30,6 +30,12 @@ use Override;
  * its results: the participant it names is the winner and the other one
  * the loser (see TieDecision).
  *
+ * The outcome of a bracket says who went on from its last tie itself
+ * (StageOutcome::getSettledTies()), and the selector reads that in the
+ * place of the results: a final a finalist withdrew from has no complete
+ * result, or was never paired, and the other finalist still went on from
+ * it.
+ *
  * @experimental
  */
 final readonly class MatchOutcomeSelector implements ProgressionSelector
@@ -101,6 +107,11 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     /**
      * The winners, or the losers, of the outcome's final round.
      *
+     * There are two readings. An outcome that carries the ties of its
+     * deciding round as an engine settled them is read from those (the
+     * last paragraphs below). Every other outcome is read from the results
+     * of its final round, which is what is described first.
+     *
      * One participant per tie, in the order the final round lists its
      * events; in winners mode the round's byes follow, in the order the
      * round lists them. A two-legged tie gives one participant, not one
@@ -132,8 +143,27 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * have exactly two; one with more is refused in both modes, and the
      * round is not read in part.
      *
+     * An outcome that carries the ties of its deciding round as an engine
+     * settled them (StageOutcome::getSettledTies(), which the two
+     * elimination engines give) is read from those and from nothing else:
+     * winners mode gives the entrant who went on from each tie, and losers
+     * mode the entrants who did not, in bracket order. That is the same
+     * selection as the results give wherever the final was played. It is
+     * also right where it was not: a final a finalist withdrew from gives
+     * the other finalist in winners mode and the withdrawn one in losers
+     * mode, whether the round was recorded without a result or never
+     * paired, and a final void because both finalists left at times nobody
+     * knows (0.2.x data) gives nobody in winners mode and both in losers
+     * mode. A finalist who withdraws after the final was decided changes
+     * nothing here: the engine reads the bracket as it was when it was
+     * over. Nothing is refused for such
+     * an outcome, the final round is not needed, and the deprecation of
+     * 'tie_winner' is not raised here: the engine raised it when it
+     * settled the tie for the outcome.
+     *
      * @return array<Participant>
-     * @throws InvalidConfigurationException When the outcome has no final round, as a pooled
+     * @throws InvalidConfigurationException When the outcome carries no settled ties and: it has
+     *                                       no final round, as a pooled
      *                                       outcome has none, or its final round holds an event of
      *                                       more than two participants (`IncompatibleOutcome`); when a
      *                                       tie of the round lacks a result, or is level with no
@@ -146,6 +176,20 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     #[Override]
     public function select(StageOutcome $outcome): array
     {
+        $settledTies = $outcome->getSettledTies();
+        if ($settledTies !== null) {
+            $selected = [];
+            foreach ($settledTies as $tie) {
+                if ($this->mode === self::MODE_LOSERS) {
+                    $selected = [...$selected, ...$tie->getEliminated()];
+                } elseif ($tie->getAdvancer() instanceof Participant) {
+                    $selected[] = $tie->getAdvancer();
+                }
+            }
+
+            return $selected;
+        }
+
         $finalRound = $outcome->getFinalRound();
         if ($finalRound === null) {
             throw new InvalidConfigurationException(

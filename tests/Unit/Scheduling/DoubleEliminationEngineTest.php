@@ -315,7 +315,8 @@ describe('DoubleEliminationEngine', function (): void {
             new Result($round1->getEvents()[0], $round1->getEvents()[0]->getParticipants()[0]),
         ]);
         expect(fn() => $engine->pairNextRound($partial))
-            ->toThrow(InvalidConfigurationException::class, 'partially resolved');
+            ->toThrow(InvalidConfigurationException::class, 'Round 1 is not finished: 1 event awaits a result')
+            ->and($engine->getReadiness($partial)->getUnresolvedEvents())->toBe([$round1->getEvents()[1]]);
     });
 
     it('rejects fewer than two participants', function (): void {

@@ -253,12 +253,14 @@ use MissionGaming\Tactician\Stage\StageState;
 
 $engine = new SwissPairingEngine(plannedRounds: 5);
 
-// One driver loop covers every results-driven format
+// One driver loop covers every results-driven format: pair the round,
+// record it as paired, play it, add its results
 $state = StageState::start($participants);
 while (!$engine->isComplete($state)) {
     $pairing = $engine->pairNextRound($state);
+    $state = $state->withRoundPaired($pairing);
     $results = playRound($pairing); // application-side
-    $state = $state->withRoundPlayed($pairing, $results);
+    $state = $state->withAdditionalResults($results);
 }
 
 // Every format finishes as an outcome you can select from
@@ -266,13 +268,19 @@ $outcome = $engine->getOutcome($state);
 $table = $outcome->getStandings();
 ```
 
-Single and double elimination (`SingleEliminationEngine`,
-`DoubleEliminationEngine`) drive through the same loop, and group stages
+The round is recorded when it is paired, before any result exists, so that
+a withdrawal or an adjustment made while it is played is recorded after it
+and the round is read as it was paired. Single and double elimination
+(`SingleEliminationEngine`, `DoubleEliminationEngine`) drive through the
+same loop, and group stages
 compose from pools and progression selectors (`PoolDistributor`,
 `RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`) — see the
 [usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
 (`StageState::toJson()`, `$schedule->toJson()`), so platforms persist
-between rounds instead of re-deriving.
+between rounds instead of re-deriving. A platform that keeps its fixtures
+and results in its own tables stores no state and builds one from them on
+each request (`StageState::fromHistory()`): the rounds it holds are read
+as they are, and the engine derives only the next one.
 
 ## Versioning and stability
 

@@ -27,13 +27,16 @@ $players = [
 
 $engine = new SwissPairingEngine(plannedRounds: 3);
 
-// The driver loop: pair, play, record - the state carries all the
-// between-round bookkeeping and would serialize to persistence in a real
-// platform (StageState::fromJson($stored) to resume).
+// The driver loop: pair, record the round as paired, play, add the results
+// - the state carries all the between-round bookkeeping and would
+// serialize to persistence in a real platform (StageState::fromJson($stored)
+// to resume). Recorded when it is paired, the round comes before anything
+// that happens while it is played: a withdrawal or an adjustment.
 $state = StageState::start($players);
 $rounds = [];
 while (!$engine->isComplete($state)) {
     $pairing = $engine->pairNextRound($state);
+    $state = $state->withRoundPaired($pairing);
 
     // "Play" each event: the higher-seeded player wins here
     $results = [];
@@ -43,7 +46,7 @@ while (!$engine->isComplete($state)) {
         $results[] = new Result($event, $winner);
     }
 
-    $state = $state->withRoundPlayed($pairing, $results);
+    $state = $state->withAdditionalResults($results);
 
     // Round-trip the state through JSON, as a platform persisting between
     // rounds would

@@ -13,6 +13,7 @@ use MissionGaming\Tactician\Exceptions\TacticianException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\HistoryReadingEngine;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
@@ -411,30 +412,37 @@ describe('a level single-leg event in double elimination', function (): void {
 });
 
 describe('a level single-leg event with no usable decision', function (): void {
-    it('is refused by every engine call, with a message that says how to record the decision', function (
-        StageEngineInterface $engine
+    // The event awaits its decision as another awaits its result: the
+    // bracket is read without an exception, it is not complete, and the
+    // next round is what is refused.
+    it('leaves the bracket unfinished, and refuses the next round with a message that says how to record the decision', function (
+        StageEngineInterface&HistoryReadingEngine $engine
     ): void {
         $state = StageState::start(levelEventField(4));
         $pairing = $engine->pairNextRound($state);
         [$first, $second] = $pairing->getEvents();
         $state = $state->withRoundPlayed($pairing, [levelResult($first), decisiveResult($second, 'p2')]);
 
-        foreach (levelEventEngineCalls($engine) as $call => $ask) {
-            try {
-                $ask($state);
-                $thrown = null;
-            } catch (InvalidConfigurationException $exception) {
-                $thrown = $exception;
-            }
+        expect($engine->isComplete($state))->toBeFalse()
+            ->and($engine->getOutcome($state))->toBeNull()
+            ->and($engine->getReadiness($state)->isAwaitingResults())->toBeTrue()
+            ->and($engine->getReadiness($state)->getUndecidedEvents())->toBe([$first])
+            ->and($engine->getReadiness($state)->getUnresolvedEvents())->toBe([]);
 
-            assert($thrown !== null, "{$call}() accepted a level event that names nobody.");
-            expect($thrown->getMessage())->toBe(
-                'Invalid scheduler configuration: Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as the decider of its result'
-            );
-            expect($thrown->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
-            // Which tie: its round, and its two participants
-            expect($thrown->getContext())->toBe(['round' => 1, 'participants' => ['p1', 'p4']]);
+        try {
+            $engine->pairNextRound($state);
+            $thrown = null;
+        } catch (InvalidConfigurationException $exception) {
+            $thrown = $exception;
         }
+
+        assert($thrown !== null, 'pairNextRound() accepted a level event that names nobody.');
+        expect($thrown->getMessage())->toBe(
+            'Invalid scheduler configuration: Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as the decider of its result'
+        );
+        expect($thrown->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
+        // Which tie: its round, and its two participants
+        expect($thrown->getContext())->toBe(['round' => 1, 'participants' => ['p1', 'p4']]);
     })->with([
         'single elimination' => [fn() => new SingleEliminationEngine()],
         're-seeded single elimination' => [fn() => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true))],
@@ -520,7 +528,8 @@ describe('a level single-leg event with no usable decision', function (): void {
         $stuck = StageState::fromJson(
             $state->withRoundPlayed($pairing, array_map(levelResult(...), $pairing->getEvents()))->toJson()
         );
-        expect(fn() => $engine->isComplete($stuck))->toThrow(InvalidConfigurationException::class, 'record who advances as the decider of its result');
+        expect($engine->isComplete($stuck))->toBeFalse()
+            ->and(fn() => $engine->pairNextRound($stuck))->toThrow(InvalidConfigurationException::class, 'record who advances as the decider of its result');
 
         // One replacement for each event of the round, read back from the
         // stored state; the second participant of each event advances.
@@ -578,7 +587,8 @@ describe('a level single-leg event with no usable decision', function (): void {
             new Result($pairing->getEvents()[0], null, [], [TieWinnerDeprecation::KEY => null]),
         ]);
 
-        expect(fn() => $engine->isComplete($state))
+        expect($engine->isComplete($state))->toBeFalse()
+            ->and(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'record who advances as the decider of its result');
     });
 });

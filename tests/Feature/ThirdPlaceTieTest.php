@@ -10,6 +10,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
+use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
@@ -177,31 +178,40 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $last = $this->engine->pairNextRound($state);
         [$final, $thirdPlace] = $last->getEvents();
 
-        // Paired and not played: the stage is not complete, and the round
-        // is given again
+        $waitingFor = fn(StageState $state): array => array_map(
+            static fn(Event $event): string => $event->getParticipants()[0]->getId() . ' v ' . $event->getParticipants()[1]->getId(),
+            $this->engine->getReadiness($state)->getUnresolvedEvents()
+        );
+
+        // Paired and not played: the stage is not complete, nothing is
+        // thrown for it, and the engine waits for both ties
         $paired = $state->withRoundPlayed($last, []);
         expect($this->engine->isComplete($paired))->toBeFalse()
             ->and($this->engine->getOutcome($paired))->toBeNull()
-            ->and(thirdPlaceEvents($this->engine->pairNextRound($paired)))->toBe(['p1 v p2', 'p4 v p3']);
+            ->and($waitingFor($paired))->toBe(['p1 v p2', 'p4 v p3']);
 
-        // One of the two decided, either one: the round is partially
-        // resolved, as a round with one of its ties undecided always is
+        // One of the two decided, either one: the round is not finished, as
+        // a round with one of its ties undecided never is. Reading it throws
+        // nothing; asking for a round after it is refused with the event the
+        // bracket waits for.
         foreach ([[$final, 'the final alone'], [$thirdPlace, 'the third-place tie alone']] as [$event, $case]) {
             $partial = $state->withRoundPlayed($last, [new Result($event, $event->getParticipants()[0])]);
+            $other = $event === $final ? $thirdPlace : $final;
 
-            // The plan is the shape of the bracket and reads no result
-            foreach (array_diff_key(thirdPlaceCalls($this->engine), ['getPlan' => true]) as $name => $call) {
-                try {
-                    $call($partial);
-                    $this->fail("{$name}() accepted a last round with {$case} decided.");
-                } catch (InvalidConfigurationException $exception) {
-                    expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundPartiallyResolved)
-                        ->and($exception->getContext())->toBe(['round' => 2, 'resolved' => 1, 'playable' => 2]);
-                }
+            expect($this->engine->isComplete($partial))->toBeFalse("isComplete() with {$case} decided")
+                ->and($this->engine->getOutcome($partial))->toBeNull()
+                ->and($this->engine->getReadiness($partial)->getUnresolvedEvents())->toBe([$other]);
+
+            try {
+                $this->engine->pairNextRound($partial);
+                $this->fail("pairNextRound() accepted a last round with {$case} decided.");
+            } catch (UnresolvedRoundException $exception) {
+                expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundPartiallyResolved)
+                    ->and($exception->getRoundNumber())->toBe(2)
+                    ->and($exception->getUnresolvedEvents())->toBe([$other]);
             }
 
             // The missing result completes it
-            $other = $event === $final ? $thirdPlace : $final;
             $completed = $partial->withAdditionalResults([new Result($other, $other->getParticipants()[0])]);
             expect($this->engine->isComplete($completed))->toBeTrue();
         }
@@ -284,10 +294,14 @@ describe('the third-place tie of a single elimination bracket', function (): voi
             ->and(MatchOutcomeSelector::losers()->select($outcome))->toHaveCount(1);
     });
 
-    // The selector knows the third-place tie by its mark and by nothing
-    // else. A round recorded with events that do not carry it is read as
-    // any round is: one participant for each tie, in the recorded order.
-    it('selects from both ties of a last round whose events were recorded without their marks', function (): void {
+    // The engine knows the two ties of its last round by their participants,
+    // and its outcome says which of them is the final. The selector reads
+    // that, so the selection is the final's also where the events were
+    // recorded without their marks. Reading the results by itself, for an
+    // outcome that carries no settled ties, it knows the third-place tie by
+    // its mark and by nothing else, and reads such a round as any round:
+    // one participant for each tie, in the recorded order.
+    it('selects from the final alone where the engine settled it, also in a last round recorded without its marks', function (): void {
         $state = thirdPlaceState($this->engine, thirdPlaceField(4), [['p1', 'p2']]);
         $last = $this->engine->pairNextRound($state);
 
@@ -302,10 +316,14 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $outcome = $this->engine->getOutcome($state);
         assert($outcome !== null);
 
+        $byHand = new StageOutcome($outcome->getStandings(), $outcome->getResults(), $outcome->getByes(), $outcome->getFinalRound());
+
         // The engine knows the ties by their participants, so the table is the same
         expect(thirdPlaceTable($outcome))->toBe(['p1', 'p2', 'p4', 'p3'])
-            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1', 'p4'])
-            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2', 'p3']);
+            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($byHand)))->toBe(['p1', 'p4'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($byHand)))->toBe(['p2', 'p3']);
     });
 
     it('counts the result of the third-place tie in the records of its two entrants', function (): void {
@@ -455,14 +473,20 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $finalResults = [new Result($finalFirstLeg, $field[0]), new Result($finalSecondLeg, $field[0])];
 
         // One leg of the third-place tie: the tie is not decided yet, and
-        // the round is partially resolved
+        // the round waits for the other leg
         $oneLeg = $state->withRoundPlayed($last, [...$finalResults, new Result($thirdFirstLeg, $p4)]);
-        expect(fn() => $engine->isComplete($oneLeg))->toThrow(InvalidConfigurationException::class, 'partially resolved');
+        expect($engine->isComplete($oneLeg))->toBeFalse()
+            ->and($engine->getReadiness($oneLeg)->getUnresolvedEvents())->toBe([$thirdSecondLeg]);
 
-        // A leg each, and no decision: refused, as a level tie is
+        // A leg each, and no decision: the tie awaits it, as a level tie
+        // does, and the bracket is not complete with the final decided
         $level = $oneLeg->withAdditionalResults([new Result($thirdSecondLeg, $p3)]);
+        expect($engine->isComplete($level))->toBeFalse()
+            ->and($engine->getOutcome($level))->toBeNull()
+            ->and($engine->getReadiness($level)->getUndecidedEvents())->toBe([$thirdFirstLeg, $thirdSecondLeg])
+            ->and($engine->getReadiness($level)->getUnresolvedEvents())->toBe([]);
         try {
-            $engine->isComplete($level);
+            $engine->pairNextRound($level);
             $this->fail('A level third-place tie without a decision was accepted.');
         } catch (InvalidConfigurationException $exception) {
             expect($exception->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
@@ -498,8 +522,11 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $finalResult = new Result($final, $final->getParticipants()[0]);
 
         $undecided = $state->withRoundPlayed($last, [$finalResult, new Result($thirdPlace, null, ['p4' => 1, 'p3' => 1])]);
+        expect($this->engine->getOutcome($undecided))->toBeNull()
+            ->and($this->engine->isComplete($undecided))->toBeFalse()
+            ->and($this->engine->getReadiness($undecided)->getUndecidedEvents())->toBe([$thirdPlace]);
         try {
-            $this->engine->getOutcome($undecided);
+            $this->engine->pairNextRound($undecided);
             $this->fail('A drawn third-place tie without a decision was accepted.');
         } catch (InvalidConfigurationException $exception) {
             expect($exception->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
@@ -559,30 +586,39 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         expect(array_slice(thirdPlaceEvents($last), 1))->toBe(['p4 v p2']);
     });
 
-    it('gives the same last round again when it is asked for twice, and after its pairing is recorded', function (bool $reseed): void {
+    it('gives the same last round again when it is asked for twice, and reads it as its own once its pairing is recorded', function (bool $reseed): void {
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: $reseed, thirdPlace: true));
         $state = thirdPlaceState($engine, thirdPlaceField(8), [['p8', 'p5', 'p7', 'p6'], ['p8', 'p6']]);
 
         $last = $engine->pairNextRound($state);
-        $again = $engine->pairNextRound(StageState::fromJson($state->withRoundPlayed($last, [])->toJson()));
+        $recorded = $engine->getRecordedRounds(StageState::fromJson($state->withRoundPlayed($last, [])->toJson()));
 
-        expect($again->toArray())->toBe($last->toArray())
-            ->and($engine->pairNextRound($state)->toArray())->toBe($last->toArray());
+        // A recorded round is not paired again; what the engine would pair
+        // in its place is its derivation, and it is the round it paired
+        expect($engine->pairNextRound($state)->toArray())->toBe($last->toArray())
+            ->and($recorded[2]->getDerivation()?->toArray())->toBe($last->toArray())
+            ->and($recorded[2]->isManual())->toBeFalse()
+            ->and($recorded[2]->getUnresolvedEvents())->toHaveCount(2);
     })->with([[false], [true]]);
 
-    it('refuses a state whose last round was recorded without the third-place tie', function (): void {
+    // A last round recorded without the tie is the round that was played:
+    // the application says no third-place tie was. It is read as recorded,
+    // it is reported as manual, and it decides places 1 and 2 only.
+    it('reads a last round recorded without the third-place tie as paired by hand, with places 3 and 4 undecided', function (): void {
         // Paired by an engine without the option, and not stamped
         $without = new SingleEliminationEngine();
         $state = thirdPlaceState($without, thirdPlaceField(4), [['p1', 'p2']]);
-        $state = $state->withRoundPlayed($without->pairNextRound($state), []);
+        $final = $without->pairNextRound($state);
+        $state = $state->withRoundPlayed($final, []);
 
-        try {
-            $this->engine->pairNextRound($state);
-            $this->fail('A last round recorded without the third-place tie was accepted.');
-        } catch (InvalidConfigurationException $exception) {
-            expect($exception->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
-                ->and($exception->getContext()['round'] ?? null)->toBe(2);
-        }
+        $rounds = $this->engine->getRecordedRounds($state);
+        expect($rounds[1]->isManual())->toBeTrue()
+            ->and(thirdPlaceEvents($rounds[1]->getDerivation() ?? $final))->toBe(['p1 v p2', 'p4 v p3'])
+            ->and($this->engine->getReadiness($state)->getUnresolvedEvents())->toBe($final->getEvents());
+
+        $played = $state->withAdditionalResults([new Result($final->getEvents()[0], $final->getEvents()[0]->getParticipants()[0])]);
+        expect($this->engine->isComplete($played))->toBeTrue()
+            ->and($this->engine->getOutcome($played)?->getStandings()->getTiers())->toBe([0, 1, 2, 2]);
     });
 
     // The other way round. An engine without the option has one tie in its

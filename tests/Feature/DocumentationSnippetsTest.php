@@ -852,6 +852,60 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["bool(true)\nbool(false)\n"],
             [],
         ],
+        'a state built from a history is a stage that is not complete' => [
+            'docs/USAGE.md',
+            '$history = StageState::fromHistory(',
+            ["bool(false)\n"],
+            ['bool(true)'],
+        ],
+        'an unfinished round is asked about without an exception, and refused with its events' => [
+            'docs/USAGE.md',
+            '$readiness = $bracket->getReadiness($history);',
+            ["waiting\nBo v Cy\nAda\nround_partially_resolved, round 1\n"],
+            ['ready'],
+        ],
+        'a Swiss round is paired early only on request, and is marked' => [
+            'docs/USAGE.md',
+            '$early = $swiss->pairNextRoundOnIncompleteResults($swissState);',
+            ["bool(false)\nbool(true)\n"],
+            [],
+        ],
+        'results-free mode pairs its planned rounds and has a fingerprint of its own' => [
+            'docs/USAGE.md',
+            '$preDrawn = new SwissPairingEngine(plannedRounds: 2, resultsFree: true);',
+            ["2\nbool(false)\n"],
+            ['bool(true)'],
+        ],
+        'a round drawn by hand is reported, and the final follows from it' => [
+            'docs/USAGE.md',
+            '$byHand = StageState::fromHistory(',
+            ["bool(true)\nAda v Di\nBo v Cy\nCy v Bo\n"],
+            ['bool(false)'],
+        ],
+        'a withdrawal gives the tie away and draws nothing again' => [
+            'docs/USAGE.md',
+            '$afterWithdrawal = StageState::fromHistory(',
+            ["1 not played, 0 awaited\nAda v Bo\n"],
+            [],
+        ],
+        'the selector gives the finalist who stayed when the other withdrew before the final was paired' => [
+            'docs/USAGE.md',
+            '$finalistLeft = StageState::fromHistory(',
+            ["Ada\nBo\nAda\nsemifinal\n"],
+            ["\nfinal\n"],
+        ],
+        'a finalist who withdraws after the final was given to it keeps it' => [
+            'docs/USAGE.md',
+            '$bothLeft = StageState::fromHistory(',
+            ["Ada\n0 1 2 2\n"],
+            [],
+        ],
+        'the verbs record after which round an adjustment and a withdrawal happened, and rows that say it give the same state' => [
+            'docs/USAGE.md',
+            '$live = StageState::start([$ada, $bo, $cy, $di])',
+            ["di after round 0\nbo after round 1\nCy after round 1\nbool(true)\n"],
+            ['bool(false)'],
+        ],
     ]);
 
     it('prints one match per department in each of the two team-building rounds', function () use ($extracted, $autoload): void {
@@ -1866,8 +1920,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     new \MissionGaming\Tactician\Stage\StageTransition('next', 2, MatchOutcomeSelector::winners(), afterWholeBracket: true),
                 ]) === ["Stage 'next' expects 2 entrants but its selection yields 1 from the previous stage's 4."]);
 
-                // "a last round recorded with events that do not carry bracket_tie is read as any round
-                // is, one participant for each of its two ties in the recorded order"
+                // "the selection is the final's also where the last round was recorded with events that do
+                // not carry bracket_tie. For an outcome that carries no settled ties ... one participant for
+                // each of its two ties in the recorded order"
                 $withoutMarks = array_map(
                     static fn ($event) => new \MissionGaming\Tactician\DTO\Event($event->getParticipants(), $event->getRound()),
                     array_reverse($recordedLastRound->getEvents())
@@ -1878,7 +1933,14 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                         new \MissionGaming\Tactician\Stage\RoundPairing(2, 'final', $withoutMarks, []),
                         [new Result($withoutMarks[0], $carol), new Result($withoutMarks[1], $bob)]
                     );
-                assert($labels(MatchOutcomeSelector::winners()->select($withThirdPlace->getOutcome($unmarkedState))) === ['Carol', 'Bob']);
+                $unmarkedOutcome = $withThirdPlace->getOutcome($unmarkedState);
+                assert($labels(MatchOutcomeSelector::winners()->select($unmarkedOutcome)) === ['Bob']);
+                assert($labels(MatchOutcomeSelector::winners()->select(new \MissionGaming\Tactician\Stage\StageOutcome(
+                    $unmarkedOutcome->getStandings(),
+                    $unmarkedOutcome->getResults(),
+                    $unmarkedOutcome->getByes(),
+                    $unmarkedOutcome->getFinalRound()
+                ))) === ['Carol', 'Bob']);
                 assert($labels(RankRangeSelector::overall(1, 4)->select($withThirdPlace->getOutcome($unmarkedState))) === ['Bob', 'Alice', 'Carol', 'Dave']);
 
                 // "the engine writes the backing string ... the mark is stored with the event ... null for
@@ -1897,15 +1959,15 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 // "only their records order them": without the tie places 3 and 4 are one tier
                 assert($engine->getOutcome($plainState)->getStandings()->getTiers() === [0, 1, 2, 2]);
 
-                // "With one of them decided and the other not, the round is partially resolved ...
-                // until the missing result is recorded"
+                // "With one of them decided and the other not, the round is not finished: the bracket
+                // is not complete, and the next round is refused ... until the missing result is recorded"
                 $beforeLast = StageState::start($four);
                 $beforeLast = $beforeLast->withRoundPlayed($withThirdPlace->pairNextRound($beforeLast), $tieFirstNamedWins($withThirdPlace->pairNextRound($beforeLast)));
                 $last = $withThirdPlace->pairNextRound($beforeLast);
                 $partial = $beforeLast->withRoundPlayed($last, [new Result($last->getEvents()[0], $alice)]);
-                foreach ([fn () => $withThirdPlace->isComplete($partial), fn () => $withThirdPlace->pairNextRound($partial), fn () => $withThirdPlace->getOutcome($partial)] as $call) {
-                    assert($refusedFor($call) === $reasons::RoundPartiallyResolved);
-                }
+                assert($withThirdPlace->isComplete($partial) === false && $withThirdPlace->getOutcome($partial) === null);
+                assert($withThirdPlace->getReadiness($partial)->getUnresolvedEvents() === [$last->getEvents()[1]]);
+                assert($refusedFor(fn () => $withThirdPlace->pairNextRound($partial)) === $reasons::RoundPartiallyResolved);
                 assert($withThirdPlace->isComplete($partial->withAdditionalResults([new Result($last->getEvents()[1], $dave)])));
                 assert(!$withThirdPlace->isComplete($beforeLast->withRoundPlayed($last, [])));
 
@@ -1978,11 +2040,13 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     assert($refusedFor(fn () => $reading->isComplete($stamped)) === $reasons::EngineFingerprintMismatch);
                 }
 
-                // "A state that carries no stamp and whose last round was recorded without the
-                // third-place tie is refused by an engine with the option"
-                $withoutTheTie = $beforeLast->withRoundPlayed($engine->pairNextRound($beforeLast), []);
-                assert($refusedFor(fn () => $withThirdPlace->pairNextRound($withoutTheTie)) === $reasons::RecordedRoundMismatch);
-                // "and by an engine without the option when the round holds an event marked 'third-place'.
+                // "A last round recorded without the third-place tie is read by an engine with the
+                // option as a round paired by hand, and decides places 1 and 2 only"
+                $finalAlone = $engine->pairNextRound($beforeLast);
+                $withoutTheTie = $beforeLast->withRoundPlayed($finalAlone, [new Result($finalAlone->getEvents()[0], $alice)]);
+                assert($withThirdPlace->getRecordedRounds($withoutTheTie)[1]->isManual() === true);
+                assert($withThirdPlace->getOutcome($withoutTheTie)->getStandings()->getTiers() === [0, 1, 2, 2]);
+                // "An engine without the option refuses a state whose round holds an event marked 'third-place'.
                 // Until then ... either engine pairs its last round; a field of 3 ... is read by both"
                 foreach ([fn () => $engine->isComplete($fourState), fn () => $engine->pairNextRound($fourState), fn () => $engine->getOutcome($fourState)] as $call) {
                     assert($refusedFor($call) === $reasons::RecordedRoundMismatch);

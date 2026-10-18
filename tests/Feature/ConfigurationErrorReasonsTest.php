@@ -34,6 +34,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Timeline\BlackoutRule;
 use MissionGaming\Tactician\Timeline\MinimumRestRule;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
@@ -258,6 +259,10 @@ describe('the reason of a configuration error', function (): void {
             'TieWithinSelection' => 'tie_within_selection',
             'PoolComparisonRequired' => 'pool_comparison_required',
             'RoundOutOfSequence' => 'round_out_of_sequence',
+            'ParticipantNotAnEntrant' => 'participant_not_an_entrant',
+            'ParticipantTwiceInRound' => 'participant_twice_in_round',
+            'WithdrawalWithoutRound' => 'withdrawal_without_round',
+            'AdjustmentWithoutRound' => 'adjustment_without_round',
             'EventNotInRound' => 'event_not_in_round',
             'NoRoundRecorded' => 'no_round_recorded',
             'ResultNotRecorded' => 'result_not_recorded',
@@ -575,6 +580,80 @@ describe('the reason of a configuration error', function (): void {
                 $engine->pairNextRound($state);
             },
             InvalidConfigurationReason::RoundPartiallyResolved,
+        ],
+        'the next Swiss round asked for with a result of the last one missing' => [
+            function (): void {
+                $engine = new SwissPairingEngine();
+                $state = StageState::start([
+                    new Participant('a', 'Alice'),
+                    new Participant('b', 'Bob'),
+                    new Participant('c', 'Carol'),
+                    new Participant('d', 'Dan'),
+                ]);
+                $pairing = $engine->pairNextRound($state);
+                $first = $pairing->getEvents()[0];
+                $engine->pairNextRound($state->withRoundPlayed($pairing, [new Result($first, $first->getParticipants()[0])]));
+            },
+            InvalidConfigurationReason::RoundPartiallyResolved,
+        ],
+        'a history that names a participant who is not an entrant' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                StageState::fromHistory(
+                    [$alice, $bob],
+                    [new RoundPairing(1, null, [new Event([$alice, new Participant('z', 'Zed')], new Round(1))])]
+                );
+            },
+            InvalidConfigurationReason::ParticipantNotAnEntrant,
+        ],
+        'a history with one participant in two events of a round' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                $carol = new Participant('c', 'Carol');
+                StageState::fromHistory(
+                    [$alice, $bob, $carol],
+                    [new RoundPairing(1, null, [new Event([$alice, $bob], new Round(1)), new Event([$alice, $carol], new Round(1))])]
+                );
+            },
+            InvalidConfigurationReason::ParticipantTwiceInRound,
+        ],
+        'a history with rounds and a withdrawal that does not say its round' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                StageState::fromHistory(
+                    [$alice, $bob],
+                    [new RoundPairing(1, null, [new Event([$alice, $bob], new Round(1))])],
+                    [],
+                    [$bob]
+                );
+            },
+            InvalidConfigurationReason::WithdrawalWithoutRound,
+        ],
+        'a history with rounds and an adjustment that does not say its round' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                StageState::fromHistory(
+                    [$alice, $bob],
+                    [new RoundPairing(1, null, [new Event([$alice, $bob], new Round(1))])],
+                    adjustments: [new Adjustment('b', -1.0)]
+                );
+            },
+            InvalidConfigurationReason::AdjustmentWithoutRound,
+        ],
+        'a history with a round left out' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                StageState::fromHistory(
+                    [$alice, $bob],
+                    [new RoundPairing(2, null, [new Event([$alice, $bob], new Round(2))])]
+                );
+            },
+            InvalidConfigurationReason::RoundOutOfSequence,
         ],
         'two results recorded for one bracket match' => [
             function (): void {
