@@ -4714,6 +4714,13 @@ selector of your own is counted the way the library's are. A
 | `MatchOutcomeSelector::losers()` | `LosersOfLastRound` | half the entrants rounded down; 1 after a whole bracket |
 | a selector whose count only the outcome gives | `DependsOnOutcome` | not counted |
 
+The yield is stated before any outcome exists, so it cannot know of a
+withdrawal. A bracket tie whose two entrants both withdrew sends nobody on,
+and the entrant who then stands alone in the next round goes on with no
+loser beside it, so a match-outcome selection can hand on fewer than its
+yield says. The validator checks the chain as declared; the stage after
+still checks the entrants it is given.
+
 A count per pool needs the number of pools, which the validator cannot see
 either; declare it on the transition as `sourcePools`, or the transition
 passes unchecked:

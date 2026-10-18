@@ -2,16 +2,21 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\CompositionValidator;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\ProgressionSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
+use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\SelectionYield;
 use MissionGaming\Tactician\Stage\SelectionYieldKind;
 use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\StageTransition;
 
 /**
@@ -179,5 +184,45 @@ describe('CompositionValidator reads the declared yield', function (): void {
         expect((new CompositionValidator())->validateChain(9, [
             new StageTransition('next', 7, new DeclaredYieldSelector(SelectionYield::dependsOnOutcome()), sourcePools: 3),
         ]))->toBe([]);
+    });
+});
+
+describe('A withdrawal and the declared yield', function (): void {
+    // The yield is stated before any outcome, and a withdrawal is not known
+    // then. Where both entrants of a semifinal withdraw before it, the tie is
+    // void and sends nobody on (ADR 0011): the other finalist stands alone in
+    // the final, goes on without it being played, and nobody lost it.
+    it('makes the losers of a final fewer than declared when a void semifinal left one finalist', function (): void {
+        $entrants = [];
+        for ($i = 1; $i <= 8; ++$i) {
+            $entrants[] = new Participant("p{$i}", "Participant {$i}");
+        }
+        $firstNamedWins = fn(RoundPairing $round): array => array_map(
+            fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[0]),
+            $round->getEvents()
+        );
+
+        // Given: A bracket of 8 whose quarterfinals are played, and both
+        // entrants of the first semifinal withdraw
+        $engine = new SingleEliminationEngine();
+        $quarterfinals = $engine->pairNextRound(StageState::start($entrants));
+        $state = StageState::start($entrants)->withRoundPlayed($quarterfinals, $firstNamedWins($quarterfinals));
+        $semifinals = $engine->pairNextRound($state);
+        [$first, $second] = array_values($semifinals->getEvents()[0]->getParticipants());
+        $state = $state->withoutParticipant($first)->withoutParticipant($second);
+        while (!$engine->isComplete($state)) {
+            $round = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($round, $firstNamedWins($round));
+        }
+        $outcome = $engine->getOutcome($state);
+        assert($outcome !== null);
+
+        // Then: The winner is as declared, and the losers are none where 1 is declared
+        $winners = MatchOutcomeSelector::winners();
+        $losers = MatchOutcomeSelector::losers();
+        expect($winners->getYield()->countFrom(8, null, true))->toBe(1)
+            ->and($winners->select($outcome))->toHaveCount(1)
+            ->and($losers->getYield()->countFrom(8, null, true))->toBe(1)
+            ->and($losers->select($outcome))->toBe([]);
     });
 });

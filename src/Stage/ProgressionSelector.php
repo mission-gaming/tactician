@@ -45,8 +45,13 @@ interface ProgressionSelector
      * SelectionYield::countFrom(), and reads no other method of a selector.
      *
      * The statement is about select(): for an outcome of the shape it is
-     * given, the list select() returns has that many participants, or
-     * select() refuses.
+     * given in which nobody has withdrawn, the list select() returns has
+     * that many participants, or select() refuses. A withdrawal is not
+     * known ahead of time, and it can make the list shorter: a bracket tie
+     * whose two entrants both withdrew sends nobody on (SettledTie), so the
+     * winners of a last round can be fewer, and an entrant who stands alone
+     * in it because of that has no loser beside it, so the losers can be
+     * fewer too.
      */
     public function getYield(): SelectionYield;
 

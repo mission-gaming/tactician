@@ -1878,8 +1878,12 @@ entry on the engine fingerprint.
   any other selector only by a fixed size. A per-group rank range, which
   always passed unchecked, is checked where the transition declares the
   pools of the stage before (`StageTransition`'s new `sourcePools`); without
-  them it passes as before. Every chain the validator accepted or refused
-  before gets the same answer.
+  them it passes as before. Every chain of the library's selectors that the
+  validator accepted or refused before gets the same answer; a selector of
+  an application's is now counted by the yield it declares, where it was
+  counted by `getSelectionSize()` alone. The yield is stated before any
+  outcome, so a withdrawal can make a match-outcome selection hand on fewer
+  than it says (a bracket tie both entrants left sends nobody on).
 
 ### Changed
 
