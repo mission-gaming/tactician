@@ -94,7 +94,9 @@ final readonly class BracketSlot
     /**
      * The IDs of the nodes the slot is filled from (BracketNode::getId(),
      * Bracket::getNode()): one for AdvancerOf and LoserOf, every node of
-     * the round before for a slot of a re-seeded round (isReseeded()), and
+     * the round before for a slot of a re-seeded round (isReseeded()), the
+     * one node its entrant comes from for a re-seeded slot of a
+     * third-place tie, and
      * none for Draw and Recorded.
      *
      * @return list<string>

@@ -1726,6 +1726,15 @@ function bracketViewInvariants(
                     if ($slot->getSource() === SlotSource::Draw) {
                         expect($entrants[($slot->getDrawPosition() ?? 0) - 1] ?? null)->toBeNull($where);
                     }
+                    if ($slot->isReseeded() && $placeholder !== SlotPlaceholder::Reseeded) {
+                        // A re-seeded slot holds nobody only where no node it is filled from has anybody to send
+                        $sending = $slot->getSource() === SlotSource::LoserOf
+                            ? [BracketNodeStatus::Decided, BracketNodeStatus::Uncontested]
+                            : [BracketNodeStatus::Decided, BracketNodeStatus::Uncontested, BracketNodeStatus::Bye];
+                        foreach ($sources as $source) {
+                            expect($source?->getStatus())->not->toBeIn($sending, "{$where}: {$node->getId()}");
+                        }
+                    }
                     continue;
                 }
 

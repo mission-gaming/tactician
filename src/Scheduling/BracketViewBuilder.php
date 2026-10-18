@@ -788,6 +788,11 @@ final class BracketViewBuilder
 
         return match (true) {
             $status === BracketNodeStatus::NotPlayed => SlotPlaceholder::NotPlayed,
+            // A re-seeded slot of a third-place tie not reached (the one
+            // re-seeded slot filled from a single node) whose node has a loser
+            // to send waits for the re-seeding, which places it only once the
+            // round is reached
+            $spec['reseeded'] && count($spec['nodes']) === 1 && in_array($status, [BracketNodeStatus::Decided, BracketNodeStatus::Uncontested], true) => SlotPlaceholder::Reseeded,
             $spec['source'] === SlotSource::LoserOf && $status === BracketNodeStatus::Bye => SlotPlaceholder::Bye,
             !$spec['reseeded'] && ($byesOnly[$spec['nodes'][0] ?? ''] ?? false) => SlotPlaceholder::Bye,
             default => SlotPlaceholder::Void,

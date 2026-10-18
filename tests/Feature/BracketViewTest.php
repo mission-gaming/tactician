@@ -363,6 +363,52 @@ describe('a single elimination bracket', function (): void {
         ]);
     });
 
+    it('waits for the re-seeding of a third-place tie when one semifinal is settled before the other', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true, thirdPlace: true));
+        [$p1, $p2, $p3, $p4] = bracketViewField(4);
+        $state = StageState::start([$p1, $p2, $p3, $p4]);
+        $semifinals = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($semifinals)
+            ->withAdditionalResults([new Result($semifinals->getEvents()[0], $p1)]);
+
+        // p4 is out and will play for third place, in whichever slot the
+        // re-seeding puts it: the slot is still to be filled, not a slot for nobody
+        $third = $engine->getBracket($state)->getNode('main:2:2');
+        assert($third instanceof BracketNode);
+
+        expect(array_map(static fn(BracketSlot $slot): ?SlotPlaceholder => $slot->getPlaceholder(), $third->getSlots()))
+            ->toBe([SlotPlaceholder::Reseeded, SlotPlaceholder::Reseeded])
+            ->and($third->getSlots()[0]->isPending())->toBeTrue()
+            ->and($third->getStatus())->toBe(BracketNodeStatus::AwaitingEntrants);
+    });
+
+    it('leaves a slot of a re-seeded round it has reached empty, not waiting, where a void tie sent nobody', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true, thirdPlace: true));
+        [$p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8] = bracketViewField(8);
+        $state = StageState::start([$p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8]);
+        $quarterfinals = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($quarterfinals)->withoutParticipant($p3)->withoutParticipant($p6);
+        $results = [];
+        foreach ($quarterfinals->getEvents() as $event) {
+            $first = $event->getParticipants()[0];
+            if ($first->getId() !== 'p3') {
+                $results[] = new Result($event, $first);
+            }
+        }
+        $state = $state->withAdditionalResults($results);
+
+        // Three entrants go on from the quarterfinals, so the re-seeded
+        // semifinals give p1 a bye: its other slot will hold nobody
+        $next = $engine->getBracket($state)->getNextRound();
+        assert($next !== null);
+        $bye = $next->getNodes()[0];
+
+        expect($bye->getStatus())->toBe(BracketNodeStatus::Bye)
+            ->and(array_map(static fn(BracketSlot $slot): bool => $slot->isPending(), $bye->getSlots()))->toBe([false, false])
+            ->and(array_map(static fn(Participant $participant): string => $participant->getId(), $engine->pairNextRound($state)->getByes()))
+            ->toBe([$bye->getAdvancer()?->getId()]);
+    });
+
     it('places a re-seeded round only once the round before it is settled', function (): void {
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
         $start = StageState::start(bracketViewField(4));
