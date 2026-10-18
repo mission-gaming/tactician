@@ -257,6 +257,80 @@ function roundRobinWithScatteredPins(int $seed): array
 }
 
 /**
+ * A double round robin laid out by the circle method, the second leg with
+ * the roles the other way round, its rounds in their order or shuffled,
+ * one round to a slot: its first rounds played and pinned, the rest saying
+ * where they are, but for an event now and then that has lost its position
+ * or says it is somewhere else. Then a session may go or come. Every
+ * participant plays in every round, so their current positions alone do
+ * not tell them apart.
+ *
+ * @return array{list<MovableEvent>, list<PinnedEvent>, SessionGrid}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function doubleRoundRobinInRounds(int $seed): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $count = $random->getInt(4, 12);
+    $participants = [];
+    for ($i = 0; $i < $count; ++$i) {
+        $participants[] = new Participant(sprintf('p%02d', $i), "Participant {$i}");
+    }
+    $seats = range(0, $count % 2 === 1 ? $count : $count - 1);
+    $rounds = [];
+    for ($leg = 0; $leg < 2; ++$leg) {
+        $circle = $seats;
+        for ($round = 0; $round < count($circle) - 1; ++$round) {
+            $pairs = [];
+            for ($i = 0; $i < intdiv(count($circle), 2); ++$i) {
+                $a = $circle[$i];
+                $b = $circle[count($circle) - 1 - $i];
+                if ($a < $count && $b < $count) {
+                    $pairs[] = $leg === 0 ? [$a, $b] : [$b, $a];
+                }
+            }
+            $rounds[] = $pairs;
+            array_splice($circle, 1, 0, [array_pop($circle)]);
+        }
+    }
+    if ($random->getInt(0, 1) === 1) {
+        $rounds = $random->shuffleArray($rounds);
+    }
+
+    $slots = $random->getInt(1, 3);
+    $sessions = intdiv(count($rounds) + $slots - 1, $slots);
+    $played = $random->getInt(0, intdiv(count($rounds), 3));
+    $movable = [];
+    $pinned = [];
+    $next = 0;
+    foreach ($rounds as $at => $pairs) {
+        foreach ($pairs as [$a, $b]) {
+            $id = 'e' . $next++;
+            $session = intdiv($at, $slots);
+            $slot = $at % $slots;
+            if ($at < $played) {
+                $pinned[] = new PinnedEvent($id, $participants[$a], $participants[$b], $session, $slot);
+            } elseif ($random->getInt(1, 10) === 1) {
+                $movable[] = new MovableEvent($id, $participants[$a], $participants[$b]);
+            } elseif ($random->getInt(1, 12) === 1) {
+                $movable[] = new MovableEvent($id, $participants[$a], $participants[$b], $random->getInt(0, $sessions), $random->getInt(0, $slots - 1));
+            } else {
+                $movable[] = new MovableEvent($id, $participants[$a], $participants[$b], $session, $slot);
+            }
+        }
+    }
+    $change = $random->getInt(0, 2);
+    if ($change === 1 && $sessions > 1 && intdiv(max(0, $played - 1), $slots) < $sessions - 1) {
+        --$sessions;
+    } elseif ($change === 2) {
+        ++$sessions;
+    }
+
+    return [$movable, $pinned, SessionGrid::shapeOnly($sessions, $slots, capacityPerSlot: intdiv($count, 2))];
+}
+
+/**
  * The same request with every participant and every event under another
  * id, chosen by a seeded bijection, and its lists in another order; the
  * current positions and the pins are where they were.
@@ -853,7 +927,7 @@ describe('The fewest moved events', function (): void {
         // it (273 of them, with the current positions deciding between
         // participants alike; 150 were too few for the bar, at 134 of
         // them, though 9,000 such requests are at the optimum as often
-        // as before: 8,291 against 8,296). The wider sweep (6,000 requests of up to six events on six
+        // as before: 8,281 against 8,296). The wider sweep (6,000 requests of up to six events on six
         // positions, with a reference written apart from this one) found
         // the optimum on 93 in 100, a mean excess of 0.08 events and a
         // worst of 3; with no objective the same requests are at the
@@ -976,6 +1050,26 @@ describe('The fewest moved events under other ids', function (): void {
             }
         }
     })->with(range(1, 60));
+
+    it('gives the same figures under other ids where every participant plays in every round', function (int $seed): void {
+        // A participant's own current positions say nothing where everybody
+        // is at every position; where they meet the participant put first
+        // does. When the order read only their own positions, the ids chose
+        // that participant, and 173, 195, 238 and 366 (4 of the first 400
+        // of these requests) came back with other figures under other ids
+        [$movable, $pinned, $grid] = doubleRoundRobinInRounds($seed);
+
+        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
+            $options = new RepackOptions(objectives: $objectives);
+            $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+
+            foreach ([1, 2] as $renaming) {
+                $renamed = (new ScheduleRepacker())->repack(underOtherIds($movable, $pinned, $grid, $options, 1000 * $seed + $renaming));
+
+                expect(idFreeFigures($renamed))->toBe(idFreeFigures($outcome));
+            }
+        }
+    })->with([...range(1, 20), 173, 195, 238, 366]);
 });
 
 describe('The pairwise limit of a repack', function (): void {

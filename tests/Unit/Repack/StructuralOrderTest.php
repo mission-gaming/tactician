@@ -62,6 +62,96 @@ function renumbered(int $count, array $events, array $pins, int $seed): array
     return [$rng->shuffleArray($newEvents), $rng->shuffleArray($newPins)];
 }
 
+/**
+ * A request with the current positions of its movable events, written in
+ * the order StructuralOrder gives its participants when it is given those
+ * positions: every event with the places of its participants for their
+ * numbers and its current position. Two requests that differ only in how
+ * the participants are numbered have the same form exactly when the order
+ * took their participants alike, current positions included.
+ *
+ * @param array<int, array{int, int}> $events
+ * @param array<int, array{int, int, int, int}> $pins
+ * @param array<int, array{int, int, int, int}> $current
+ *
+ * @return list<string>
+ */
+function structuralFormWithPositions(int $count, array $events, array $pins, array $current): array
+{
+    $place = array_flip(StructuralOrder::of($count, $events, $pins, StructuralOrder::WORK_LIMIT, $current));
+
+    $written = [];
+    foreach ($events as [$a, $b]) {
+        $written[] = min($place[$a], $place[$b]) . '-' . max($place[$a], $place[$b]);
+    }
+    foreach ($pins as [$a, $b, $session, $slot]) {
+        $written[] = min($place[$a], $place[$b]) . '-' . max($place[$a], $place[$b]) . " pinned@{$session}:{$slot}";
+    }
+    foreach ($current as [$a, $b, $session, $slot]) {
+        $written[] = min($place[$a], $place[$b]) . '-' . max($place[$a], $place[$b]) . " now@{$session}:{$slot}";
+    }
+    sort($written);
+
+    return $written;
+}
+
+/**
+ * A round robin laid out round by round by the circle method, one round to
+ * a session of one slot: the events of the first $pinned rounds as pins,
+ * the others as movable events that are now where they were laid out, but
+ * for those $moved puts elsewhere (by their place among the movable ones).
+ *
+ * @param array<int, array{int, int}> $moved
+ *
+ * @return array{0: list<array{int, int}>, 1: list<array{int, int, int, int}>, 2: list<array{int, int, int, int}>}
+ */
+function roundRobinLaidOut(int $count, int $legs, int $pinned, array $moved = []): array
+{
+    $events = [];
+    $pins = [];
+    $current = [];
+    $round = 0;
+    for ($leg = 0; $leg < $legs; ++$leg) {
+        $seats = range(0, $count - 1);
+        for ($r = 0; $r < $count - 1; ++$r, ++$round) {
+            for ($i = 0; $i < intdiv($count, 2); ++$i) {
+                [$a, $b] = [$seats[$i], $seats[$count - 1 - $i]];
+                if ($round < $pinned) {
+                    $pins[] = [$a, $b, $round, 0];
+                } else {
+                    [$session, $slot] = $moved[count($events)] ?? [$round, 0];
+                    $events[] = [$a, $b];
+                    $current[] = [$a, $b, $session, $slot];
+                }
+            }
+            array_splice($seats, 1, 0, [array_pop($seats)]);
+        }
+    }
+
+    return [$events, $pins, $current];
+}
+
+/**
+ * The same request with its participants numbered by a seeded shuffle,
+ * current positions included, and its lists in another order.
+ *
+ * @param array<int, array{int, int}> $events
+ * @param array<int, array{int, int, int, int}> $pins
+ * @param array<int, array{int, int, int, int}> $current
+ *
+ * @return array{0: list<array{int, int}>, 1: list<array{int, int, int, int}>, 2: list<array{int, int, int, int}>}
+ */
+function renumberedWithPositions(int $count, array $events, array $pins, array $current, int $seed): array
+{
+    $rng = new Randomizer(new Mt19937($seed));
+    $number = $rng->shuffleArray(range(0, $count - 1));
+    $events = array_map(static fn(array $event): array => [$number[$event[1]], $number[$event[0]]], $events);
+    $pins = array_map(static fn(array $pin): array => [$number[$pin[1]], $number[$pin[0]], $pin[2], $pin[3]], $pins);
+    $current = array_map(static fn(array $at): array => [$number[$at[1]], $number[$at[0]], $at[2], $at[3]], $current);
+
+    return [$rng->shuffleArray($events), $rng->shuffleArray($pins), $rng->shuffleArray($current)];
+}
+
 describe('StructuralOrder', function (): void {
     it('puts the participant with more movable events first', function (): void {
         // 1 plays the three others, who play nobody else
@@ -154,6 +244,30 @@ describe('StructuralOrder', function (): void {
             [[0, 1], [0, 1], [1, 2], [2, 3], [3, 4], [4, 0], [2, 4]],
             [[0, 2, 0, 1], [1, 3, 1, 0], [1, 4, 0, 1]],
         ],
+    ]);
+
+    /** @param array<int, array{int, int}> $moved */
+    it('orders a round robin with current positions alike however its participants are numbered', function (int $count, int $legs, int $pinned, array $moved): void {
+        // Everybody plays in every round, so a participant's own positions
+        // say nothing against a class of them all; what tells them apart
+        // is where they meet the participants already put in order. When
+        // the order read only their own positions, the numbers chose which
+        // participant went first in the class, and the form depended on them
+        [$events, $pins, $current] = roundRobinLaidOut($count, $legs, $pinned, $moved);
+        $form = structuralFormWithPositions($count, $events, $pins, $current);
+
+        foreach ([1, 2, 3, 4, 5] as $seed) {
+            [$newEvents, $newPins, $newCurrent] = renumberedWithPositions($count, $events, $pins, $current, $seed);
+
+            expect(structuralFormWithPositions($count, $newEvents, $newPins, $newCurrent))->toBe($form);
+        }
+    })->with([
+        'a double round robin of four, nothing pinned, everything where it is (participants that can be exchanged)' => [4, 2, 0, []],
+        'a double round robin of four, nothing pinned, two events elsewhere' => [4, 2, 0, [0 => [5, 0], 7 => [0, 0]]],
+        'a round robin of six, nothing pinned, one event elsewhere' => [6, 1, 0, [4 => [0, 0]]],
+        'a round robin of six with one round pinned (no two can simply be exchanged)' => [6, 1, 1, []],
+        'a round robin of six with one round pinned, two events elsewhere' => [6, 1, 1, [0 => [4, 0], 9 => [1, 0]]],
+        'a double round robin of eight with one round pinned, one event elsewhere' => [8, 2, 1, [20 => [3, 0]]],
     ]);
 
     it('orders random requests alike however their participants are numbered', function (int $seed): void {

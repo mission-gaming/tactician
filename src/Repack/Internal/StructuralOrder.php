@@ -31,33 +31,43 @@ namespace MissionGaming\Tactician\Repack\Internal;
  *
  * - If exchanging any two of its participants leaves the request as it
  *   was (each has the same events against every third participant and
- *   the same pins), the class is put in the order of the current
- *   positions of their events (each position with the class of the
- *   opponent there), and in id order where those are the same. Any
- *   order of such a class gives the same refinement up to the exchange,
- *   so this order changes nothing but which participant has which place
- *   in a schedule that is otherwise the same.
+ *   the same pins), the class is put in id order, or, where current
+ *   positions are given, in the order a refinement that reads them as
+ *   well gives (each position with the class of the opponent there),
+ *   putting each participant still alike first in turn and keeping the
+ *   choice with the smallest description, and in id order only where
+ *   that leaves participants alike. Any order of such a class gives the
+ *   same refinement up to the exchange, so this order changes nothing
+ *   but which participant has which place in a schedule that is
+ *   otherwise the same.
  * - Otherwise each of its participants in turn is tried as the one to
  *   put first, and the one is chosen whose choice gives the refined
  *   classes the smallest description (the sizes of the classes and what
  *   the members of each have against each other class: something that
  *   is the same for two requests that differ only in the ids). Between
- *   participants whose descriptions are equal the current positions
- *   decide, as above, and then the id.
+ *   participants whose descriptions are equal, where current positions
+ *   are given, the one is chosen whose refined classes, refined further
+ *   with the current positions read as well, have the smaller
+ *   description; then the id.
  *
  * So the order is the same for two requests that differ only in the ids
  * whenever the id only ever decides between participants that a symmetry
  * of the request maps onto each other. Where current positions are given,
  * they decide before the id at the two places above, which are the only
- * places they are read: a request with them is put in the order the
- * request without them has, up to a symmetry of that request, and the
- * id decides only where the current positions do not either (two
- * participants with the same positions against opponents of one class). Two participants with equal
- * descriptions are that when the description is of classes of one
+ * places they are read, and the classes the order is made from are the
+ * ones without them: a request with them is put in the order the request
+ * without them has, up to a symmetry of that request. The id decides only
+ * between participants that the refinement with the current positions
+ * leaves alike, in a round robin everybody being at every position until
+ * one of them is put first. Two participants with equal
+ * descriptions are alike when the description is of classes of one
  * participant each, because it is then the whole request written in
  * that order. It is not guaranteed when the classes are still larger
  * (two descriptions can be equal for participants that are not alike),
- * nor past the work limit below.
+ * nor past the work limit below. The refinements that read the current
+ * positions count their work apart, against the same limit, so that
+ * reading them never cuts the refinement without them short; past it
+ * they decide no more.
  *
  * The work is bounded by a count of its own (WORK_LIMIT: one for every
  * participant looked at and one for each of its opponents), not by a step
@@ -107,6 +117,9 @@ final class StructuralOrder
     private int $base = 2;
 
     private int $work = 0;
+
+    /** What the refinements that read the current positions have looked at, against the same limit */
+    private int $placedWork = 0;
 
     /**
      * @param array<int, array{int, int}> $events
@@ -221,14 +234,19 @@ final class StructuralOrder
                     $classes,
                     $at,
                     1,
-                    array_map(static fn(int $pid): array => [$pid], $this->byCurrentPositions($class, $classes))
+                    array_map(static fn(int $pid): array => [$pid], $this->byPositionsInClass($classes, $at))
                 );
                 continue;
             }
 
             $best = null;
             $bestDescription = '';
-            $bestPlaced = '';
+            // The description of the best trial refined with the current
+            // positions, made only once another trial is level with it
+            $bestPlaced = null;
+            // Decided once for every trial of this class, so that all of
+            // them are compared alike
+            $byPlaced = $this->current !== [] && $this->placedWork <= $this->workLimit;
             foreach ($class as $first) {
                 if ($this->work > $this->workLimit) {
                     break;
@@ -243,11 +261,17 @@ final class StructuralOrder
                     break;
                 }
                 $byDescription = $best === null ? -1 : strcmp($description, $bestDescription);
-                $placed = $this->current === [] ? '' : $this->placedKey($first, $classes);
-                if ($byDescription < 0 || ($byDescription === 0 && strcmp($placed, $bestPlaced) < 0)) {
+                if ($byDescription < 0) {
                     $best = $refined;
                     $bestDescription = $description;
-                    $bestPlaced = $placed;
+                    $bestPlaced = null;
+                } elseif ($byDescription === 0 && $byPlaced) {
+                    $bestPlaced ??= $this->refineWithPositions($best)[1];
+                    $placed = $this->refineWithPositions($refined)[1];
+                    if (strcmp($placed, $bestPlaced) < 0) {
+                        $best = $refined;
+                        $bestPlaced = $placed;
+                    }
                 }
             }
             if ($best === null) {
@@ -381,6 +405,151 @@ final class StructuralOrder
     }
 
     /**
+     * The members of the class at $at in an order the current positions
+     * decide, and the ids only where those do not either: the classes are
+     * refined as refine() does with the current positions read as well
+     * (each with its position and the class of the opponent there), and
+     * where members are still alike, each in turn is put first and the
+     * one is chosen whose refinement has the smallest description, as
+     * often as members are left alike. In id order when no current
+     * positions were given.
+     *
+     * The class is one whose members can be exchanged, so any order of it
+     * gives the same schedule up to that exchange: the order only decides
+     * which member takes which place, and the classes the rest of the
+     * order is made from are untouched. Keys against the class as a whole
+     * would say nothing where every member is at the same positions
+     * against members of the class (in a round robin everybody plays in
+     * every round); once one member is put first the others differ by
+     * where they meet it.
+     *
+     * @param list<list<int>> $classes
+     *
+     * @return list<int>
+     */
+    private function byPositionsInClass(array $classes, int $at): array
+    {
+        $class = $classes[$at];
+        if ($this->current === []) {
+            return $class;
+        }
+
+        $members = array_flip($class);
+        $partition = $classes;
+        while (true) {
+            [$partition, , $finished] = $this->refineWithPositions($partition);
+            if (!$finished) {
+                break;
+            }
+            $alike = null;
+            foreach ($partition as $index => $part) {
+                if (count($part) > 1 && isset($members[$part[0]])) {
+                    $alike = $index;
+                    break;
+                }
+            }
+            if ($alike === null) {
+                break;
+            }
+            $best = $this->bestTrialWithPositions($partition, $alike);
+            if ($best === null) {
+                break;
+            }
+            $partition = $best;
+        }
+
+        $place = self::classOf($partition);
+        $ordered = $class;
+        usort($ordered, static fn(int $x, int $y): int => [$place[$x], $x] <=> [$place[$y], $y]);
+
+        return $ordered;
+    }
+
+    /**
+     * Each member of the class at $at put first in turn, the classes
+     * refined with the current positions after each: the refinement with
+     * the smallest description, the first in id order among equal ones.
+     * Null when the work limit is reached before every member was tried.
+     *
+     * @param list<list<int>> $classes
+     *
+     * @return list<list<int>>|null
+     */
+    private function bestTrialWithPositions(array $classes, int $at): ?array
+    {
+        $best = null;
+        $bestDescription = '';
+        foreach ($classes[$at] as $first) {
+            $rest = array_values(array_filter($classes[$at], static fn(int $pid): bool => $pid !== $first));
+            $tried = $classes;
+            array_splice($tried, $at, 1, [[$first], $rest]);
+            [$refined, $description, $finished] = $this->refineWithPositions($tried);
+            if (!$finished) {
+                return null;
+            }
+            if ($best === null || strcmp($description, $bestDescription) < 0) {
+                $best = $refined;
+                $bestDescription = $description;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * refine(), with the current positions of each participant's events
+     * read as well: each with its position in grid order and the class of
+     * the opponent there. Its work is counted apart from refine()'s,
+     * against the same limit, so that reading the positions never stops
+     * the refinement the order is made from any sooner.
+     *
+     * @param list<list<int>> $classes
+     *
+     * @return array{list<list<int>>, string, bool} As refine() returns them
+     */
+    private function refineWithPositions(array $classes): array
+    {
+        $positions = count($this->pins) + 1;
+        $placedPositions = count($this->current) + 1;
+        while (true) {
+            if ($this->placedWork > $this->workLimit) {
+                return [$classes, '', false];
+            }
+
+            $classOf = self::classOf($classes);
+            $keys = [];
+            for ($pid = 0; $pid < $this->count; ++$pid) {
+                $seen = [];
+                foreach ($this->opponents[$pid] as $other => $events) {
+                    $seen[] = $classOf[$other] * $this->base + $events;
+                }
+                foreach ($this->pinned[$pid] as [$number, $other]) {
+                    $seen[] = -1 - ($classOf[$other] * $positions + $number);
+                }
+                sort($seen);
+                $placed = [];
+                foreach ($this->placed[$pid] as [$number, $other]) {
+                    $placed[] = $classOf[$other] * $placedPositions + $number;
+                }
+                sort($placed);
+                $this->placedWork += count($seen) + count($placed) + 1;
+                $keys[$pid] = implode(',', $seen) . '/' . implode(',', $placed);
+            }
+
+            $refined = self::split($classes, $keys);
+            if (count($refined) === count($classes)) {
+                $description = [];
+                foreach ($classes as $class) {
+                    $description[] = count($class) . ':' . $keys[$class[0]];
+                }
+
+                return [$classes, implode('|', $description), true];
+            }
+            $classes = $refined;
+        }
+    }
+
+    /**
      * What a participant's current positions say about it, naming no
      * participant: each position's number in grid order with the class
      * of the opponent there, sorted. Two participants that a symmetry of
@@ -390,19 +559,44 @@ final class StructuralOrder
      */
     private function placedKey(int $pid, array $classes): string
     {
+        return $this->placedKeyIn($pid, self::classOf($classes));
+    }
+
+    /**
+     * @param list<list<int>> $classes
+     *
+     * @return array<int, int> Participant => the index of its class
+     */
+    private static function classOf(array $classes): array
+    {
         $classOf = [];
         foreach ($classes as $at => $members) {
             foreach ($members as $member) {
                 $classOf[$member] = $at;
             }
         }
+
+        return $classOf;
+    }
+
+    /**
+     * placedKey() with the class of every participant already looked up.
+     *
+     * @param array<int, int> $classOf
+     */
+    private function placedKeyIn(int $pid, array $classOf): string
+    {
+        // Each position as one number, ordered by its position and then by
+        // the class of the opponent there, and written in eight bytes each,
+        // high byte first, so that strcmp() orders two keys of as many
+        // positions as their numbers
         $seen = [];
         foreach ($this->placed[$pid] as [$number, $other]) {
-            $seen[] = sprintf('%010d.%010d', $number, $classOf[$other]);
+            $seen[] = $number * $this->count + $classOf[$other];
         }
         sort($seen);
 
-        return implode(',', $seen);
+        return pack('J*', ...$seen);
     }
 
     /**
