@@ -1843,6 +1843,44 @@ entry on the engine fingerprint.
   (`isProvenShortest()`). It tries the numbers one at a time, upwards.
   New example: `examples/29-rescheduling-with-least-churn.php`.
 
+- **A generation failure can be rendered without parsing text
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** Each
+  list of text in a `DiagnosticReport` has a sibling with the same findings
+  as typed data, by participant ID and constraint name:
+  `getMissingPairingDetails()` (`MissingPairing`: the two IDs and the leg),
+  `getConstraintRejections()` (`ConstraintRejection`: the constraint, the
+  two IDs, the rounds it rejects and the rounds probed),
+  `getBlockedPairings()` (`BlockedPairing`: the two IDs and the constraints
+  that block it everywhere, none where only their combination does) and
+  `getPairingsAtCapacity()` (`PairingAtCapacity`: the two IDs and the full
+  rounds it is allowed in). The text is unchanged.
+- **The byes of a schedule with kickoff times
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `ScheduledSchedule::getByesByRound()`, `getByeCounts()` and
+  `getEntrants()` give what the schedule assigned gives.
+  `TimelineAssigner::assign()` hands the scheduled schedule the entrant list
+  of the schedule (a second, optional constructor parameter), and the plain
+  data writes it under a new optional key, `entrants` (the IDs in order),
+  only where it was given. A scheduled schedule built without one reads the
+  entrants from its events, as do arrays without the key. With the byes of
+  `Schedule` (the whole-schedule Swiss preset included), `RoundPairing` and
+  `StageState`, every schedule and pairing that can hold a bye has a typed
+  accessor for it.
+- **A round number that is never null
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `Event::getRoundNumber()` returns the round number as an `int`, and
+  `Event::hasRound()` says whether the event has a round. Every event a
+  scheduler or an engine produces has one, the events of a round-robin
+  schedule included; on an event built without a round `getRoundNumber()`
+  throws an `UnavailableValueException`. `getRound()` is unchanged.
+- **A participant's label is optional
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `new Participant('id')` is a participant without a label: `getLabel()`
+  gives its ID, and `hasLabel()` is false. Its plain data has no `label`
+  key, and `Participant::fromArray()` reads one without the key, or with
+  `null`, as a participant without a label. A participant with a label is
+  written as it always was.
+
 ### Changed
 
 - **Breaking: the roles of a round robin are balanced where possible by
@@ -3258,6 +3296,15 @@ entry on the engine fingerprint.
   until the job took 25 to 40 minutes under Xdebug. The `Mutation testing`
   workflow still uses Xdebug, and `composer test-coverage` works with either
   driver as before. Nothing a consumer installs changes.
+
+- `ScheduledSchedule::toArray()` of a schedule from
+  `TimelineAssigner::assign()` has the key `entrants`, and lists after the
+  participants of its events any entrant that plays in no event
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)). The form
+  stays version 1: the key is optional and 0.3.0 defines what version 1
+  holds (ADR 0005). A participant without a label is written without the
+  `label` key, which 0.2.x requires; a release of 0.2.x refuses such a
+  participant, loudly.
 
 ### Deprecated
 

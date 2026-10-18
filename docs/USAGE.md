@@ -36,10 +36,11 @@ anything else that competes.
 
 | Term | Meaning |
 |------|---------|
-| **Participant** | An entity that competes. Identified by a unique string ID, with a display label, optional seed, and metadata. The ID is any string and is compared exactly: see [Participant IDs](#participant-ids). |
+| **Participant** | An entity that competes. Identified by a unique string ID, with an optional display label (without one, it is named by its ID), optional seed, and metadata. The ID is any string and is compared exactly: see [Participant IDs](#participant-ids). |
 | **Event** | A single match/fixture between participants (usually two). Sports platforms often call this a fixture. |
 | **Pairing** | The unordered combination of participants in an event — "Alice vs Bob" regardless of who is home. |
 | **Round** | A set of events played at the same stage of the tournament. Round numbers are 1-based and continuous across legs (a two-leg, 4-participant round robin has rounds 1–6). |
+| **Round number** | The 1-based number of the round an event is in (`Event::getRoundNumber()`). Every event a scheduler or an engine produces has one; only an event built by hand without a round has none (`Event::hasRound()`). |
 | **Leg** | One complete cycle of pairings. The leg count is *the number of times each participant meets each other participant*: a home-and-away league is 2 legs. Swiss and elimination formats have no legs concept. |
 | **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator proposes roles that alternate with round parity, which bounds how far a participant's home and away counts can drift apart and does not make them equal. The balanced **role assignment** does, as far as the number of events allows, and the default gives its roles wherever it finds a schedule with them. |
 | **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
@@ -124,6 +125,7 @@ anything else that competes.
 | **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
 | **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
 | **Configuration error reason** | The kind of mistake behind an `InvalidConfigurationException`, as a case of the `InvalidConfigurationReason` enum (`getReason()`). It says what was wrong, not which component found it, and its backing string is a stable identifier. Code branches on the reason and never on the message text. See [Configuration Errors](#configuration-errors). |
+| **Failure analysis** | What the round-robin scheduler finds when it cannot complete a schedule under constraints (`DiagnosticReport`, from `IncompleteScheduleException::getAnalysis()`): the missing pairings, what each constraint rejects, the **blocked pairings** that no round of the generated schedule accepts, and the pairings allowed only in rounds that are already full (**at capacity**). Each finding is there as a line of text and as typed data by participant ID. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
@@ -192,8 +194,13 @@ echo "Total rounds: " . $schedule->getMetadataValue('total_rounds') . "\n";
 ```php
 use MissionGaming\Tactician\DTO\Participant;
 
-// Basic participant (ID and label are required)
+// Basic participant: an ID and a label
 $participant = new Participant('player1', 'John Doe');
+
+// The label may be left out: the participant is then named by its ID
+$unnamed = new Participant('player9');
+echo $unnamed->getLabel() . "\n"; // player9
+var_dump($unnamed->hasLabel()); // bool(false)
 
 // Participant with seeding
 $seededPlayer = new Participant('player2', 'Jane Smith', 1); // Seed 1 (top seed)
@@ -217,6 +224,9 @@ echo $detailedPlayer->getLabel() . "\n";     // 'Team Alpha'
 echo $detailedPlayer->getSeed() . "\n";      // 2
 echo $detailedPlayer->getMetadataValue('region', 'Unknown') . "\n"; // 'Europe'
 ```
+
+A participant without a label is written to plain data without the `label`
+key and read back without one; one with a label has the form it always had.
 
 ### Participant IDs
 
@@ -290,7 +300,7 @@ $event = new Event(
 
 // Access event properties
 $participants = $event->getParticipants();
-$roundNumber = $event->getRound()->getNumber();
+$roundNumber = $event->getRoundNumber(); // an int: the event has a round
 $startTime = $event->getMetadataValue('start_time');
 
 // Check if a participant is in the event
@@ -298,6 +308,13 @@ if ($event->hasParticipant($participant)) {
     echo "Participant is in this event\n";
 }
 ```
+
+`getRound()` returns a nullable `Round`, because an event can be built
+without one. Every event a scheduler or an engine of the library produces
+has a round, the events of a round-robin schedule included, so
+`getRoundNumber()` gives the number as an `int` with no null to handle. On
+an event built without a round it throws an `UnavailableValueException`;
+`hasRound()` says beforehand which kind of event it is.
 
 ## Constraint System
 
@@ -2341,10 +2358,13 @@ refuses a bye (`IncompatibleOptions`) and `calculateWith()` is the call.
 **Which byes a schedule has** is read from the schedule: an entrant has a
 bye in a round when no event of that round names it. `getByesByRound()`
 lists them by round number, as participants, and `getByeCounts()` adds them
-up, for a schedule a generator returned, one read back from storage and one
-put together by hand alike. `RoundPairing::getByes()` has the byes of a
-round an engine paired, and `StageState::getByesByRound()` those of every
-round recorded.
+up, for a schedule a generator returned (the whole-schedule Swiss preset
+included), one read back from storage and one put together by hand alike.
+A schedule with kickoff times (`ScheduledSchedule`, from
+`TimelineAssigner::assign()`) has the same two methods and gives the same
+byes, because the assigner hands it the entrant list of the schedule.
+`RoundPairing::getByes()` has the byes of a round an engine paired, and
+`StageState::getByesByRound()` those of every round recorded.
 
 ```php
 $oddField = (new RoundRobinScheduler())->schedule($trio);
@@ -7170,6 +7190,37 @@ try {
     $analysis?->getConstraintViolations(); // per-constraint attribution
     $analysis?->getSuggestions();          // includes structural-fullness notes
 }
+```
+
+The lists above are lines of text for a person, and their wording is not
+stable. Each has a sibling that holds the same findings as typed data, by
+participant ID and constraint name, so that an application renders a
+failure in its own words, or its own language, without parsing text:
+
+| Text | Typed data | Holds |
+|---|---|---|
+| `getMissingPairings()` | `getMissingPairingDetails()` | `MissingPairing`: the two participant IDs and the leg |
+| `getConstraintViolations()` | `getConstraintRejections()` | `ConstraintRejection`: the constraint, the two IDs, the rounds it rejects and the rounds probed |
+| `getImpossiblePairings()` | `getBlockedPairings()` | `BlockedPairing`: the two IDs and the constraints that block it everywhere (none: a combination does) |
+| the structural lines of `getSuggestions()` | `getPairingsAtCapacity()` | `PairingAtCapacity`: the two IDs and the full rounds it is allowed in |
+
+```php
+$byId = [];
+foreach ($participants as $entrant) {
+    $byId[$entrant->getId()] = $entrant;
+}
+
+try {
+    $scheduler->schedule($participants);
+} catch (IncompleteScheduleException $e) {
+    foreach ($e->getAnalysis()?->getBlockedPairings() ?? [] as $blocked) {
+        $who = $byId[$blocked->firstParticipantId]->getLabel() . ' and ' . $byId[$blocked->secondParticipantId]->getLabel();
+        echo $blocked->isBlockedByCombination()
+            ? "{$who} cannot meet under these rules together\n"
+            : "{$who} cannot meet: " . implode(', ', $blocked->blockingConstraints) . "\n";
+    }
+}
+// Team 1 and Team 2 cannot meet: Derby Ban
 ```
 
 Three findings, three vocabularies: **blocked pairings** no round will
