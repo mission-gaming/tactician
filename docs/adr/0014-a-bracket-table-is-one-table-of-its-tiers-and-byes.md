@@ -81,11 +81,12 @@ bracket has been played.
   changes tier, and a bracket with neither has the table it had. The
   default chain has no tiebreaker between the tied, so with the defaults
   the change is the credit of the byes. Ranking values of entrants with
-  byes are higher by the credit. Three golden fixtures changed, each by
+  byes are higher by the credit. Four golden fixtures changed, each by
   the credit of a bye: the brackets of five entrants in
   `single-elimination.txt` and `elimination-decided-ties.txt` (the entrant
   in position 3, who had a bye, now above the entrant in position 4 in the
-  tier of the semifinals) and the final table of example 27.
+  tier of the semifinals) and the final tables of examples 27 and 30
+  (ranking values only in example 30).
 - A bracket under an application's own ranking strategy that does not
   implement `RankingStrategyWithByeValue` and whose field is not a power of
   two is refused where it was played before. The strategy implements the

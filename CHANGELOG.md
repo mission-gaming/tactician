@@ -107,8 +107,11 @@ entry on the engine fingerprint.
   the tied. Golden fixtures: `single-elimination.txt` and
   `elimination-decided-ties.txt` (the `standings:` line of the brackets of
   five entrants: the entrant in position 3, who had a bye, is now above
-  the one in position 4) and `examples/27-stage-from-application-rows.txt`
-  (the ranking value of the entrant with a bye and a walkover). The usage
+  the one in position 4), `examples/27-stage-from-application-rows.txt`
+  (the ranking value of the entrant with a bye and a walkover) and
+  `examples/30-drawing-a-bracket.txt` (the final table of the double
+  elimination bracket: the four entrants with byes rank 3 points higher
+  for each, in the same order). The usage
   guide's example "A bye", which pinned the old rule, now shows the new
   one.
 - **A re-seeded bracket ranks an entrant who had a bye with the winners of
