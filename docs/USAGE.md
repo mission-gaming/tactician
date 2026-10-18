@@ -2465,7 +2465,8 @@ $byeScoresNothing = new SwissPairingEngine(
 $stage = StageState::start($field);
 while (!$byeScoresNothing->isComplete($stage)) {
     $round = $byeScoresNothing->pairNextRound($stage);
-    $stage = $stage->withRoundPlayed($round, array_map(
+    $stage = $stage->withRoundPaired($round);
+    $stage = $stage->withAdditionalResults(array_map(
         fn ($event) => new Result($event, $event->getParticipants()[0]),
         $round->getEvents()
     ));
@@ -3303,7 +3304,8 @@ $bob = $participants[1];
 $byeState = StageState::start([$heidi, $alice, $bob]);
 while (!$engine->isComplete($byeState)) {
     $pairing = $engine->pairNextRound($byeState);
-    $byeState = $byeState->withRoundPlayed($pairing, array_map(
+    $byeState = $byeState->withRoundPaired($pairing);
+    $byeState = $byeState->withAdditionalResults(array_map(
         fn ($event) => new Result($event, $event->getParticipants()[0]),
         $pairing->getEvents()
     ));
@@ -3956,7 +3958,7 @@ have none:
 $preDrawn = new SwissPairingEngine(plannedRounds: 2, resultsFree: true);
 $drawState = StageState::start([$ada, $bo, $cy, $di]);
 while (!$preDrawn->isComplete($drawState)) {
-    $drawState = $drawState->withRoundPlayed($preDrawn->pairNextRound($drawState), []);
+    $drawState = $drawState->withRoundPaired($preDrawn->pairNextRound($drawState));
 }
 
 echo count($drawState->getRoundsPlayed()), "\n"; // 2
