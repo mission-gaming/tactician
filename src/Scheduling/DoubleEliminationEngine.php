@@ -376,36 +376,26 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
 
-        // Who went on from a winners tie both entrants have left is read at
-        // the next winners stage, and the other of the two is the one who
-        // dropped to the losers bracket, which the walk reaches first. So a
-        // walk that finds such an entrant is walked again, knowing it; the
-        // stages between do not depend on it, so the second walk finds the
-        // same.
-        $wentOn = [];
-        for ($walks = 1; ; ++$walks) {
-            $found = [];
-            $reading = $this->walk($state, $entrants, $wentOn, $found);
-            if ($found === $wentOn || $walks === 3) {
-                return $reading;
-            }
-            $wentOn = $found;
-        }
+        return $this->walk($state, $entrants);
     }
 
     /**
      * One walk through the fixed stage sequence (see resolveState()).
      *
+     * A winners tie both of whose entrants have left drops nobody to the
+     * losers bracket, also where one of the two went on from it after all
+     * (it was still in the stage when its next winners tie was paired):
+     * the other had withdrawn by then, and an entrant who stands alone in
+     * a losers round after withdrawing goes out there as the two of a void
+     * tie do, so the losers slot is read as empty either way, and the
+     * dropper goes out with the next losers round's exits.
+     *
      * @param list<Participant> $entrants
-     * @param array<string, array<int, string>> $wentOn Of each winners tie both entrants have left,
-     *                                                  by stage and place: the ID of the one who
-     *                                                  went on from it, as an earlier walk found
-     * @param array<string, array<int, string>> $found The same, as this walk finds it
      *
      * @throws InvalidConfigurationException When a tie is broken, or a recorded stage does not fit
      *                                       the stage it is read as
      */
-    private function walk(StageState $state, array $entrants, array $wentOn, array &$found): BracketReading
+    private function walk(StageState $state, array $entrants): BracketReading
     {
         $reading = $this->beginReading($state);
         $slots = $this->buildInitialSlots($entrants);
@@ -457,29 +447,6 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             return $reading;
         };
 
-        // The losers of a winners stage: of a tie both entrants have left,
-        // the one who did not go on from it where one did
-        $droppersOf = static function (array $stage, string $stageName) use ($wentOn): array {
-            $droppers = $stage['losers'];
-            foreach ($stage['contended'] as $place => $contenders) {
-                foreach ($contenders as $index => $contender) {
-                    if (($wentOn[$stageName][$place] ?? null) === $contender->getId()) {
-                        $droppers[$place] = $contenders[1 - $index];
-                    }
-                }
-            }
-
-            return $droppers;
-        };
-        // Who went on from such a tie is found in the stage its place leads to
-        $note = static function (array $stage, string $fromStage, array $places) use (&$found): void {
-            foreach ($stage['revived'] as $index => $entrant) {
-                if (isset($places[$index])) {
-                    $found[$fromStage][$places[$index]] = $entrant->getId();
-                }
-            }
-        };
-
         // Winners round 1
         $winnersStage = $this->winnersStageName(1, $winnersRounds);
         $stage = $this->resolveStage($slots, $winnersStage, $reading);
@@ -492,12 +459,12 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $losersChampionContended = [];
 
         if ($winnersRounds === 1) {
-            $losersChampion = $droppersOf($stage, $winnersStage)[0] ?? null;
+            $losersChampion = $stage['losers'][0] ?? null;
         } else {
             // Losers round 1: winners-round-1 losers pair up
             $losersStructuralRound = 1;
             $stage = $this->resolveStage(
-                $droppersOf($stage, $winnersStage),
+                $stage['losers'],
                 $this->losersStageName($losersStructuralRound, $winnersRounds),
                 $reading
             );
@@ -510,17 +477,15 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $losersChampion = null;
 
             for ($winnersRound = 2; $winnersRound <= $winnersRounds; ++$winnersRound) {
-                $previousStage = $winnersStage;
                 $winnersStage = $this->winnersStageName($winnersRound, $winnersRounds);
                 $stage = $this->resolveStage($winnersSlots, $winnersStage, $reading, $winnersContended);
                 $revive($stage['revived']);
-                $note($stage, $previousStage, array_combine(array_keys($winnersContended), array_keys($winnersContended)));
                 if ($stage['stopped']) {
                     return $unfinished();
                 }
                 $winnersSlots = $stage['winners'];
                 $winnersContended = $stage['contended'];
-                $droppers = $droppersOf($stage, $winnersStage);
+                $droppers = $stage['losers'];
                 $voided = [...$voided, ...$stage['void']];
 
                 // Major round: survivors meet the latest droppers. Reverse the
@@ -588,7 +553,6 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         // Grand final
         $stage = $this->resolveStage([$winnersSlots[0] ?? null, $losersChampion], 'grand final', $reading, $grandFinalContended);
         $revive($stage['revived']);
-        $note($stage, $winnersStage, isset($grandFinalContended[0]) ? [0 => 0] : []);
         if ($stage['stopped']) {
             return $unfinished();
         }
