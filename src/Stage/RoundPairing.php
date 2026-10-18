@@ -77,6 +77,17 @@ final readonly class RoundPairing
     }
 
     /**
+     * The label as typed data: its kind, and the number it names where it
+     * names one (RoundLabel::fromString()). Null for a round without a
+     * label, and for a label the library does not write (one an
+     * application gave a pairing of its own); getLabel() has the text.
+     */
+    public function getRoundLabel(): ?RoundLabel
+    {
+        return $this->label === null ? null : RoundLabel::fromString($this->label);
+    }
+
+    /**
      * The events to play, in the engine's order: bracket order for a
      * bracket, where that order is the path through it. A two-legged tie
      * is two events here, with the two participants in opposite roles.

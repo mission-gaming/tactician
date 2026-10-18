@@ -64,7 +64,7 @@ final readonly class SwissPlan implements StagePlan
     #[Override]
     public function getAlgorithm(): string
     {
-        return 'swiss';
+        return Algorithm::Swiss->value;
     }
 
     /**
