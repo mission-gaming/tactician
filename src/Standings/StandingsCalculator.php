@@ -14,6 +14,8 @@ use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
 use MissionGaming\Tactician\Exceptions\RejectedDecisionReason;
 use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Stage\PairKey;
+use ReflectionException;
+use ReflectionProperty;
 
 /**
  * Calculates an ordered standings table from recorded results.
@@ -457,6 +459,22 @@ readonly class StandingsCalculator
     }
 
     /**
+     * Whether the tiebreakers of a calculator can be read: a subclass whose
+     * constructor does not call the one it inherits has none set, and
+     * reading them would be an Error. Such a calculator orders its tables
+     * by its own calculate(), and has no tiebreaker of any kind to refuse.
+     */
+    private static function hasTiebreakersToRead(self $calculator): bool
+    {
+        try {
+            return (new ReflectionProperty(self::class, 'tiebreakers'))->isInitialized($calculator);
+        } catch (ReflectionException) {
+            // Not thrown: the class declares the property
+            return true;
+        }
+    }
+
+    /**
      * The given table with tiers: each entry in its tier, and in the order
      * the table has it inside the tier (see calculateWith()).
      *
@@ -467,7 +485,7 @@ readonly class StandingsCalculator
      */
     private function inTiers(Standings $table, array $tiers): Standings
     {
-        if ($this->isCalculatedInOneGo(false)) {
+        if (self::hasTiebreakersToRead($this) && $this->isCalculatedInOneGo(false)) {
             throw new InvalidConfigurationException(
                 'A subclass of StandingsCalculator calculates a table through its own calculate(), which forms the tied'
                     . ' sets of a tiebreaker between the tied participants over the whole table and not inside a tier.'

@@ -21,8 +21,10 @@ use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+use Override;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
+use ReflectionClass;
 
 // The table of a bracket is ordered by its tiers (the round an entrant went
 // out in) and, inside a tier, by records in which every bye of the bracket
@@ -185,6 +187,29 @@ describe('a tiebreaker between the tied participants in the table of a bracket',
             'double elimination' => [new DoubleEliminationEngine(new EliminationOptions(), $calculator)],
         ];
     });
+
+    // A subclass whose constructor does not call the one it inherits has no
+    // tiebreakers to read (StageStateEngineFingerprintTest builds one the
+    // same way). It has none of the kind either, so its table is put into
+    // tiers like that of any other subclass without one, and nothing reads
+    // what it does not have.
+    it('gives the table of a bracket whose calculator has no tiebreakers to read', function (string $format): void {
+        $subclass = new readonly class extends StandingsCalculator {
+            #[Override]
+            public function calculate(array $participants, array $results): Standings
+            {
+                return (new StandingsCalculator())->calculate($participants, $results);
+            }
+        };
+        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
+        $engine = $format === 'single elimination'
+            ? new SingleEliminationEngine(new EliminationOptions(), $calculator)
+            : new DoubleEliminationEngine(new EliminationOptions(), $calculator);
+
+        $state = bracketTablePlayed($engine, bracketTableField(4), 3);
+
+        expect($engine->getOutcome($state)?->getStandings()->getTiers())->toHaveCount(4);
+    })->with(['single elimination', 'double elimination']);
 
     it('plays a bracket with a subclass of the calculator without such a tiebreaker', function (StageEngineInterface $engine): void {
         $state = bracketTablePlayed($engine, bracketTableField(6), 7);

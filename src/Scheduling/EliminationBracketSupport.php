@@ -24,6 +24,8 @@ use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\TiedParticipantsTiebreaker;
+use ReflectionException;
+use ReflectionProperty;
 
 /**
  * Shared bracket mechanics for the elimination presets: positional fold
@@ -338,6 +340,16 @@ trait EliminationBracketSupport
     {
         if ($calculator::class === StandingsCalculator::class) {
             return;
+        }
+
+        // A subclass whose constructor does not call the one it inherits
+        // has no tiebreakers set, and so none of the kind: nothing is read
+        try {
+            if (!(new ReflectionProperty(StandingsCalculator::class, 'tiebreakers'))->isInitialized($calculator)) {
+                return;
+            }
+        } catch (ReflectionException) {
+            // Not thrown: the class declares the property
         }
 
         foreach ($calculator->getTiebreakers() as $tiebreaker) {
