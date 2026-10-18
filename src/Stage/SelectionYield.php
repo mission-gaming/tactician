@@ -106,9 +106,17 @@ final readonly class SelectionYield
      *                              when not known
      * @param bool $afterWholeBracket Whether the stage before plays a whole elimination bracket
      *                                down to its final, and not one knockout round
+     * @throws InvalidInputException When the pools are given and fewer than 1, whatever the kind:
+     *                               a stage is played in at least 1 (unchecked: a mistake in the
+     *                               calling code; CompositionValidator reports such a count and
+     *                               does not pass it on)
      */
     public function countFrom(int $sourceEntrants, ?int $sourcePools = null, bool $afterWholeBracket = false): ?int
     {
+        if ($sourcePools !== null && $sourcePools < 1) {
+            throw new InvalidInputException("A stage is played in at least 1 pool, {$sourcePools} given");
+        }
+
         return match ($this->kind) {
             SelectionYieldKind::Fixed => $this->count,
             SelectionYieldKind::PerPool => $sourcePools === null || $this->count === null

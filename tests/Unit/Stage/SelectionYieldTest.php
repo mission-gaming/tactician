@@ -81,6 +81,22 @@ describe('SelectionYield', function (): void {
         'fixed' => [fn() => SelectionYield::fixed(-1)],
         'per pool' => [fn() => SelectionYield::perPool(-1)],
     ]);
+
+    // A stage is played in at least one pool. Counted with fewer, a per-pool
+    // yield came out at 0 or below 0: a number no selection can be.
+    it('refuses a stage before of fewer than 1 pool, whatever the kind', function (SelectionYield $yield, int $pools): void {
+        expect(fn() => $yield->countFrom(16, $pools))
+            ->toThrow(InvalidInputException::class, "A stage is played in at least 1 pool, {$pools} given");
+    })->with([
+        'per pool, none' => [SelectionYield::perPool(2), 0],
+        'per pool, below none' => [SelectionYield::perPool(2), -1],
+        'fixed, none' => [SelectionYield::fixed(4), 0],
+        'winners, below none' => [SelectionYield::winnersOfLastRound(), -3],
+    ]);
+
+    it('counts a stage before of 1 pool', function (): void {
+        expect(SelectionYield::perPool(2)->countFrom(8, 1))->toBe(2);
+    });
 });
 
 describe('The yield every library selector declares', function (): void {
