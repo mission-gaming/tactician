@@ -17,7 +17,7 @@ use MissionGaming\Tactician\DTO\Participant;
  * `grand-final:2:1`). A slot of a later node names the node it is filled
  * from by that ID.
  *
- * A node has a node for every pair of slots of its round, also where the
+ * A round has a node for every pair of slots, also where the
  * pair holds one entrant (status Bye) or nobody (Empty), so a round of a
  * bracket of 8 slots always has 4 nodes. A single elimination bracket with
  * a third-place tie has one node more in its last round, after the final,
