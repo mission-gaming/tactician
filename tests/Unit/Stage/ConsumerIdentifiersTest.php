@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\MetadataKey;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\RoleAssignment\RoleFallback;
@@ -25,6 +26,7 @@ use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use MissionGaming\Tactician\Stage\Algorithm;
 use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\BracketTie;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\MatchOutcomeMode;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeMode;
@@ -44,6 +46,37 @@ function identifierField(int $size): array
     }
 
     return $field;
+}
+
+/**
+ * A round robin of four under a constraint no balanced leg keeps (one
+ * participant is never first-named), which the default role assignment
+ * completes with the generator's roles and marks.
+ *
+ * @throws IncompleteScheduleException
+ * @throws InvalidConfigurationException
+ */
+function identifierFallenBackSchedule(): Schedule
+{
+    foreach (identifierField(4) as $participant) {
+        $id = $participant->getId();
+        $never = ConstraintSet::create()->custom(
+            fn(Event $event): bool => $event->getParticipants()[0]->getId() !== $id,
+            "{$id} is second-named"
+        )->build();
+
+        try {
+            $schedule = (new RoundRobinScheduler($never))->schedule(identifierField(4));
+        } catch (IncompleteScheduleException) {
+            continue;
+        }
+
+        if (RoleFallback::of($schedule) !== null) {
+            return $schedule;
+        }
+    }
+
+    throw new LogicException('No participant of four gives a schedule that falls back');
 }
 
 /**
@@ -150,8 +183,37 @@ describe('Selector modes and tie policies', function (): void {
 });
 
 describe('MetadataKey', function (): void {
+    it('names exactly the keys the round-robin scheduler writes, the keys the stable surface owns', function (): void {
+        $written = [];
+        foreach ([
+            (new RoundRobinScheduler())->schedule(identifierField(5), new RoundRobinOptions(legs: 2)),
+            (new RoundRobinScheduler())->schedule(identifierField(6)),
+            identifierFallenBackSchedule(),
+        ] as $schedule) {
+            array_push($written, ...array_keys($schedule->getMetadata()));
+        }
+        $written = array_values(array_unique($written));
+        $named = array_values((new ReflectionClass(MetadataKey::class))->getConstants());
+        sort($written);
+        sort($named);
+
+        expect($named)->toBe($written);
+    });
+
+    it('leaves the keys of the experimental formats to FormatMetadataKey, and names none twice', function (): void {
+        $stable = (new ReflectionClass(MetadataKey::class))->getConstants();
+        $format = (new ReflectionClass(FormatMetadataKey::class))->getConstants();
+
+        expect(array_intersect($stable, $format))->toBe([])
+            ->and(array_intersect_key($stable, $format))->toBe([])
+            ->and(array_unique($format))->toBe($format);
+    });
+
     it('names every key a whole-schedule generator writes', function (Closure $schedule): void {
-        $keys = (new ReflectionClass(MetadataKey::class))->getConstants();
+        $keys = [
+            ...array_values((new ReflectionClass(MetadataKey::class))->getConstants()),
+            ...array_values((new ReflectionClass(FormatMetadataKey::class))->getConstants()),
+        ];
         /** @var Schedule $generated */
         $generated = $schedule();
 
@@ -159,6 +221,7 @@ describe('MetadataKey', function (): void {
     })->with([
         'round robin, odd field' => [fn() => (new RoundRobinScheduler())->schedule(identifierField(5), new RoundRobinOptions(legs: 2))],
         'round robin under a constraint' => [fn() => (new RoundRobinScheduler(ConstraintSet::create()->add(new NoRepeatPairings())->build()))->schedule(identifierField(6))],
+        'round robin that fell back' => [identifierFallenBackSchedule(...)],
         'Swiss' => [fn() => (new SwissScheduler())->schedule(identifierField(5), new SwissOptions(rounds: 3, seed: 7))],
         'pot draw' => [fn() => (new PotDrawScheduler())->schedule(identifierField(8), new PotDrawOptions(pots: 2))],
     ]);
@@ -171,8 +234,8 @@ describe('MetadataKey', function (): void {
             array_push($roundKeys, ...array_keys($event->getRound()?->getMetadata() ?? []));
         }
 
-        expect(array_values(array_unique($roundKeys)))->toBe([MetadataKey::ROUND_LABEL])
-            ->and(array_diff($eventKeys, [MetadataKey::TIE_LEG, MetadataKey::BRACKET_TIE]))->toBe([]);
+        expect(array_values(array_unique($roundKeys)))->toBe([FormatMetadataKey::ROUND_LABEL])
+            ->and(array_diff($eventKeys, [FormatMetadataKey::TIE_LEG, FormatMetadataKey::BRACKET_TIE]))->toBe([]);
     })->with([
         'single elimination, two legs' => [new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)), 6],
         'single elimination, third place' => [new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)), 8],
@@ -181,9 +244,11 @@ describe('MetadataKey', function (): void {
 
     it('writes the keys the library has always written', function (): void {
         expect(MetadataKey::ROLE_FALLBACK)->toBe(RoleFallback::METADATA_KEY)
-            ->and(MetadataKey::BRACKET_TIE)->toBe(BracketTie::METADATA_KEY)
-            ->and(MetadataKey::TIE_LEG)->toBe('tie_leg')
-            ->and(MetadataKey::ROUND_LABEL)->toBe('label')
+            ->and(FormatMetadataKey::BRACKET_TIE)->toBe(BracketTie::METADATA_KEY)
+            ->and(FormatMetadataKey::TIE_LEG)->toBe('tie_leg')
+            ->and(FormatMetadataKey::ROUND_LABEL)->toBe('label')
+            ->and(FormatMetadataKey::ROUNDS)->toBe('rounds')
+            ->and(FormatMetadataKey::SEED)->toBe('seed')
             ->and(MetadataKey::ALGORITHM)->toBe('algorithm')
             ->and(MetadataKey::BYES)->toBe('byes');
     });
@@ -192,11 +257,11 @@ describe('MetadataKey', function (): void {
         $twoLegs = identifierPlayedEvents(new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)), 4);
         $thirdPlace = identifierPlayedEvents(new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)), 4);
 
-        expect(array_map(fn(Event $event): mixed => $event->getMetadataValue(MetadataKey::TIE_LEG), array_slice($twoLegs, 0, 2)))
+        expect(array_map(fn(Event $event): mixed => $event->getMetadataValue(FormatMetadataKey::TIE_LEG), array_slice($twoLegs, 0, 2)))
             ->toBe([1, 2])
             ->and(array_filter(
                 $thirdPlace,
-                fn(Event $event): bool => $event->hasMetadata(MetadataKey::BRACKET_TIE)
+                fn(Event $event): bool => $event->hasMetadata(FormatMetadataKey::BRACKET_TIE)
             ))->not->toBe([]);
     });
 });

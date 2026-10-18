@@ -10,15 +10,16 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Stage\Bracket;
-use MissionGaming\Tactician\Stage\BracketRoundLabel;
 use MissionGaming\Tactician\Stage\BracketSide;
 use MissionGaming\Tactician\Stage\BracketViewEngine;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\HistoryReadingEngine;
 use MissionGaming\Tactician\Stage\PairingReadiness;
 use MissionGaming\Tactician\Stage\RecordedRound;
+use MissionGaming\Tactician\Stage\RoundLabel;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -716,7 +717,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         array $contended = []
     ): array {
         $slots = array_values($slots);
-        $stageName = BracketRoundLabel::of($side, $structuralRound, $roundsOnSide, count($slots));
+        $roundLabel = RoundLabel::ofBracketRound($side, $structuralRound, $roundsOnSide, count($slots));
+        $stageName = $roundLabel->toString();
 
         // The stage is read from who was in the bracket when it was paired:
         // for the recorded round with the next number where there is one,
@@ -747,7 +749,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         }
 
         [$toPlay, $claimed] = $this->claimOf($recorded, $ties, $out);
-        $derivation = $this->buildStagePairing($reading->number + 1, $stageName, $pairs, $out);
+        $derivation = $this->buildStagePairing($reading->number + 1, $roundLabel, $pairs, $out);
         $stopped = ['stopped' => true, 'winners' => [], 'losers' => [], 'out' => [], 'void' => [], 'contended' => [], 'revived' => $revived, 'entered' => $slots];
 
         if (!$claimed && $toPlay) {
@@ -869,9 +871,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * @param array<int|string, true> $withdrawn The IDs of the entrants who had withdrawn when
      *                                           the stage was paired
      */
-    private function buildStagePairing(int $roundNumber, string $stageName, array $pairs, array $withdrawn): RoundPairing
+    private function buildStagePairing(int $roundNumber, RoundLabel $label, array $pairs, array $withdrawn): RoundPairing
     {
-        $round = new Round($roundNumber, ['label' => $stageName]);
+        $round = new Round($roundNumber, [FormatMetadataKey::ROUND_LABEL => $label->toString()]);
 
         $events = [];
         $byes = [];
@@ -896,6 +898,6 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             }
         }
 
-        return new RoundPairing($roundNumber, $stageName, $events, $byes);
+        return new RoundPairing($roundNumber, $label, $events, $byes);
     }
 }

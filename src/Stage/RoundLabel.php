@@ -4,22 +4,25 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Stage;
 
-use MissionGaming\Tactician\DTO\MetadataKey;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use Stringable;
 
 /**
- * A round label as typed data: its kind, and the number the kind names
- * where it names one.
+ * The label of a bracket round as typed data: its kind, and the number the
+ * kind names where it names one.
  *
- * The elimination engines label their rounds with text ('semifinal',
- * 'round of 16', 'losers round 2'), and the text is what a RoundPairing and
- * the metadata of a DTO\Round hold. This reads that text, so that an
- * application can map a round to its own wording or translation without
- * parsing it: RoundPairing::getRoundLabel(), RoundLabel::ofRound(), or
- * RoundLabel::fromString() on stored text. toString() gives the text back,
- * as the engine wrote it.
+ * The elimination engines label every round they pair from where the round
+ * stands in the bracket (ofBracketRound()), and so does the bracket view:
+ * RoundPairing::getRoundLabel() and BracketRound::getRoundLabel() give the
+ * same label for the same round. An application maps a label to its own
+ * wording or translation by its kind and number, without parsing text.
+ *
+ * toString() is the English text the engines write: the label of a
+ * RoundPairing (getLabel()) and the `label` of the metadata of its
+ * DTO\Round (FormatMetadataKey::ROUND_LABEL). fromString() and
+ * ofRound() read that text back, for a label that was stored or recorded
+ * as text.
  *
  * @experimental
  */
@@ -58,6 +61,42 @@ final readonly class RoundLabel implements Stringable
     }
 
     /**
+     * The label of a round of a bracket, from where the round stands in it.
+     *
+     * - Main side (single elimination), by the number of slots the round is
+     *   entered with, as the next power of two: 2 a final, 4 a semifinal,
+     *   8 a quarterfinal, and otherwise a 'round of' that power.
+     * - Winners side: the winners final for its last round, a winners round
+     *   numbered by the structural round before it.
+     * - Losers side: the losers final for its last round, a losers round
+     *   numbered by the structural round before it.
+     * - Grand final: the grand final for round 1, the grand final reset for
+     *   any later round.
+     *
+     * @param int $round The structural round on its side, 1-based (read for the winners, losers
+     *                   and grand final sides only)
+     * @param int $roundsOnSide How many rounds the side has (read for the winners and losers
+     *                          sides only)
+     * @param int $slotCount How many slots the round is entered with (read for the main side
+     *                       only)
+     * @throws InvalidInputException When a winners or losers round before the last is below 1
+     *                               (unchecked: a mistake in the calling code)
+     */
+    public static function ofBracketRound(BracketSide $side, int $round, int $roundsOnSide, int $slotCount): self
+    {
+        return match ($side) {
+            BracketSide::Main => self::ofMainRound($slotCount),
+            BracketSide::Winners => $round === $roundsOnSide
+                ? self::of(RoundLabelKind::WinnersFinal)
+                : self::of(RoundLabelKind::WinnersRound, $round),
+            BracketSide::Losers => $round === $roundsOnSide
+                ? self::of(RoundLabelKind::LosersFinal)
+                : self::of(RoundLabelKind::LosersRound, $round),
+            BracketSide::GrandFinal => self::of($round === 1 ? RoundLabelKind::GrandFinal : RoundLabelKind::GrandFinalReset),
+        };
+    }
+
+    /**
      * Read the text of a label as an engine writes it: a kind's text alone,
      * or a numbered kind's text, one space and the number in decimal without
      * leading zeros. Null for any other text, a label of the application's
@@ -84,13 +123,13 @@ final readonly class RoundLabel implements Stringable
 
     /**
      * The label a round carries in its metadata
-     * (DTO\MetadataKey::ROUND_LABEL), read by fromString(). Null for a round
-     * without one, with one that is not a string, or with one fromString()
-     * does not read.
+     * (FormatMetadataKey::ROUND_LABEL), read by fromString(). Null for a
+     * round without one, with one that is not a string, or with one
+     * fromString() does not read.
      */
     public static function ofRound(Round $round): ?self
     {
-        $label = $round->getMetadataValue(MetadataKey::ROUND_LABEL);
+        $label = $round->getMetadataValue(FormatMetadataKey::ROUND_LABEL);
 
         return is_string($label) ? self::fromString($label) : null;
     }
@@ -118,6 +157,20 @@ final readonly class RoundLabel implements Stringable
     public function toString(): string
     {
         return $this->number === null ? $this->kind->value : "{$this->kind->value} {$this->number}";
+    }
+
+    /**
+     * The label of a round of the main side, by the number of slots it is
+     * entered with, as the next power of two.
+     */
+    private static function ofMainRound(int $slotCount): self
+    {
+        return match ($size = BracketFold::size($slotCount)) {
+            2 => self::of(RoundLabelKind::Final),
+            4 => self::of(RoundLabelKind::Semifinal),
+            8 => self::of(RoundLabelKind::Quarterfinal),
+            default => self::of(RoundLabelKind::RoundOf, $size),
+        };
     }
 
     /**

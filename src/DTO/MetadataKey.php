@@ -5,13 +5,20 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 /**
- * The metadata keys the library writes, as constants.
+ * The metadata keys whose meaning the stable surface owns, as constants:
+ * the keys the round-robin scheduler writes on a schedule.
  *
  * Metadata is free-form: an application may put any key on a schedule, a
- * round, an event, a participant or a result. These are the keys the
- * library itself writes, so that an application reads them by name instead
- * of by a string it copied. The values are the strings the library has
- * always written and do not change between releases.
+ * round, an event, a participant or a result. These are keys the library
+ * itself writes, so that an application reads them by name instead of by a
+ * string it copied. The values are the strings the library has always
+ * written and do not change between releases. The other generators write
+ * some of these keys too, as each constant says.
+ *
+ * The keys only the experimental formats write (the rounds of the Swiss
+ * preset, the pots of the pot draw, the label of a bracket round, the leg
+ * of a two-legged tie, the tie of a final with a third-place tie) are in
+ * Stage\FormatMetadataKey, and are as experimental as those formats.
  *
  * Which object carries a key, and when, is said on each constant. A key that
  * is not there is read as missing (`hasMetadata()` is false), never as a
@@ -66,62 +73,14 @@ final class MetadataKey
     public const string BYES = 'byes';
 
     /**
-     * Schedule: the number of rounds asked for. Written by the whole-schedule
-     * Swiss preset, beside TOTAL_ROUNDS, which holds the same number.
-     */
-    public const string ROUNDS = 'rounds';
-
-    /**
-     * Schedule: the number of pots. Written by the pot draw.
-     */
-    public const string POTS = 'pots';
-
-    /**
-     * Schedule: the number of participants in each pot. Written by the pot
-     * draw.
-     */
-    public const string POT_SIZE = 'pot_size';
-
-    /**
-     * Schedule: how many opponents each participant meets from each pot.
-     * Written by the pot draw.
-     */
-    public const string OPPONENTS_PER_POT = 'opponents_per_pot';
-
-    /**
-     * Schedule: the seed of the draw. Written by the pot draw.
-     */
-    public const string SEED = 'seed';
-
-    /**
      * Schedule: why a round-robin schedule has the generator's roles and not
      * balanced ones, as the value of a RoleAssignment\RoleFallback case.
      * Written only on a schedule that fell back
-     * (RoleAssignment\RoleFallback::METADATA_KEY is the same key).
+     * (RoleAssignment\RoleFallback::METADATA_KEY is the same key). The key
+     * is stable; the reasons it can hold are the cases of RoleFallback, which
+     * is experimental.
      */
     public const string ROLE_FALLBACK = 'role_fallback';
-
-    /**
-     * Round: the label of a bracket round ('semifinal', 'losers round 2').
-     * Written by the elimination engines; read as typed data by
-     * Stage\RoundLabel::ofRound().
-     */
-    public const string ROUND_LABEL = 'label';
-
-    /**
-     * Event: which leg of a two-legged knockout tie the event is, 1 or 2.
-     * Written by the elimination engines on both events of such a tie, and
-     * on no other event.
-     */
-    public const string TIE_LEG = 'tie_leg';
-
-    /**
-     * Event: which tie of the last round of a single elimination bracket
-     * with a third-place tie the event belongs to. Written by the single
-     * elimination engine; read through Stage\BracketTie::of()
-     * (Stage\BracketTie::METADATA_KEY is the same key).
-     */
-    public const string BRACKET_TIE = 'bracket_tie';
 
     private function __construct() {}
 }

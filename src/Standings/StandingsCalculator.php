@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Standings;
 
 use MissionGaming\Tactician\DTO\Event;
-use MissionGaming\Tactician\DTO\MetadataKey;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -14,6 +13,7 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
 use MissionGaming\Tactician\Exceptions\RejectedDecisionReason;
 use MissionGaming\Tactician\Serialization\PlainData;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\PairKey;
 
 /**
@@ -769,7 +769,7 @@ readonly class StandingsCalculator
         }
 
         $ids = array_map(fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
-        $leg = $event->getMetadataValue(MetadataKey::TIE_LEG);
+        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
 
         return $round . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }

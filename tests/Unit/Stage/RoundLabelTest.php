@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Event;
-use MissionGaming\Tactician\DTO\MetadataKey;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
@@ -14,6 +13,9 @@ use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\BracketSide;
+use MissionGaming\Tactician\Stage\BracketViewEngine;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\RoundLabel;
 use MissionGaming\Tactician\Stage\RoundLabelKind;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -56,8 +58,28 @@ function roundLabelPairings(StageEngineInterface $engine, int $size, Closure $wi
     return $pairings;
 }
 
+/**
+ * The participants of a pairing by ID, to read it back from its array.
+ *
+ * @return array<string, Participant>
+ */
+function roundLabelRegistry(RoundPairing $pairing): array
+{
+    $registry = [];
+    foreach ($pairing->getEvents() as $event) {
+        foreach ($event->getParticipants() as $participant) {
+            $registry[$participant->getId()] = $participant;
+        }
+    }
+    foreach ($pairing->getByes() as $participant) {
+        $registry[$participant->getId()] = $participant;
+    }
+
+    return $registry;
+}
+
 describe('RoundLabel', function (): void {
-    it('reads every label the elimination engines write, and gives the text back', function (
+    it('gives every round the engines pair a label whose text reads back to it', function (
         StageEngineInterface $engine,
         bool $favouriteWins,
         int $smallest
@@ -71,14 +93,16 @@ describe('RoundLabel', function (): void {
                 $label = $pairing->getRoundLabel();
 
                 expect($text)->not->toBeNull()
-                    ->and($label)->not->toBeNull("'{$text}' was not read")
+                    ->and($label)->not->toBeNull("the round '{$text}' has no label")
                     ->and($label?->toString())->toBe($text)
-                    ->and((string) $label)->toBe($text);
+                    ->and((string) $label)->toBe($text)
+                    ->and(RoundLabel::fromString((string) $text))->toEqual($label)
+                    ->and(RoundPairing::fromArray($pairing->toArray(), roundLabelRegistry($pairing))->getRoundLabel())->toEqual($label);
 
                 foreach ($pairing->getEvents() as $event) {
                     $round = $event->getRound();
                     expect($round)->not->toBeNull()
-                        ->and($round?->getMetadataValue(MetadataKey::ROUND_LABEL))->toBe($text)
+                        ->and($round?->getMetadataValue(FormatMetadataKey::ROUND_LABEL))->toBe($text)
                         ->and($round === null ? null : RoundLabel::ofRound($round)?->toString())->toBe($text);
                 }
 
@@ -93,6 +117,85 @@ describe('RoundLabel', function (): void {
         'double elimination, the favourite wins' => [new DoubleEliminationEngine(), true, 2],
         'double elimination, the outsider wins' => [new DoubleEliminationEngine(), false, 2],
     ]);
+
+    it('labels a paired round as the bracket view labels the same round', function (
+        StageEngineInterface&BracketViewEngine $engine,
+        int $size
+    ): void {
+        $field = [];
+        for ($i = 1; $i <= $size; ++$i) {
+            $field[] = new Participant("p{$i}", "Participant {$i}");
+        }
+
+        $state = StageState::start($field);
+        $compared = 0;
+        while (!$engine->isComplete($state)) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(
+                function (Event $event) use ($pairing): Result {
+                    [$first, $second] = $event->getParticipants();
+                    $favourite = (int) substr($first->getId(), 1) < (int) substr($second->getId(), 1) ? $first : $second;
+
+                    return new Result($event, $pairing->getLabel() === 'grand final' ? $second : $favourite);
+                },
+                $pairing->getEvents()
+            ));
+
+            foreach ($engine->getBracket($state)->getRounds() as $bracketRound) {
+                if ($bracketRound->getRoundNumber() === $pairing->getRoundNumber()) {
+                    expect($bracketRound->getRoundLabel())->toEqual($pairing->getRoundLabel())
+                        ->and($bracketRound->getLabel())->toBe($pairing->getLabel());
+                    ++$compared;
+                }
+            }
+        }
+
+        expect($compared)->toBeGreaterThan(0);
+    })->with([
+        'single elimination of 13' => [new SingleEliminationEngine(), 13],
+        'single elimination of 8, two legs and a third place' => [new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2, thirdPlace: true)), 8],
+        'double elimination of 11, with a reset' => [new DoubleEliminationEngine(), 11],
+    ]);
+
+    it('builds the label of a bracket round from where it stands', function (
+        BracketSide $side,
+        int $round,
+        int $roundsOnSide,
+        int $slotCount,
+        RoundLabelKind $kind,
+        ?int $number
+    ): void {
+        $label = RoundLabel::ofBracketRound($side, $round, $roundsOnSide, $slotCount);
+
+        expect($label->getKind())->toBe($kind)
+            ->and($label->getNumber())->toBe($number)
+            ->and($label)->toEqual(RoundLabel::of($kind, $number));
+    })->with([
+        'main side, entered by 2' => [BracketSide::Main, 1, 0, 2, RoundLabelKind::Final, null],
+        'main side, entered by 3' => [BracketSide::Main, 1, 0, 3, RoundLabelKind::Semifinal, null],
+        'main side, entered by 8' => [BracketSide::Main, 1, 0, 8, RoundLabelKind::Quarterfinal, null],
+        'main side, entered by 9' => [BracketSide::Main, 1, 0, 9, RoundLabelKind::RoundOf, 16],
+        'main side, entered by 33' => [BracketSide::Main, 1, 0, 33, RoundLabelKind::RoundOf, 64],
+        'winners side before its last round' => [BracketSide::Winners, 2, 3, 4, RoundLabelKind::WinnersRound, 2],
+        'winners side, last round' => [BracketSide::Winners, 3, 3, 2, RoundLabelKind::WinnersFinal, null],
+        'losers side before its last round' => [BracketSide::Losers, 3, 4, 4, RoundLabelKind::LosersRound, 3],
+        'losers side, last round' => [BracketSide::Losers, 4, 4, 2, RoundLabelKind::LosersFinal, null],
+        'grand final' => [BracketSide::GrandFinal, 1, 2, 2, RoundLabelKind::GrandFinal, null],
+        'grand final reset' => [BracketSide::GrandFinal, 2, 2, 2, RoundLabelKind::GrandFinalReset, null],
+    ]);
+
+    it('holds the label a pairing is given as typed data, and writes its text', function (): void {
+        $label = RoundLabel::of(RoundLabelKind::LosersRound, 3);
+        $given = new RoundPairing(5, $label, []);
+        $read = RoundPairing::fromArray($given->toArray(), []);
+
+        expect($given->getRoundLabel())->toBe($label)
+            ->and($given->getLabel())->toBe('losers round 3')
+            ->and($given->toArray()['label'])->toBe('losers round 3')
+            ->and($read->getRoundLabel())->toEqual($label)
+            ->and($read)->toEqual($given)
+            ->and(new RoundPairing(5, 'losers round 3', []))->toEqual($given);
+    });
 
     it('meets every kind in the brackets the engines play', function (): void {
         $favourite = fn(Participant $first, Participant $second): Participant => ((int) substr($first->getId(), 1) < (int) substr($second->getId(), 1)) ? $first : $second;
@@ -168,7 +271,7 @@ describe('RoundLabel', function (): void {
         expect($pairing->getLabel())->toBeNull()
             ->and($pairing->getRoundLabel())->toBeNull()
             ->and(RoundLabel::ofRound(new Round(1)))->toBeNull()
-            ->and(RoundLabel::ofRound(new Round(1, [MetadataKey::ROUND_LABEL => 3])))->toBeNull()
+            ->and(RoundLabel::ofRound(new Round(1, [FormatMetadataKey::ROUND_LABEL => 3])))->toBeNull()
             ->and((new RoundPairing(1, 'Matchday 1', []))->getRoundLabel())->toBeNull();
     });
 });

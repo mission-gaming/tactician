@@ -10,16 +10,17 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Stage\Bracket;
-use MissionGaming\Tactician\Stage\BracketRoundLabel;
 use MissionGaming\Tactician\Stage\BracketSide;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\BracketViewEngine;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\HistoryReadingEngine;
 use MissionGaming\Tactician\Stage\PairingReadiness;
 use MissionGaming\Tactician\Stage\RecordedRound;
+use MissionGaming\Tactician\Stage\RoundLabel;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -1010,8 +1011,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         ?array $thirdPlaceTie,
         array $withdrawn
     ): RoundPairing {
-        $label = $this->roundLabel($slotCount);
-        $round = new Round($roundNumber, ['label' => $label]);
+        $label = RoundLabel::ofBracketRound(BracketSide::Main, 0, 0, $slotCount);
+        $round = new Round($roundNumber, [FormatMetadataKey::ROUND_LABEL => $label->toString()]);
         $marked = $this->options->thirdPlace && $slotCount === 2;
 
         $events = [];
@@ -1136,16 +1137,5 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         }
 
         return $ranked;
-    }
-
-    /**
-     * The label of a round by the number of slots it is entered with: the
-     * final has two, the semifinals four. A round entered with a number
-     * that is no power of two, which only a recorded round that pairs the
-     * bracket otherwise leaves behind, is labelled as the next power up.
-     */
-    private function roundLabel(int $slotCount): string
-    {
-        return BracketRoundLabel::of(BracketSide::Main, 0, 0, $slotCount);
     }
 }

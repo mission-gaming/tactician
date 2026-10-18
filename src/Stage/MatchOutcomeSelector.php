@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Event;
-use MissionGaming\Tactician\DTO\MetadataKey;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
@@ -368,7 +367,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             );
         }
 
-        $leg = $event->getMetadataValue(MetadataKey::TIE_LEG);
+        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
 
         return $round . ':' . PairKey::of(...$this->participantIds($event)) . ':' . (is_int($leg) ? $leg : 1);
     }

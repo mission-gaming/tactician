@@ -15,11 +15,11 @@ use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\Bracket;
 use MissionGaming\Tactician\Stage\BracketNode;
 use MissionGaming\Tactician\Stage\BracketNodeStatus;
-use MissionGaming\Tactician\Stage\BracketRoundLabel;
 use MissionGaming\Tactician\Stage\BracketSide;
 use MissionGaming\Tactician\Stage\BracketSlot;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\BracketViewEngine;
+use MissionGaming\Tactician\Stage\RoundLabel;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\SlotPlaceholder;
 use MissionGaming\Tactician\Stage\SlotSource;
@@ -572,16 +572,18 @@ describe('a double elimination bracket', function (): void {
 
 describe('the parts of the view', function (): void {
     it('renders the labels of the rounds from where they stand', function (): void {
-        expect(BracketRoundLabel::of(BracketSide::Main, 1, 0, 2))->toBe('final')
-            ->and(BracketRoundLabel::of(BracketSide::Main, 1, 0, 3))->toBe('semifinal')
-            ->and(BracketRoundLabel::of(BracketSide::Main, 1, 0, 8))->toBe('quarterfinal')
-            ->and(BracketRoundLabel::of(BracketSide::Main, 1, 0, 9))->toBe('round of 16')
-            ->and(BracketRoundLabel::of(BracketSide::Winners, 2, 3, 4))->toBe('winners round 2')
-            ->and(BracketRoundLabel::of(BracketSide::Winners, 3, 3, 2))->toBe('winners final')
-            ->and(BracketRoundLabel::of(BracketSide::Losers, 3, 4, 4))->toBe('losers round 3')
-            ->and(BracketRoundLabel::of(BracketSide::Losers, 4, 4, 2))->toBe('losers final')
-            ->and(BracketRoundLabel::of(BracketSide::GrandFinal, 1, 2, 2))->toBe('grand final')
-            ->and(BracketRoundLabel::of(BracketSide::GrandFinal, 2, 2, 2))->toBe('grand final reset');
+        $text = static fn(BracketSide $side, int $round, int $roundsOnSide, int $slotCount): string => RoundLabel::ofBracketRound($side, $round, $roundsOnSide, $slotCount)->toString();
+
+        expect($text(BracketSide::Main, 1, 0, 2))->toBe('final')
+            ->and($text(BracketSide::Main, 1, 0, 3))->toBe('semifinal')
+            ->and($text(BracketSide::Main, 1, 0, 8))->toBe('quarterfinal')
+            ->and($text(BracketSide::Main, 1, 0, 9))->toBe('round of 16')
+            ->and($text(BracketSide::Winners, 2, 3, 4))->toBe('winners round 2')
+            ->and($text(BracketSide::Winners, 3, 3, 2))->toBe('winners final')
+            ->and($text(BracketSide::Losers, 3, 4, 4))->toBe('losers round 3')
+            ->and($text(BracketSide::Losers, 4, 4, 2))->toBe('losers final')
+            ->and($text(BracketSide::GrandFinal, 1, 2, 2))->toBe('grand final')
+            ->and($text(BracketSide::GrandFinal, 2, 2, 2))->toBe('grand final reset');
     });
 
     it('holds an entrant or a placeholder in a slot, exactly one of the two', function (): void {

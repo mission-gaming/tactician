@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Event;
-use MissionGaming\Tactician\DTO\MetadataKey;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -636,7 +635,7 @@ final readonly class StageState
     private function eventKey(Event $event): string
     {
         $ids = array_map(fn(Participant $participant) => $participant->getId(), $event->getParticipants());
-        $leg = $event->getMetadataValue(MetadataKey::TIE_LEG);
+        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
 
         return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }
