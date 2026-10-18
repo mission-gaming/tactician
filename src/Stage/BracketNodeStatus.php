@@ -18,7 +18,12 @@ enum BracketNodeStatus: string
     /** A slot of the node still waits for the tie it is filled from (see SlotPlaceholder). */
     case AwaitingEntrants = 'awaiting-entrants';
 
-    /** Both entrants are known and the node is not recorded yet: it is paired when its round is. */
+    /**
+     * Both entrants are known and in the stage, and the node is not recorded
+     * yet: it is paired when its round is. A node one of whose entrants has
+     * withdrawn is Uncontested, or Void where both have, as the pairing of
+     * its round will settle it.
+     */
     case ToBePaired = 'to-be-paired';
 
     /** The node is recorded and an event of it awaits a result. */

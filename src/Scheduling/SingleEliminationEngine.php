@@ -466,7 +466,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * isNext(), its nodes to be paired, settled where an entrant has
      * withdrawn. The rounds after it are the shape of the bracket from
      * there, each slot holding the entrant already known to fill it (the
-     * advancer of a node settled early) or its placeholder. A round drawn
+     * advancer of a node settled early) or its placeholder, and a node
+     * an entrant has withdrawn from settled as the pairing of its round
+     * will settle it. A round drawn
      * by hand keeps its ties as recorded: a node for each tie, at the slot
      * of the earlier of its two entrants, and for each entrant left alone;
      * the rounds after it are shaped from the nodes it has.

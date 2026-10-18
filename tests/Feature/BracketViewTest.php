@@ -331,6 +331,38 @@ describe('a single elimination bracket', function (): void {
             ->and($pairing->getEvents())->toHaveCount(1);
     });
 
+    it('settles a tie still to come that an entrant has left, as the pairing of its round will', function (): void {
+        $engine = new SingleEliminationEngine();
+        [$p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8] = bracketViewField(8);
+        $state = StageState::start([$p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8]);
+        $quarterfinals = $engine->pairNextRound($state);
+        [$first, $second] = $quarterfinals->getEvents();
+        $state = $state->withRoundPaired($quarterfinals)
+            ->withAdditionalResults([new Result($first, $p1), new Result($second, $p4)])
+            ->withoutParticipant($p4);
+
+        // The quarterfinals are in play, so the semifinals are a round to come: p4
+        // has left, so p1 v p4 will be given away when it is paired, and p1 is
+        // known to stand in the final already
+        expect(array_slice(bracketViewText($engine->getBracket($state)), 5))->toBe([
+            'semifinal (main 2)',
+            '  main:2:1: p1 v p4* => uncontested -> p1',
+            '  main:2:2: [advancer-of main:1:3] v [advancer-of main:1:4] => awaiting-entrants',
+            'final (main 3)',
+            '  main:3:1 final: p1 v [advancer-of main:2:2] => awaiting-entrants',
+            'not complete',
+        ]);
+
+        $state = $state->withoutParticipant($p1);
+
+        expect(array_slice(bracketViewText($engine->getBracket($state)), 6, 4))->toBe([
+            '  main:2:1: p1* v p4* => void',
+            '  main:2:2: [advancer-of main:1:3] v [advancer-of main:1:4] => awaiting-entrants',
+            'final (main 3)',
+            '  main:3:1 final: [void main:2:1] v [advancer-of main:2:2] => awaiting-entrants',
+        ]);
+    });
+
     it('places a re-seeded round only once the round before it is settled', function (): void {
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
         $start = StageState::start(bracketViewField(4));

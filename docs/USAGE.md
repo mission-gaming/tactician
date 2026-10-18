@@ -3819,7 +3819,7 @@ it stands:
 | Status | The node |
 |--------|----------|
 | `AwaitingEntrants` | A slot still waits for the node it is filled from |
-| `ToBePaired` | Both entrants are known, and it is not recorded yet |
+| `ToBePaired` | Both entrants are known and in the stage, and it is not recorded yet (a node an entrant has left is `Uncontested`, or `Void` where both have, as its pairing will settle it) |
 | `InPlay` | It is recorded and an event of it awaits a result |
 | `AwaitingDecision` | Every result is in, the tie is level, and it awaits its decider |
 | `Decided` | Its results decided who went through |

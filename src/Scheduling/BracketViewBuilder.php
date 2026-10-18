@@ -470,10 +470,25 @@ final class BracketViewBuilder
 
             $advancer = null;
             $losers = [];
+            // A pair of entrants is settled as the pairing of its round will
+            // settle it (see EliminationBracketSupport::pendingNode()): the
+            // entrant still in goes on uncontested, and nobody goes on where
+            // both have left
+            $left = array_values(array_filter(
+                $present,
+                static fn(Participant $entrant): bool => isset($withdrawn[$entrant->getId()])
+            ));
             if ($pending) {
                 $status = BracketNodeStatus::AwaitingEntrants;
-            } elseif (count($present) === 2) {
+            } elseif (count($present) === 2 && $left === []) {
                 $status = BracketNodeStatus::ToBePaired;
+            } elseif (count($present) === 2 && count($left) === 1) {
+                $status = BracketNodeStatus::Uncontested;
+                $advancer = $present[0]->getId() === $left[0]->getId() ? $present[1] : $present[0];
+                $losers = $left;
+            } elseif (count($present) === 2) {
+                $status = BracketNodeStatus::Void;
+                $losers = $present;
             } elseif (count($present) === 1 && !isset($withdrawn[$present[0]->getId()])) {
                 $status = BracketNodeStatus::Bye;
                 $advancer = $present[0];

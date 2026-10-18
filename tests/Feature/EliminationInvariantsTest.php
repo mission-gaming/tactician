@@ -1743,6 +1743,14 @@ function bracketViewInvariants(
                 };
             }
 
+            // A tie to be paired is one both of whose entrants are in the stage:
+            // one an entrant has left is settled as its pairing will settle it
+            if ($node->getStatus() === BracketNodeStatus::ToBePaired) {
+                foreach ($node->getSlots() as $slot) {
+                    expect($slot->isWithdrawn())->toBeFalse("{$where}: {$node->getId()}");
+                }
+            }
+
             // A node is settled as its status says
             match ($node->getStatus()) {
                 BracketNodeStatus::Decided => expect(bracketViewIds([...$node->getLosers(), $node->getAdvancer()]))->toBe($participants, $where)
