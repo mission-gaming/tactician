@@ -7,6 +7,8 @@ namespace MissionGaming\Tactician\Scheduling;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Stage\BracketNodeStatus;
+use MissionGaming\Tactician\Stage\BracketSide;
 use MissionGaming\Tactician\Stage\RecordedRound;
 use MissionGaming\Tactician\Stage\RoundPairing;
 
@@ -22,7 +24,14 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  *
  * It is filled in by the walk and is not kept: an engine holds no state.
  *
+ * When the walk is asked for the bracket view (`$capture`), it also keeps
+ * every round it went through as the view shows it (`$walked`), which
+ * BracketViewBuilder turns into a Stage\Bracket.
+ *
  * @internal Not public API: the working record of the two elimination engines.
+ *
+ * @phpstan-type WalkedNode array{entrants: list<Participant|null>, status: BracketNodeStatus, events: list<Event>, advancer: Participant|null, losers: list<Participant>}
+ * @phpstan-type WalkedRound array{side: BracketSide, round: int, slots: list<Participant|null>, number: int|null, manual: bool, next: bool, nodes: list<WalkedNode>, extra: WalkedNode|null}
  */
 final class BracketReading
 {
@@ -92,6 +101,24 @@ final class BracketReading
      * many ties the key decides.
      */
     public bool $tieWinnerDeprecationRaised = false;
+
+    /**
+     * Whether the walk keeps the rounds it goes through for the bracket
+     * view (`$walked`). Only BracketViewEngine::getBracket() asks for it.
+     */
+    public bool $capture = false;
+
+    /**
+     * The rounds the walk went through, in the order it went through them,
+     * as the bracket view shows them: the rounds it read (recorded, or
+     * with no tie to play) and the round it stopped at to pair (`next`).
+     * The slots are those the round was entered with, after a void tie of
+     * the round before sent on the entrant who went through it after all.
+     * Kept only when `$capture` is set.
+     *
+     * @var list<WalkedRound>
+     */
+    public array $walked = [];
 
     /**
      * The events of that round that await a result.

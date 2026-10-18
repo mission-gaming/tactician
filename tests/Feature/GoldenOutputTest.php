@@ -248,6 +248,7 @@ describe('Golden output', function (): void {
             'examples/27-stage-from-application-rows.txt',
             'examples/28-ties-settled-by-decision.txt',
             'examples/29-rescheduling-with-least-churn.txt',
+            'examples/30-drawing-a-bracket.txt',
         ]);
     });
 

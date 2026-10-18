@@ -72,6 +72,7 @@ with an error.
 | [27-stage-from-application-rows.php](27-stage-from-application-rows.php) | A knockout resolved from the application's own fixture rows on every request: a round drawn by hand with its bye, an unplayed tie, a withdrawal with its round |
 | [28-ties-settled-by-decision.php](28-ties-settled-by-decision.php) | A tie between two qualifiers settled by the organisers: the order they decided seeds the bracket and is marked in the table |
 | [29-rescheduling-with-least-churn.php](29-rescheduling-with-least-churn.php) | A league loses a night and gains one: the games that have a time keep it, the figures of each outcome rank it, and the shortest grid is found |
+| [30-drawing-a-bracket.php](30-drawing-a-bracket.php) | Brackets drawn from the structured view alone: byes, two-legged ties, a third-place tie, a losers bracket with a withdrawal, and a re-seeded bracket |
 
 The sample data uses sports teams and players because that is what most
 schedules are for. The library itself only knows participants.

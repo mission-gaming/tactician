@@ -12,11 +12,16 @@ use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\BracketNode;
+use MissionGaming\Tactician\Stage\BracketNodeStatus;
+use MissionGaming\Tactician\Stage\BracketRound;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RecordedRound;
 use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Stage\SlotPlaceholder;
+use MissionGaming\Tactician\Stage\SlotSource;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
@@ -1566,6 +1571,320 @@ it('reads a bracket the same whether a round or the withdrawals during it are re
     ['single, re-seeded'],
     ['single, two legs'],
     ['single, third place'],
+    ['double'],
+    ['double, two legs'],
+    ['double, no reset'],
+]);
+
+// The structured bracket view (issue #57). Whatever has happened, after every
+// step of a bracket played with withdrawals and adjustments at any moment,
+// the view reads the state as the engine does: the same recorded rounds with
+// the same events and labels, the round to pair next as the engine pairs it,
+// each slot filled by the node it names, each node settled as its status
+// says, the first round as the entry fold, and a finished bracket won by the
+// entrant its outcome names. Reading it never throws.
+
+/**
+ * The events as sorted keys: the two participants in their order, and the leg.
+ *
+ * @param array<Event> $events
+ *
+ * @return list<string>
+ */
+function bracketViewEventKeys(array $events): array
+{
+    $keys = array_map(
+        static fn(Event $event): string => implode(' v ', array_map(static fn(Participant $participant): string => $participant->getId(), array_values($event->getParticipants())))
+            . ' leg ' . (is_int($event->getMetadataValue('tie_leg')) ? $event->getMetadataValue('tie_leg') : 1),
+        array_values($events)
+    );
+    sort($keys);
+
+    return $keys;
+}
+
+/**
+ * The IDs of participants, sorted.
+ *
+ * @param array<Participant|null> $participants
+ *
+ * @return list<string>
+ */
+function bracketViewIds(array $participants): array
+{
+    $ids = [];
+    foreach ($participants as $participant) {
+        if ($participant instanceof Participant) {
+            $ids[] = $participant->getId();
+        }
+    }
+    sort($ids);
+
+    return $ids;
+}
+
+/**
+ * Check the view of one state against the engine, and count what it showed.
+ *
+ * @param array<Participant> $entrants In list order
+ * @param array<string, int> $seen
+ *
+ * @throws InvalidConfigurationException When the engine refuses the state
+ */
+function bracketViewInvariants(
+    SingleEliminationEngine|DoubleEliminationEngine $engine,
+    EliminationOptions $options,
+    StageState $state,
+    array $entrants,
+    string $where,
+    array &$seen
+): void {
+    $entrants = array_values($entrants);
+    $bracket = $engine->getBracket($state);
+    $complete = $engine->isComplete($state);
+    expect($bracket->isComplete())->toBe($complete, $where);
+
+    $byId = [];
+    foreach ($bracket->getNodes() as $node) {
+        expect(isset($byId[$node->getId()]))->toBeFalse("{$where}: {$node->getId()} twice");
+        $byId[$node->getId()] = $node;
+    }
+
+    // The recorded rounds, as the engine reads them
+    $recorded = $engine->getRecordedRounds($state);
+    $viewRecorded = array_values(array_filter($bracket->getRounds(), static fn(BracketRound $round): bool => $round->isRecorded()));
+    expect(array_map(static fn(BracketRound $round): ?int => $round->getRoundNumber(), $viewRecorded))
+        ->toBe(array_map(static fn(RecordedRound $round): int => $round->getRoundNumber(), $recorded), $where);
+    foreach ($recorded as $index => $round) {
+        $view = $viewRecorded[$index];
+        $nodeOf = [];
+        $events = [];
+        foreach ($view->getNodes() as $node) {
+            foreach ($node->getEvents() as $event) {
+                $events[] = $event;
+                $nodeOf[spl_object_id($event)] = $node;
+            }
+        }
+
+        expect($view->getLabel())->toBe($round->getDerivation()?->getLabel(), $where)
+            ->and($view->getLabel())->toBe($round->getPairing()->getLabel(), $where)
+            ->and($view->isManual())->toBe($round->isManual(), $where)
+            ->and(bracketViewEventKeys($events))->toBe(bracketViewEventKeys($round->getPairing()->getEvents()), "{$where}, round {$round->getRoundNumber()}");
+        foreach ($round->getUnresolvedEvents() as $event) {
+            expect($nodeOf[spl_object_id($event)]->getStatus())->toBe(BracketNodeStatus::InPlay, $where);
+        }
+        foreach ($round->getUndecidedEvents() as $event) {
+            expect($nodeOf[spl_object_id($event)]->getStatus())->toBe(BracketNodeStatus::AwaitingDecision, $where);
+        }
+        foreach ($round->getUncontestedEvents() as $event) {
+            expect($nodeOf[spl_object_id($event)]->getStatus())->toBeIn([BracketNodeStatus::Uncontested, BracketNodeStatus::Void], $where);
+        }
+    }
+
+    // The round to pair next, as the engine pairs it
+    $next = $bracket->getNextRound();
+    expect($next instanceof BracketRound)->toBe($engine->getReadiness($state)->isReady(), $where);
+    if ($next instanceof BracketRound) {
+        $pairing = $engine->pairNextRound($state);
+        $ties = [];
+        $byes = [];
+        foreach ($next->getNodes() as $node) {
+            if ($node->getStatus() === BracketNodeStatus::ToBePaired) {
+                $ties[] = implode(' v ', bracketViewIds($node->getParticipants()));
+            }
+            if (in_array($node->getStatus(), [BracketNodeStatus::Bye, BracketNodeStatus::Uncontested], true)) {
+                $byes[] = $node->getAdvancer();
+            }
+        }
+        sort($ties);
+        expect([$ties, bracketViewIds($byes)])->toBe(knownThenShape($pairing), $where)
+            ->and($next->getLabel())->toBe($pairing->getLabel(), $where);
+    }
+
+    foreach ($bracket->getRounds() as $round) {
+        foreach ($round->getNodes() as $node) {
+            $participants = bracketViewIds($node->getParticipants());
+            $advancer = $node->getAdvancer()?->getId();
+            $losers = bracketViewIds($node->getLosers());
+            ++$seen[$node->getStatus()->value];
+
+            foreach ($node->getSlots() as $slot) {
+                $participant = $slot->getParticipant();
+                $sources = array_map(static fn(string $id): ?BracketNode => $byId[$id] ?? null, $slot->getSourceNodes());
+                foreach ($sources as $source) {
+                    expect($source)->toBeInstanceOf(BracketNode::class, $where);
+                }
+                if ($participant === null) {
+                    $placeholder = $slot->getPlaceholder();
+                    assert($placeholder !== null);
+                    ++$seen['placeholder ' . $placeholder->value];
+                    if ($slot->isPending()) {
+                        // Only a round the engine has not reached waits for an entrant
+                        expect($round->isRecorded() || $round->isNext())->toBeFalse($where)
+                            ->and($node->getStatus())->toBe(BracketNodeStatus::AwaitingEntrants, $where);
+                    }
+                    if ($slot->getSource() === SlotSource::Draw) {
+                        expect($entrants[($slot->getDrawPosition() ?? 0) - 1] ?? null)->toBeNull($where);
+                    }
+                    if ($slot->isReseeded() && $placeholder !== SlotPlaceholder::Reseeded) {
+                        // A re-seeded slot holds nobody only where no node it is filled from has anybody to send
+                        $sending = $slot->getSource() === SlotSource::LoserOf
+                            ? [BracketNodeStatus::Decided, BracketNodeStatus::Uncontested]
+                            : [BracketNodeStatus::Decided, BracketNodeStatus::Uncontested, BracketNodeStatus::Bye];
+                        foreach ($sources as $source) {
+                            expect($source?->getStatus())->not->toBeIn($sending, "{$where}: {$node->getId()}");
+                        }
+                    }
+                    continue;
+                }
+
+                // A slot holds the entrant the node it names sent there
+                $source = $sources[0] ?? null;
+                match (true) {
+                    $slot->getSource() === SlotSource::Draw => expect(($entrants[($slot->getDrawPosition() ?? 0) - 1] ?? null)?->getId())->toBe($participant->getId(), $where),
+                    $slot->isReseeded() && $slot->getSource() === SlotSource::AdvancerOf => expect(array_map(
+                        static fn(?BracketNode $node): ?string => $node?->getAdvancer()?->getId(),
+                        $sources
+                    ))->toContain($participant->getId()),
+                    $slot->getSource() === SlotSource::AdvancerOf => expect($source?->getAdvancer()?->getId())->toBe($participant->getId(), "{$where}: {$node->getId()}"),
+                    $slot->getSource() === SlotSource::LoserOf => expect(bracketViewIds($source?->getLosers() ?? []))->toContain($participant->getId()),
+                    default => null,
+                };
+            }
+
+            // A tie to be paired is one both of whose entrants are in the stage:
+            // one an entrant has left is settled as its pairing will settle it
+            if ($node->getStatus() === BracketNodeStatus::ToBePaired) {
+                foreach ($node->getSlots() as $slot) {
+                    expect($slot->isWithdrawn())->toBeFalse("{$where}: {$node->getId()}");
+                }
+            }
+
+            // A node is settled as its status says
+            match ($node->getStatus()) {
+                BracketNodeStatus::Decided => expect(bracketViewIds([...$node->getLosers(), $node->getAdvancer()]))->toBe($participants, $where)
+                    ->and($losers)->toHaveCount(1, $where),
+                BracketNodeStatus::Uncontested => expect($participants)->toContain($advancer)
+                    ->and(array_values(array_diff($losers, $participants)))->toBe([], $where)
+                    ->and($losers)->toHaveCount(1, $where),
+                BracketNodeStatus::Bye => expect($participants)->toBe([$advancer], $where)->and($losers)->toBe([], $where),
+                BracketNodeStatus::Void => expect($advancer)->toBeNull($where)
+                    ->and($losers)->not->toBe([], $where)
+                    ->and(array_values(array_diff($losers, $participants)))->toBe([], $where),
+                BracketNodeStatus::Empty => expect($participants)->toBe([], $where)->and($advancer)->toBeNull($where),
+                default => expect($advancer)->toBeNull($where)->and($losers)->toBe([], $where),
+            };
+        }
+    }
+
+    // The shape: on a fixed path every round halves the one before it, and a
+    // double elimination bracket has every stage of its sequence
+    $size = 2;
+    while ($size < count($entrants)) {
+        $size *= 2;
+    }
+    if ($engine instanceof SingleEliminationEngine && !$options->reseedEachRound) {
+        $counts = array_map(
+            static fn(BracketRound $round): int => count(array_filter($round->getNodes(), static fn(BracketNode $node): bool => $node->getKind() !== BracketTie::ThirdPlace)),
+            $bracket->getRounds()
+        );
+        $expected = [];
+        for ($nodes = intdiv($size, 2); $nodes >= 1; $nodes = intdiv($nodes, 2)) {
+            $expected[] = $nodes;
+        }
+        expect($counts)->toBe($expected, $where);
+    }
+    if ($engine instanceof DoubleEliminationEngine) {
+        $winnersRounds = (int) log($size, 2);
+        expect($bracket->getRounds())->toHaveCount($winnersRounds + 2 * ($winnersRounds - 1) + 1 + ($options->grandFinalReset ? 1 : 0), $where);
+    }
+
+    // A finished bracket is won by the entrant its outcome names
+    if ($complete) {
+        $outcome = $engine->getOutcome($state);
+        assert($outcome instanceof StageOutcome);
+        $rounds = $bracket->getRounds();
+        $last = $rounds[count($rounds) - 1]->getNodes()[0];
+        if ($last->getStatus() === BracketNodeStatus::NotPlayed) {
+            $last = $rounds[count($rounds) - 2]->getNodes()[0];
+        }
+        $settled = $outcome->getSettledTies()[0] ?? null;
+        $tiers = knownThenTiers($engine, $state);
+        expect($last->getAdvancer()?->getId())->toBe($settled?->getAdvancer()?->getId(), $where)
+            ->and(array_keys($tiers, 0, true))->toBe($last->getAdvancer() === null ? [] : [$last->getAdvancer()->getId()], $where);
+        ++$seen['complete'];
+    }
+}
+
+it('shows the bracket as the engine reads it after every step, whatever happens in it', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $options = match ($variant) {
+        'single, re-seeded' => new EliminationOptions(reseedEachRound: true),
+        'single, two legs' => new EliminationOptions(legsPerTie: 2),
+        'single, third place' => new EliminationOptions(thirdPlace: true),
+        'single, two legs, re-seeded, third place' => new EliminationOptions(legsPerTie: 2, reseedEachRound: true, thirdPlace: true),
+        'double, two legs' => new EliminationOptions(legsPerTie: 2),
+        'double, no reset' => new EliminationOptions(grandFinalReset: false),
+        default => new EliminationOptions(),
+    };
+    $seen = array_fill_keys(
+        [
+            ...array_map(static fn(BracketNodeStatus $status): string => $status->value, BracketNodeStatus::cases()),
+            ...array_map(static fn(SlotPlaceholder $placeholder): string => 'placeholder ' . $placeholder->value, SlotPlaceholder::cases()),
+            'complete',
+        ],
+        0
+    );
+    $states = 0;
+
+    foreach ([2, 3, 4, 5, 6, 7, 8, 9, 12, 16, 17, 33] as $fieldSize) {
+        if ($fieldSize < 3 && str_contains($variant, 'third place')) {
+            continue;
+        }
+        foreach ([1, 2] as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $entrants = invariantField($fieldSize);
+
+            $check = static function (StageState $state) use ($engine, $options, $entrants, $where, &$seen, &$states): void {
+                bracketViewInvariants($engine, $options, $state, $entrants, $where, $seen);
+                ++$states;
+            };
+            $check(StageState::start($entrants));
+            [$state] = knownThenPlay($engine, $entrants, 700 * $fieldSize + $seed, $check);
+            $check($state);
+
+            // The rows of an application show the same bracket
+            $fromRows = StageState::fromHistory($entrants, $state->getRoundsPlayed(), $state->getResults(), $state->getWithdrawals(), $state->getAdjustments());
+            expect($engine->getBracket($fromRows))->toEqual($engine->getBracket($state), $where);
+        }
+    }
+
+    // The sweep saw byes, withdrawals, void nodes, placeholders and finished brackets
+    expect($states)->toBeGreaterThan(300)
+        ->and($seen['bye'])->toBeGreaterThan(0)
+        ->and($seen['uncontested'])->toBeGreaterThan(0)
+        ->and($seen['in-play'])->toBeGreaterThan(0)
+        ->and($seen['awaiting-entrants'])->toBeGreaterThan(0)
+        ->and($seen['to-be-paired'])->toBeGreaterThan(0)
+        ->and($seen['complete'])->toBeGreaterThan(20);
+    if (str_contains($variant, 're-seeded')) {
+        expect($seen['placeholder reseeded'])->toBeGreaterThan(0);
+    } else {
+        // A re-seeded bracket folds the survivors without the slot of a void tie
+        expect($seen['void'] + $seen['placeholder void'])->toBeGreaterThan(0);
+    }
+    if (str_starts_with($variant, 'double')) {
+        expect($seen['placeholder loser-of'])->toBeGreaterThan(0);
+    }
+    if ($variant === 'double') {
+        expect($seen['not-played'])->toBeGreaterThan(0);
+    }
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, two legs'],
+    ['single, third place'],
+    ['single, two legs, re-seeded, third place'],
     ['double'],
     ['double, two legs'],
     ['double, no reset'],

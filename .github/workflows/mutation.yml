@@ -82,7 +82,7 @@ jobs:
           - shard: Swiss round search
             path: src/Scheduling/SwissRoundSearch.php,src/Scheduling/PerfectMatching.php
           - shard: elimination
-            path: src/Scheduling/DoubleEliminationEngine.php,src/Scheduling/SingleEliminationEngine.php,src/Scheduling/EliminationBracketSupport.php,src/Scheduling/EliminationOptions.php,src/Scheduling/BracketReading.php
+            path: src/Scheduling/DoubleEliminationEngine.php,src/Scheduling/SingleEliminationEngine.php,src/Scheduling/EliminationBracketSupport.php,src/Scheduling/EliminationOptions.php,src/Scheduling/BracketReading.php,src/Scheduling/BracketViewBuilder.php
           - shard: repack load planning
             path: src/Repack/Internal/LoadPlanner.php,src/Repack/Internal/LoadPlan.php,src/Repack/Internal/StepBudget.php,src/Repack/Internal/BudgetExhausted.php,src/Repack/Internal/CanonicalEncoding.php
           - shard: repack session packing
@@ -97,7 +97,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Setup PHP
-      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
       with:
         php-version: '8.4'
         extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
