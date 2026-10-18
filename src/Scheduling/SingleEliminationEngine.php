@@ -386,10 +386,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * the tiers of the earlier rounds follow. A last tie is decided the
      * moment its results or a withdrawal decide it, and a withdrawal after
      * that moves nobody (see Withdrawal). A last tie that is void (both of
-     * its entrants withdrew, at times nobody knows, in a state stored by
-     * 0.2.x) leaves its upper tier empty: the two finalists of a void final
-     * share the second tier, and the two of a void third-place tie the
-     * fourth. Its results count in the
+     * its entrants withdrew at times nobody knows, in a state stored by
+     * 0.2.x, or had both left by the time the tie had them both, as a
+     * third-place tie can) leaves its upper tier empty: the two finalists
+     * of a void final share the second tier, and the two of a void
+     * third-place tie the fourth. Its results count in the
      * records as those of every tie do. The outcome's final round then
      * holds both ties. MatchOutcomeSelector reads the final and leaves the
      * third-place tie out, which it knows by its mark: winners() gives

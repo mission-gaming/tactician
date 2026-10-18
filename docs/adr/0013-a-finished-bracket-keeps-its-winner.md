@@ -65,11 +65,16 @@ its outcome for good over a fact that is true. The loud-failure rule of the
 library is for what cannot be read correctly; this can, and the reading is
 the one stated here. The withdrawal stays in the state as recorded.
 
-**A last tie is void only where the times are not known.** Data stored by
-0.2.x keeps withdrawals without a time; a last tie both of whose entrants
-left there is still void, as 0011 says. With the times known the first of
-two entrants to leave a last tie gave it to the other, so a bracket every
-entrant leaves is won by the one still in it when the others had left.
+**A last tie both entrants left is void only where neither was in it.**
+Data stored by 0.2.x keeps withdrawals without a time; a last tie both of
+whose entrants left there is still void, as 0011 says. With the times known
+the first of two entrants to leave a last tie gave it to the other, so a
+bracket every entrant leaves is won by the one still in it when the others
+had left. A last tie has its two entrants once the ties that feed it are
+decided, and a third-place tie can come to be with both of its entrants
+gone: a semifinal loser left, and the other left before playing the second
+semifinal, which its leaving decided. Neither was in the stage when the
+tie came to be, so it is void with the times known, and nobody is third.
 
 A last tie is pairwise, and so is this rule ([0003](0003-multi-participant-events-are-a-2-0-goal.md)).
 

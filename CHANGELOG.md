@@ -1353,7 +1353,10 @@ entry on the engine fingerprint.
     paired for the third-place tie. Only data stored by 0.2.x, whose
     withdrawals carry no time, can hold a last tie both entrants left at
     times nobody knows: it is void, the bracket ends with nobody in its
-    first tier, and the selector names no winner. A void semifinal
+    first tier, and the selector names no winner. With the times known a
+    third-place tie is void where both of its entrants had left by the time
+    it had them both (one semifinal loser had left, and the other left
+    before playing the second semifinal): nobody is third. A void semifinal
     leaves the third place to the loser of the other semifinal without a
     tie being played. In single elimination with a third-place tie, the
     entrant who takes the third place from a tie the other has left is

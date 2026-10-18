@@ -591,6 +591,42 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
         'p4, then p1' => [3, 0],
     ]);
 
+    // The third-place tie has its two entrants once both semifinals are
+    // decided. Where one of them left before that and the other leaves in
+    // deciding the second semifinal, neither was in the stage when the tie
+    // came to be: it is void with the times known. Where the second
+    // semifinal was decided by its result first, the one who left later was
+    // still in when the other left, and has the third place.
+    it('gives the third-place tie to the entrant still in when it came to be, and to nobody where neither was', function (bool $playedFirst, array $tiers, array $byes): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(thirdPlace: true));
+        $field = timesField(4);
+        $semifinals = $engine->pairNextRound(StageState::start($field));
+        $state = StageState::start($field)->withRoundPaired($semifinals);
+        [$p1VsP4, $p2VsP3] = $semifinals->getEvents();
+        expect(timesPairs($semifinals))->toBe(['p1 v p4', 'p2 v p3']);
+
+        // p1 beats p4, who leaves; p3 leaves too, after losing to p2 or before playing
+        $state = $state->withAdditionalResults([new Result($p1VsP4, $field[0])]);
+        if ($playedFirst) {
+            $state = $state->withAdditionalResults([new Result($p2VsP3, $field[1])]);
+        }
+        $state = $state->withoutParticipant($field[3])->withoutParticipant($field[2]);
+
+        $last = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($last)->withAdditionalResults([new Result($last->getEvents()[0], $field[0])]);
+        $outcome = $engine->getOutcome($state);
+        assert($outcome instanceof StageOutcome);
+
+        expect(timesPairs($last))->toBe(['p1 v p2'])
+            ->and(timesIds($last->getByes()))->toBe($byes)
+            ->and($engine->isComplete($state))->toBeTrue()
+            ->and(timesTiers($outcome->getStandings()))->toMatchArray($tiers)
+            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([$field[0]]);
+    })->with([
+        'p2 beat p3 before both left: p3 is third' => [true, ['p1' => 0, 'p2' => 1, 'p3' => 2, 'p4' => 3], ['p3']],
+        'p3 left before playing p2: nobody is third' => [false, ['p1' => 0, 'p2' => 1, 'p3' => 3, 'p4' => 3], []],
+    ]);
+
     it('lists the entrant who takes the third place without a tie among the byes of the last round', function (): void {
         $engine = new SingleEliminationEngine(new EliminationOptions(thirdPlace: true));
         $field = timesField(4);

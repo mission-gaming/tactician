@@ -22,8 +22,12 @@ use MissionGaming\Tactician\DTO\Participant;
  * void unless one of them was still in the stage when it was decided: a
  * last tie is decided the moment the first of the two leaves, and goes to
  * the other. A void tie sent nobody on (the advancer is null) and both
- * are eliminated (see Withdrawal). A last tie is void only in a state
- * stored by 0.2.x, whose withdrawals carry no time.
+ * are eliminated (see Withdrawal). With the times known a last tie is
+ * void only where both of its entrants had left by the time it had them
+ * both (a third-place tie whose second semifinal was decided by its
+ * entrant leaving, the other semifinal loser having left before); in a
+ * state stored by 0.2.x, whose withdrawals carry no time, wherever both
+ * have left.
  *
  * There is no winner or loser here on purpose: an entrant can go on from a
  * tie nobody played.
