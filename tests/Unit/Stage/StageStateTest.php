@@ -67,6 +67,53 @@ describe('StageState', function (): void {
         expect($state->getNextRoundNumber())->toBe(2);
     });
 
+    // A round is recorded when it is drawn and its results are added as
+    // they come: the state is the one a round recorded with no results is,
+    // and stores the same
+    it('records a round as paired, with none of its results, and its results added later', function (): void {
+        $first = new Event([$this->alice, $this->bob], new Round(1));
+        $second = new Event([$this->carol, $this->dave], new Round(1));
+        $pairing = new RoundPairing(1, 'round 1', [$first, $second]);
+        $start = StageState::start($this->participants);
+
+        $paired = $start->withRoundPaired($pairing);
+        $played = $paired->withAdditionalResults([new Result($first, $this->alice), new Result($second, $this->dave)]);
+
+        expect($paired->getRoundsPlayed())->toBe([$pairing])
+            ->and($paired->getResults())->toBe([])
+            ->and($paired->getEventsWithoutResult())->toBe([$first, $second])
+            ->and($paired->getNextRoundNumber())->toBe(2)
+            ->and($paired->toArray())->toBe($start->withRoundPlayed($pairing, [])->toArray())
+            ->and($played->toArray())->toBe($start->withRoundPlayed($pairing, [
+                new Result($first, $this->alice),
+                new Result($second, $this->dave),
+            ])->toArray());
+    });
+
+    it('refuses to record as paired what it refuses to record as played', function (Closure $pairing, InvalidConfigurationReason $reason): void {
+        $state = StageState::start($this->participants)->withRoundPaired(new RoundPairing(1, null, [new Event([$this->alice, $this->bob], new Round(1))]));
+
+        try {
+            $state->withRoundPaired($pairing($this));
+            $this->fail('The pairing was recorded.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe($reason);
+        }
+    })->with([
+        'a round that does not follow the last one' => [
+            fn($test) => new RoundPairing(1, null, [new Event([$test->carol, $test->dave], new Round(1))]),
+            InvalidConfigurationReason::RoundOutOfSequence,
+        ],
+        'an event of another round' => [
+            fn($test) => new RoundPairing(2, null, [new Event([$test->carol, $test->dave], new Round(3))]),
+            InvalidConfigurationReason::EventNotInRound,
+        ],
+        'an event without a round number' => [
+            fn($test) => new RoundPairing(2, null, [new Event([$test->carol, $test->dave])]),
+            InvalidConfigurationReason::EventWithoutRoundNumber,
+        ],
+    ]);
+
     it('rejects results from a different round than the pairing', function (): void {
         $event = new Event([$this->alice, $this->bob], new Round(2));
         $pairing = new RoundPairing(1, null, [new Event([$this->alice, $this->bob], new Round(1))]);

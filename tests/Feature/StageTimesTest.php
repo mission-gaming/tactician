@@ -344,7 +344,10 @@ describe('a Swiss stage with adjustments and withdrawals between its rounds', fu
     // hand. A wider run of this sweep (600 stages of 4 to 16 participants
     // and 3 to 7 rounds, 2,680 rounds, with adjustments and withdrawals also
     // while a round was being played) reported 631 of the 912 rounds of the
-    // stages that held an adjustment as manual before, and none after.
+    // stages that held an adjustment as manual before, and none after. The
+    // adjustments are made between the rounds and while a round is played,
+    // which the state tells apart because the round is recorded when it is
+    // paired (withRoundPaired()).
     it('reports none of the rounds the engine paired as manual', function (): void {
         $rounds = 0;
         $adjustments = 0;
@@ -369,7 +372,15 @@ describe('a Swiss stage with adjustments and withdrawals between its rounds', fu
                         // A small field that withdrawals have left without a pairing nobody has played
                         break;
                     }
-                    $state = $state->withRoundPlayed($pairing, array_map(
+
+                    // The round is recorded when it is paired, and an
+                    // adjustment made while it is played comes after it
+                    $state = $state->withRoundPaired($pairing);
+                    if ($rng->getInt(0, 1) === 1) {
+                        $state = $state->withAdjustment(new Adjustment($field[$rng->getInt(0, $size - 1)]->getId(), $rng->getInt(-6, 6) / 2.0));
+                        ++$adjustments;
+                    }
+                    $state = $state->withAdditionalResults(array_map(
                         static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[$rng->getInt(0, 1)]),
                         $pairing->getEvents()
                     ));
@@ -391,7 +402,7 @@ describe('a Swiss stage with adjustments and withdrawals between its rounds', fu
         }
 
         expect($rounds)->toBeGreaterThan(40)
-            ->and($adjustments)->toBeGreaterThan(15)
+            ->and($adjustments)->toBeGreaterThan(30)
             ->and($withdrawals)->toBeGreaterThan(8);
     });
 });
@@ -923,13 +934,14 @@ describe('a withdrawal says after which round it happened', function (): void {
 });
 
 describe('a round that is recorded after it was paired', function (): void {
-    // To a state a round is paired at the moment it is recorded, and an
-    // application may record a round only once it has been played: pair,
-    // play, record, as the loop in the README does. A withdrawal while that
-    // round is played is then recorded with the round before it. The round
-    // names the entrant, so it was paired while the entrant was in the
-    // stage, and it is read that way: the same as where the round was
-    // recorded first and the withdrawal after it.
+    // To a state a round is paired at the moment it is recorded. The
+    // documented loop records it then (withRoundPaired()), and an
+    // application may still record a round only once it has been played:
+    // pair, play, record. A withdrawal while that round is played is then
+    // recorded with the round before it. The round names the entrant, so it
+    // was paired while the entrant was in the stage, and it is read that
+    // way: the same as where the round was recorded first and the
+    // withdrawal after it.
 
     /**
      * What an engine says is next, as plain values.
@@ -960,7 +972,7 @@ describe('a round that is recorded after it was paired', function (): void {
         $tie = $pairing->getEvents()[0];
         $leaves = array_values($tie->getParticipants())[0];
 
-        $recordedWhenPaired = $state->withRoundPlayed($pairing, [])->withoutParticipant($leaves);
+        $recordedWhenPaired = $state->withRoundPaired($pairing)->withoutParticipant($leaves);
         $recordedWhenPlayed = $state->withoutParticipant($leaves)->withRoundPlayed($pairing, []);
 
         // The state's clock is the rounds it holds
@@ -1036,7 +1048,8 @@ describe('a round that is recorded after it was paired', function (): void {
     // it was paired, which can be a winners round that does not name its
     // entrant. A withdrawal while that winners round is played, recorded
     // before it, is then read as made before the losers round: the entrant
-    // is placed one stage lower. Nothing else changes.
+    // is placed one stage lower. Nothing else changes, and a round recorded
+    // when it is paired, as the documented loop does, has no such limit.
     it('places one stage lower, in double elimination, an entrant of an unrecorded losers round who leaves during the next winners round, recorded first', function () use ($next): void {
         $engine = new DoubleEliminationEngine();
         $field = timesField(4);
@@ -1052,7 +1065,7 @@ describe('a round that is recorded after it was paired', function (): void {
         $winnersFinal = $engine->pairNextRound($state);
         $results = [new Result($winnersFinal->getEvents()[0], $field[2])];
 
-        $recordedWhenPaired = $state->withRoundPlayed($winnersFinal, $results)->withoutParticipant($field[1]);
+        $recordedWhenPaired = $state->withRoundPaired($winnersFinal)->withoutParticipant($field[1])->withAdditionalResults($results);
         $recordedWhenPlayed = $state->withoutParticipant($field[1])->withRoundPlayed($winnersFinal, $results);
 
         // Recorded first, the round says p2 left during it: p2 went through
@@ -1122,7 +1135,7 @@ describe('a round that is recorded after it was paired', function (): void {
     // adjustments it was paired from. An adjustment made while a round is
     // played, in a state that records the round only afterwards, is read as
     // known when the round was paired. Recording the round when it is
-    // paired is how an application says otherwise.
+    // paired (withRoundPaired()) is how an application says otherwise.
     it('reads an adjustment recorded before a round as known when the round was paired, and one recorded after it as not', function (): void {
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
         $field = timesField(8);
@@ -1132,7 +1145,7 @@ describe('a round that is recorded after it was paired', function (): void {
         $pairing = $engine->pairNextRound($state);
         $adjustment = new Adjustment('p4', 9.0);
 
-        $recordedWhenPaired = $state->withRoundPlayed($pairing, [])->withAdjustment($adjustment);
+        $recordedWhenPaired = $state->withRoundPaired($pairing)->withAdjustment($adjustment);
         $recordedWhenPlayed = $state->withAdjustment($adjustment)->withRoundPlayed($pairing, []);
 
         expect(timesPairs($pairing))->toBe(['p1 v p4', 'p2 v p3'])
@@ -1145,44 +1158,7 @@ describe('a round that is recorded after it was paired', function (): void {
 
 describe('the match outcome selector over a bracket a finalist withdrew from', function (): void {
     /**
-     * A bracket of four played up to its last tie, which is between the.
-    // The limit of that reading: a round names only its own entrants. In
-    // double elimination a losers round with no tie to play is not
-    // recorded, and is read from who was in the stage when the round after
-    // it was paired, which can be a winners round that does not name its
-    // entrant. A withdrawal while that winners round is played, recorded
-    // before it, is then read as made before the losers round: the entrant
-    // is placed one stage lower. Nothing else changes.
-    it('places one stage lower, in double elimination, an entrant of an unrecorded losers round who leaves during the next winners round, recorded first', function () use ($next): void {
-        $engine = new DoubleEliminationEngine();
-        $field = timesField(4);
-
-        // Winners round 1 is p1 v p4 and p2 v p3: p1 leaves, p3 wins. The
-        // first losers round, p1 v p2, has no tie to play and is not recorded:
-        // p2 goes on alone. The winners final, p3 v p4, is paired and won by
-        // p3, and p2 leaves while it is played.
-        $state = StageState::start($field);
-        $first = $engine->pairNextRound($state);
-        $state = $state->withRoundPlayed($first, [])->withoutParticipant($field[0])
-            ->withAdditionalResults([new Result($first->getEvents()[1], $field[2])]);
-        $winnersFinal = $engine->pairNextRound($state);
-        $results = [new Result($winnersFinal->getEvents()[0], $field[2])];
-
-        $recordedWhenPaired = $state->withRoundPlayed($winnersFinal, $results)->withoutParticipant($field[1]);
-        $recordedWhenPlayed = $state->withoutParticipant($field[1])->withRoundPlayed($winnersFinal, $results);
-
-        // Recorded first, the round says p2 left during it: p2 went through
-        // the first losers round and goes out in the losers final. Recorded
-        // after the withdrawal, which states round 1, nothing says p2 was
-        // still in when the first losers round was due: it goes out there,
-        // with p1
-        expect(timesPairs($first))->toBe(['p1 v p4', 'p2 v p3'])
-            ->and($winnersFinal->getLabel())->toBe('winners final')
-            ->and($next($engine, $recordedWhenPlayed))->toBe($next($engine, $recordedWhenPaired))
-            ->and(timesTiers($engine->getStandings($recordedWhenPaired)))->toBe(['p1' => 2, 'p2' => 1, 'p3' => 0, 'p4' => 0])
-            ->and(timesTiers($engine->getStandings($recordedWhenPlayed)))->toBe(['p1' => 2, 'p2' => 2, 'p3' => 0, 'p4' => 0]);
-    });
-
+     * A bracket of four played up to its last tie, which is between the
      * two entrants returned.
      *
      * @return array{SingleEliminationEngine|DoubleEliminationEngine, StageState, Participant, Participant}

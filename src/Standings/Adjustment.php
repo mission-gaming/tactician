@@ -131,8 +131,8 @@ final readonly class Adjustment
      * application that records round 3 only once it has been played
      * records an adjustment made during round 3 with 2, and it is then
      * read as known when round 3 was paired, which it was not. Record a
-     * round when it is paired (StageState::withRoundPlayed() with no
-     * results, then withAdditionalResults()) where adjustments are made while a round is
+     * round when it is paired (StageState::withRoundPaired(), then
+     * withAdditionalResults()) where adjustments are made while a round is
      * played.
      *
      * Null says that the time is not known. An adjustment of a stage state

@@ -32,10 +32,16 @@ use MissionGaming\Tactician\Standings\Adjustment;
  *     $state = StageState::start($participants);
  *     while (!$engine->isComplete($state)) {
  *         $pairing = $engine->pairNextRound($state);
+ *         $state = $state->withRoundPaired($pairing);  // recorded when it is drawn
  *         $results = playRound($pairing);              // application-side
- *         $state = $state->withRoundPlayed($pairing, $results);
+ *         $state = $state->withAdditionalResults($results);
  *     }
  *     $outcome = $engine->getOutcome($state);
+ *
+ * A round is recorded when it is paired, so that a withdrawal or an
+ * adjustment made while it is played is recorded after it (see
+ * withRoundPaired()). withRoundPlayed() records a round with its results
+ * in one call, where nothing can happen in between.
  *
  * @experimental
  */
@@ -452,12 +458,50 @@ final readonly class StageState
     }
 
     /**
-     * Record a completed round: its pairing (including any byes it awarded)
-     * and the results of its events.
+     * Record a round that has been paired and not played yet: its pairing,
+     * including any byes it awarded, with none of its results.
      *
-     * Recording some of the results, or none, is legal: a round is recorded
-     * when it is paired and its results are added as they come
-     * (withAdditionalResults()). The pairing's events count as paired
+     * This is how a round is recorded where things can happen while it is
+     * played. The state's clock is the rounds it holds: a withdrawal or an
+     * adjustment is recorded with the number of the last round recorded at
+     * that moment (Withdrawal, Adjustment::getAfterRound()), and an engine
+     * reads a recorded round from what was recorded before it. Recorded
+     * when it is paired, the round comes before everything that happens
+     * while it is played, as it did. The results are added as they come
+     * with withAdditionalResults(), which reaches the last recorded round:
+     *
+     *     $pairing = $engine->pairNextRound($state);
+     *     $state = $state->withRoundPaired($pairing);    // the draw is published
+     *     // ...the round is played; withdrawals and adjustments as they happen...
+     *     $state = $state->withAdditionalResults($results);
+     *
+     * It is withRoundPlayed() with no results, and is checked the same way.
+     * The state it returns is the state that verb returns, stores the same
+     * (a round with no results is a round like any other) and is read the
+     * same: an engine waits for the results of the round before it pairs a
+     * further one (see withRoundPlayed()). The verb is pairwise-neutral: it
+     * records the pairing as given, whatever the size of its events.
+     *
+     * @throws InvalidConfigurationException When withRoundPlayed() refuses the pairing (a round
+     *                                       number below 1, `ValueOutOfRange`; out of sequence,
+     *                                       `RoundOutOfSequence`; an event of another round,
+     *                                       `EventNotInRound` or `EventWithoutRoundNumber`)
+     */
+    public function withRoundPaired(RoundPairing $pairing): self
+    {
+        return $this->withRoundPlayed($pairing, []);
+    }
+
+    /**
+     * Record a round: its pairing (including any byes it awarded) and the
+     * results of its events that exist.
+     *
+     * Recording some of the results, or none, is legal. A round recorded
+     * once it has been played comes, to the state, after everything that
+     * happened while it was played: record the round when it is paired
+     * (withRoundPaired()) and add its results as they come
+     * (withAdditionalResults()) where withdrawals or adjustments can be
+     * made while a round is played. The pairing's events count as paired
      * from then on, and an engine waits for the missing results before it
      * pairs a further round, unless it is told that the stage has none
      * (SwissPairingEngine in results-free mode, which whole-schedule
@@ -1007,8 +1051,8 @@ final readonly class StageState
      * object than the one given when that one had none.
      *
      * The last round the state holds is the last one recorded, so record
-     * a round when it is paired (withRoundPlayed() with no results) and add
-     * its results as they come (withAdditionalResults()). An adjustment made while a round
+     * a round when it is paired (withRoundPaired()) and add its results as
+     * they come (withAdditionalResults()). An adjustment made while a round
      * is played is then recorded after that round, and is not read as known
      * when the round was paired. A round recorded only once it has been
      * played comes after such an adjustment, and the adjustment is read as

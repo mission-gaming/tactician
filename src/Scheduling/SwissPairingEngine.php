@@ -353,7 +353,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * left before it).
      * An adjustment recorded in that interval is another matter: it is
      * read as known when the round was paired, so a round is recorded when
-     * it is paired (StageState::withRoundPlayed() with no results) where adjustments are
+     * it is paired (StageState::withRoundPaired()) where adjustments are
      * made while it is played.
      *
      * An engine that holds a Randomizer has no derivation to give: what it
