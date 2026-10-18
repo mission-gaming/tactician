@@ -10,6 +10,8 @@ use MissionGaming\Tactician\Repack\Internal\GapSearch;
 use MissionGaming\Tactician\Repack\Internal\LeftoverRecolourer;
 use MissionGaming\Tactician\Repack\Internal\LoadPlan;
 use MissionGaming\Tactician\Repack\Internal\LoadPlanner;
+use MissionGaming\Tactician\Repack\Internal\ObjectivePolish;
+use MissionGaming\Tactician\Repack\Internal\PlacementMetrics;
 use MissionGaming\Tactician\Repack\Internal\RepackAuditor;
 use MissionGaming\Tactician\Repack\Internal\RoundColouring;
 use MissionGaming\Tactician\Repack\Internal\SessionPacker;
@@ -63,7 +65,16 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * participant for participant, up to a symmetry of the request, whenever
  * the id only ever decided between participants that such a symmetry
  * exchanges (see Internal\StructuralOrder for when it can decide between
- * two that are not alike). Pure: no clock reads, no I/O, no persistence.
+ * two that are not alike). With no objective, or without
+ * RepackObjective::LeastChurn, the order does not read current positions,
+ * so which of such participants takes which place follows the ids, and
+ * the count of moved events with it. With LeastChurn the current
+ * positions decide that before an id does, and between events of the
+ * same two participants: under the same condition the outcome is then
+ * the same, figure for figure, whatever the ids, the moved events
+ * included, and the id decides only between participants and events
+ * whose current positions are alike as well. Pure: no clock reads, no
+ * I/O, no persistence.
  * Bounded: every search spends from the options' step budget (the steps
  * after the packing from a budget of their own of the same size) or has
  * a limit of its own, which is fixed at the default budget and above and
@@ -79,6 +90,30 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * two of them; it never produces a CapacityExceeded for the grid as a
  * whole, and still produces one for a participant with more events than
  * free positions, which no capacity changes.
+ *
+ * Objectives are opt-in (RepackOptions::$objectives). With none, a
+ * request is repacked as described above, and the current positions its
+ * events may state are read for one thing only: the outcome's list of
+ * moved events. With any, the schedule described above is made first and
+ * is the one no other may be worse than on events placed, then on gap
+ * slots. With LeastChurn it is made in the order the current positions
+ * help to decide, which is the order without them up to a symmetry of
+ * the request wherever the ids decide only between participants such a
+ * symmetry exchanges (above): the same schedule, then, with the
+ * participants a symmetry exchanges in other places. For the fewest moved events, further schedules are then made
+ * with the events that can stay at their current positions held there
+ * and the others placed around them; where one places fewer events or
+ * leaves more gap slots, the held events may move again along the paths
+ * of the last placement step and in the search for fewer gap slots, and
+ * the ones that had to do with what is still worse are let go for the
+ * next attempt, of which there are three at most. Single events are then
+ * moved where that serves an objective and costs nothing that ranks
+ * before it. The schedule returned is the best of them by events placed,
+ * gap slots and the objectives in their order, and the first one on a
+ * tie. All of that spends what the two budgets have left.
+ *
+ * Every outcome carries the figures a caller ranks outcomes by: unplaced
+ * events, gap slots, lone-event sessions, idle sessions and moved events.
  *
  * Infeasibility is an outcome, not an exception: the returned
  * RepackOutcome carries the schedule plus every compromise as structured
@@ -204,11 +239,29 @@ final readonly class ScheduleRepacker
             ];
         }
 
+        // Where the fewest moved events are asked for, the current positions
+        // decide between participants, and between events of the same two,
+        // that the request does not otherwise tell apart, where an id would
+        // decide: the events that can stay are then the same events, and
+        // the schedule the same, whatever the ids. With no such objective
+        // they decide nothing, and the order is the one it always was
+        $byCurrent = in_array(RepackObjective::LeastChurn, $options->objectives, true);
+        $rankedCurrent = [];
+        if ($byCurrent) {
+            foreach ($movables as $at => $movable) {
+                $currentSession = $movable->getCurrentSession();
+                $currentSlot = $movable->getCurrentSlot();
+                if ($currentSession !== null && $currentSlot !== null) {
+                    $rankedCurrent[] = [...$rankedEvents[$at], $currentSession, $currentSlot];
+                }
+            }
+        }
+
         /** @var array<string, int> $participantIndexes */
         $participantIndexes = [];
         /** @var array<Participant> $participants */
         $participants = [];
-        foreach (StructuralOrder::of(count($inIdOrder), $rankedEvents, $rankedPins) as $rank) {
+        foreach (StructuralOrder::of(count($inIdOrder), $rankedEvents, $rankedPins, StructuralOrder::WORK_LIMIT, $rankedCurrent) as $rank) {
             $participantIndexes[$inIdOrder[$rank]->getId()] = count($participants);
             $participants[] = $inIdOrder[$rank];
         }
@@ -220,31 +273,59 @@ final readonly class ScheduleRepacker
 
         // The events by their two participants, lower index first, and by
         // id only between events of the same two: which of those is which
-        // is all an event id decides
-        /** @var list<array{int, int}> $pairs In id order of the events */
-        $pairs = [];
-        foreach ($movables as $movable) {
+        // is all an event id decides. Where the fewest moved events are
+        // asked for, the current positions decide between those first
+        // (an event that states none after those that do). This is the
+        // repacker's order of events, and the index of an event from here on
+        $byPair = [];
+        $byPosition = [];
+        foreach ($movables as $at => $movable) {
             $a = $participantIndexes[$movable->getParticipantA()->getId()];
             $b = $participantIndexes[$movable->getParticipantB()->getId()];
-            $pairs[] = [min($a, $b), max($a, $b)];
+            $byPair[$at] = [min($a, $b), max($a, $b)];
+            $currentSession = $movable->getCurrentSession();
+            $currentSlot = $movable->getCurrentSlot();
+            $byPosition[$at] = !$byCurrent || $currentSession === null || $currentSlot === null
+                ? [1, 0, 0]
+                : [0, $currentSession, $currentSlot];
         }
-        $byPair = array_keys($pairs);
-        usort($byPair, static fn(int $x, int $y): int => [$pairs[$x], $x] <=> [$pairs[$y], $y]);
-        $pairsInOrder = [];
-        foreach ($byPair as $at) {
-            $pairsInOrder[] = $pairs[$at];
+        $order = array_keys($byPair);
+        usort(
+            $order,
+            static fn(int $x, int $y): int => [$byPair[$x], $byPosition[$x], $x] <=> [$byPair[$y], $byPosition[$y], $y]
+        );
+
+        /** @var list<array{int, int}> $pairs */
+        $pairs = [];
+        /** @var list<string> $ids */
+        $ids = [];
+        /** @var array<int, array{int, int}> $current Event => its current position, where it states one */
+        $current = [];
+        foreach ($order as $at) {
+            $currentSession = $movables[$at]->getCurrentSession();
+            $currentSlot = $movables[$at]->getCurrentSlot();
+            if ($currentSession !== null && $currentSlot !== null) {
+                $current[count($pairs)] = [$currentSession, $currentSlot];
+            }
+            $pairs[] = $byPair[$at];
+            $ids[] = $movables[$at]->getId();
         }
 
         /** @var array<int, array<int, array<int>>> $pinSlots */
         $pinSlots = [];
         /** @var array<int, array<int, int>> $pinCounts */
         $pinCounts = [];
+        /** @var list<array{list<int>, int, int}> $pinned Each pinned event: its participants and its position */
+        $pinned = [];
         foreach ($pins as $pin) {
+            $ofPin = [];
             foreach ($pin->getParticipants() as $participant) {
                 $pinSlots[$pin->getSession()][$participantIndexes[$participant->getId()]][] = $pin->getSlot();
+                $ofPin[] = $participantIndexes[$participant->getId()];
             }
             $pinCounts[$pin->getSession()][$pin->getSlot()]
                 = ($pinCounts[$pin->getSession()][$pin->getSlot()] ?? 0) + 1;
+            $pinned[] = [$ofPin, $pin->getSession(), $pin->getSlot()];
         }
         foreach ($pinSlots as &$byParticipant) {
             foreach ($byParticipant as &$slots) {
@@ -253,6 +334,480 @@ final readonly class ScheduleRepacker
             unset($slots);
         }
         unset($byParticipant);
+
+        // Two budgets: one for the planning and the packing, and one of the
+        // same size for the steps after them, so that a run whose earlier
+        // searches spent the first still gets its last placement step
+        $budget = new StepBudget($options->stepBudget, $options->stepBudget);
+        $recolourBudget = new StepBudget($options->stepBudget, $options->stepBudget);
+        $layoutStopped = false;
+
+        // What the outcome reports of a schedule, and what the objectives,
+        // when the options name any, rank one by
+        $metrics = new PlacementMetrics($pairs, $pinned, $current);
+        $objectives = $options->objectives;
+        $score = $objectives === []
+            ? null
+            : static fn(array $positions): array => $metrics->score($positions, $objectives);
+
+        // The schedule of the request as it stands. With no objective it is
+        // the outcome; with one, it is the schedule no other may be worse
+        // than on events placed and on gap slots
+        [$positions, $unplaced, $capacityViolations] = $this->solve(
+            array_keys($pairs),
+            $pairs,
+            $ids,
+            $participants,
+            $pinSlots,
+            $pinCounts,
+            $slotCounts,
+            $capacityPerSlot,
+            $options,
+            $budget,
+            $recolourBudget,
+            $score,
+            $layoutStopped
+        );
+
+        if ($score !== null) {
+            if ($current !== [] && in_array(RepackObjective::LeastChurn, $objectives, true)) {
+                [$positions, $unplaced, $capacityViolations] = $this->keepingCurrentPositions(
+                    $positions,
+                    $unplaced,
+                    $capacityViolations,
+                    $metrics,
+                    $current,
+                    $pairs,
+                    $ids,
+                    $participants,
+                    $participantIndexes,
+                    $pinSlots,
+                    $pinCounts,
+                    $slotCounts,
+                    $capacityPerSlot,
+                    $options,
+                    $budget,
+                    $recolourBudget,
+                    $layoutStopped
+                );
+            }
+
+            // And single events are moved where that serves an objective
+            // and costs nothing that outranks it
+            $indexById = array_flip($ids);
+            $positions = (new ObjectivePolish(
+                $metrics,
+                $objectives,
+                $pairs,
+                $pinSlots,
+                $pinCounts,
+                $slotCounts,
+                $capacityPerSlot,
+                $current,
+                $recolourBudget
+            ))->improve(
+                $positions,
+                array_map(static fn(UnplacedEvent $event): int => $indexById[$event->getEventId()], $unplaced)
+            );
+        }
+
+        usort(
+            $unplaced,
+            static fn(UnplacedEvent $x, UnplacedEvent $y): int => strcmp($x->getEventId(), $y->getEventId())
+        );
+
+        // The audit reports what is true of the returned schedule
+        $violations = (new RepackAuditor())->audit(
+            $positions,
+            $pairs,
+            $pins,
+            $ids,
+            $participants,
+            $participantIndexes
+        );
+        foreach ($unplaced as $unplacedEvent) {
+            $violations[] = new EventUnplaced(
+                $unplacedEvent->getEventId(),
+                $unplacedEvent->getReason(),
+                $unplacedEvent->getParticipant()
+            );
+        }
+        // The planner reports the over-capacity participants by shortfall
+        // and then by index; the outcome lists them by shortfall and then
+        // by id, the grid's own violation after them
+        usort($capacityViolations, static function (RepackViolation $x, RepackViolation $y): int {
+            if (!$x instanceof CapacityExceeded || !$y instanceof CapacityExceeded) {
+                return 0;
+            }
+            $px = $x->getParticipant();
+            $py = $y->getParticipant();
+            if ($px === null || $py === null) {
+                return ($px === null) <=> ($py === null);
+            }
+
+            $byShortfall = $y->getShortfall() <=> $x->getShortfall();
+
+            return $byShortfall !== 0 ? $byShortfall : strcmp($px->getId(), $py->getId());
+        });
+        foreach ($capacityViolations as $violation) {
+            $violations[] = $violation;
+        }
+
+        $kindOrder = array_flip(array_map(
+            static fn(ViolationKind $kind): string => $kind->value,
+            ViolationKind::cases()
+        ));
+        usort(
+            $violations,
+            static fn(RepackViolation $x, RepackViolation $y): int => $kindOrder[$x->getKind()->value] <=> $kindOrder[$y->getKind()->value]
+        );
+
+        $assignments = [];
+        foreach ($positions as $eventIndex => [$session, $slot]) {
+            $assignments[] = new SlotAssignment(
+                $ids[$eventIndex],
+                $session,
+                $slot,
+                $grid->hasInstants() ? $grid->getSlotTime($session, $slot) : null
+            );
+        }
+        usort(
+            $assignments,
+            static fn(SlotAssignment $x, SlotAssignment $y): int => strcmp($x->getEventId(), $y->getEventId())
+        );
+
+        $movedIds = [];
+        foreach ($metrics->moved($positions) as $eventIndex) {
+            $movedIds[] = $ids[$eventIndex];
+        }
+        usort($movedIds, strcmp(...));
+
+        $outcome = new RepackOutcome(
+            $assignments,
+            $unplaced,
+            $violations,
+            $budget->stoppedASearch() || $recolourBudget->stoppedASearch() || $layoutStopped,
+            $metrics->loneEventSessions($positions),
+            $metrics->idleSessions($positions),
+            $movedIds
+        );
+
+        if ($options->throwOnViolations && !$outcome->isClean()) {
+            throw new RepackViolationsException($outcome);
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * How many schedules are made around the events that stay where they
+     * are, at most, when the fewest moved events are asked for: the first
+     * keeps every event that can stay, and each one after it lets go of
+     * the events that had to do with what the one before it did worse.
+     */
+    private const int KEEP_ATTEMPTS = 3;
+
+    /**
+     * The schedule with the fewest moved events that is found, for a
+     * request whose options ask for them: never one that places fewer
+     * events than the schedule given, or as many with more gap slots.
+     *
+     * Every event that can stay at its current position is held there, as
+     * a pinned event is, and the other events are placed around them by
+     * the same steps as any request (solve()). Which events can stay is
+     * decided by taking them in the repacker's order of events: an event
+     * stays when its position is on the grid, has room left, and holds no
+     * other event, pinned or staying, of either of its participants.
+     *
+     * Where that schedule places fewer events than the one given, the
+     * last placement step is run on it with the staying events free to
+     * move again, until it places as many: an alternating path moves a
+     * few events and leaves the rest where they are. Where it then has
+     * more gap slots than the one given, the search for fewer gap slots
+     * is run on it in the same way; it changes the events around a gap
+     * first.
+     *
+     * Where it is still worse on one of the two, the staying events that
+     * had to do with it are let go (those a participant with a gap has in
+     * the session of the gap, or, when that lets go of nothing, every
+     * event of that session; and every event of the participants of an
+     * unplaced event, when more events are unplaced than in the schedule
+     * given), and the rest are held for another attempt; KEEP_ATTEMPTS
+     * bounds how often. The attempts stop at the first that is no worse
+     * than the schedule given on those two figures, because one that
+     * holds fewer events can only move more. Of all the schedules made,
+     * the given one included, the best by events placed, then gap slots,
+     * then the objectives in their order is returned, and the given one
+     * on a tie.
+     *
+     * The attempts spend what the two budgets have left and have none of
+     * their own. A participant never has more events staying than it has
+     * positions free, so the capacity figures of an attempt are those of
+     * the request once the staying events are added back to the demand
+     * and to the capacity it was planned with.
+     *
+     * @param array<int, array{int, int}> $positions The schedule to improve on
+     * @param list<UnplacedEvent> $unplaced Its unplaced events
+     * @param array<RepackViolation> $capacityViolations Its capacity violations
+     * @param array<int, array{int, int}> $current Event => current position
+     * @param list<array{int, int}> $pairs
+     * @param list<string> $ids
+     * @param array<Participant> $participants
+     * @param array<string, int> $participantIndexes
+     * @param array<int, array<int, array<int>>> $pinSlots
+     * @param array<int, array<int, int>> $pinCounts
+     * @param array<int, int> $slotCounts
+     *
+     * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>}
+     *         The positions, the unplaced events and the capacity violations of the schedule chosen
+     */
+    private function keepingCurrentPositions(
+        array $positions,
+        array $unplaced,
+        array $capacityViolations,
+        PlacementMetrics $metrics,
+        array $current,
+        array $pairs,
+        array $ids,
+        array $participants,
+        array $participantIndexes,
+        array $pinSlots,
+        array $pinCounts,
+        array $slotCounts,
+        int $capacityPerSlot,
+        RepackOptions $options,
+        StepBudget $budget,
+        StepBudget $recolourBudget,
+        bool &$layoutStopped
+    ): array {
+        $objectives = $options->objectives;
+        $indexById = array_flip($ids);
+
+        // Which events can stay, taken in the repacker's order of events,
+        // which is the order of their indexes
+        /** @var array<int, array{int, int}> $kept Event => the position it stays at */
+        $kept = [];
+        $taken = $pinCounts;
+        $busy = [];
+        foreach ($current as $eventIndex => [$session, $slot]) {
+            if ($slot >= ($slotCounts[$session] ?? 0) || ($taken[$session][$slot] ?? 0) >= $capacityPerSlot) {
+                continue;
+            }
+            foreach ($pairs[$eventIndex] as $pid) {
+                if (isset($busy[$session][$slot][$pid]) || in_array($slot, $pinSlots[$session][$pid] ?? [], true)) {
+                    continue 2;
+                }
+            }
+            $kept[$eventIndex] = [$session, $slot];
+            $taken[$session][$slot] = ($taken[$session][$slot] ?? 0) + 1;
+            foreach ($pairs[$eventIndex] as $pid) {
+                $busy[$session][$slot][$pid] = true;
+            }
+        }
+
+        $given = [count($unplaced), $metrics->gapSlots($positions)];
+        $best = [...$given, ...$metrics->score($positions, $objectives)];
+
+        for ($attempt = 0; $attempt < self::KEEP_ATTEMPTS && $kept !== []; ++$attempt) {
+            $heldSlots = $pinSlots;
+            $heldCounts = $pinCounts;
+            $keptOf = [];
+            foreach ($kept as $eventIndex => [$session, $slot]) {
+                $heldCounts[$session][$slot] = ($heldCounts[$session][$slot] ?? 0) + 1;
+                foreach ($pairs[$eventIndex] as $pid) {
+                    $heldSlots[$session][$pid][] = $slot;
+                    $keptOf[$pid] = ($keptOf[$pid] ?? 0) + 1;
+                }
+            }
+            foreach ($heldSlots as &$byParticipant) {
+                foreach ($byParticipant as &$slots) {
+                    sort($slots);
+                }
+                unset($slots);
+            }
+            unset($byParticipant);
+
+            [$placed, $left, $violations, $shortfalls] = $this->solve(
+                array_values(array_diff(array_keys($pairs), array_keys($kept))),
+                $pairs,
+                $ids,
+                $participants,
+                $heldSlots,
+                $heldCounts,
+                $slotCounts,
+                $capacityPerSlot,
+                $options,
+                $budget,
+                $recolourBudget,
+                static fn(array $around): array => $metrics->score($around + $kept, $objectives),
+                $layoutStopped
+            );
+            $placed += $kept;
+            ksort($placed);
+
+            $leftOut = array_map(static fn(UnplacedEvent $event): int => $indexById[$event->getEventId()], $left);
+            sort($leftOut);
+            $leftBefore = $leftOut;
+
+            // More events left out than in the schedule given: the staying
+            // events may move again to let them in, along as short a path
+            // as the last placement step finds
+            if (count($leftOut) > $given[0]) {
+                $leftOut = (new LeftoverRecolourer($recolourBudget))->place(
+                    $pairs,
+                    $placed,
+                    $leftOut,
+                    $pinSlots,
+                    $pinCounts,
+                    $slotCounts,
+                    $capacityPerSlot,
+                    $given[0]
+                );
+                ksort($placed);
+            }
+
+            // As many placed and more gap slots: the events around the
+            // gaps may move again to close them
+            if (count($leftOut) <= $given[0] && [count($leftOut), $metrics->gapSlots($placed)] > $given) {
+                $leftOut = (new GapSearch($recolourBudget))->improve(
+                    $pairs,
+                    $placed,
+                    $leftOut,
+                    $pinSlots,
+                    $pinCounts,
+                    $slotCounts,
+                    $capacityPerSlot
+                );
+                ksort($placed);
+            }
+
+            if ($leftOut !== $leftBefore) {
+                // Other events are unplaced now, so their reasons are given
+                // again
+                $left = $this->label($leftOut, [], $shortfalls, $pairs, $ids, $participants, $budget, true);
+            }
+
+            $reached = [count($leftOut), $metrics->gapSlots($placed)];
+            $key = [...$reached, ...$metrics->score($placed, $objectives)];
+            if ($key < $best) {
+                $best = $key;
+                $positions = $placed;
+                $unplaced = $left;
+                $capacityViolations = [];
+                foreach ($violations as $violation) {
+                    if ($violation instanceof CapacityExceeded) {
+                        $participant = $violation->getParticipant();
+                        $staying = $participant instanceof Participant
+                            ? $keptOf[$participantIndexes[$participant->getId()]] ?? 0
+                            : count($kept);
+                        $violation = new CapacityExceeded(
+                            $participant,
+                            $violation->getDemand() + $staying,
+                            $violation->getCapacity() + $staying
+                        );
+                    }
+                    $capacityViolations[] = $violation;
+                }
+            }
+            if ($reached <= $given) {
+                break;
+            }
+
+            // Let go of the events this attempt went wrong around
+            $withGap = $metrics->gaps($placed);
+            $short = [];
+            if ($reached[0] > $given[0]) {
+                foreach ($leftOut as $eventIndex) {
+                    foreach ($pairs[$eventIndex] as $pid) {
+                        $short[$pid] = true;
+                    }
+                }
+            }
+            $still = [];
+            foreach ($kept as $eventIndex => $position) {
+                foreach ($pairs[$eventIndex] as $pid) {
+                    if (isset($short[$pid]) || isset($withGap[$pid][$position[0]])) {
+                        continue 2;
+                    }
+                }
+                $still[$eventIndex] = $position;
+            }
+            if (count($still) === count($kept)) {
+                // Nothing of theirs is staying there: every event of the
+                // sessions with a gap, then
+                $sessions = [];
+                foreach ($withGap as $bySession) {
+                    $sessions += $bySession;
+                }
+                $still = array_filter($kept, static fn(array $position): bool => !isset($sessions[$position[0]]));
+                if (count($still) === count($kept)) {
+                    break;
+                }
+            }
+            $kept = $still;
+        }
+
+        return [$positions, $unplaced, $capacityViolations];
+    }
+
+    /**
+     * A schedule of some of the movable events around what is held in
+     * place: the steps of a repack from the laying out of the rounds to
+     * the reasons of the events left unplaced.
+     *
+     * A repack with no objective calls this once, with every movable
+     * event and the pinned events. The fewest moved events call it again
+     * with the events that do not stay where they are, and the staying
+     * ones among what is held.
+     *
+     * The objectives, when a score is given, decide here only where
+     * nothing that outranks them is at stake: between the planned
+     * schedule and the rounds as they were laid out when both place as
+     * many events and neither has a gap, and between the schedule so far
+     * and the third one when both place as many events with as many gap
+     * slots. Either way the schedule returned places as many events, with
+     * as many gap slots, as it would with no score.
+     *
+     * @param list<int> $subset The events to place, as indexes into $allPairs and $ids, ascending
+     * @param list<array{int, int}> $allPairs Every movable event's two participants, lower index
+     *                                        first, in the repacker's order of events (by those
+     *                                        two, then by id)
+     * @param list<string> $ids Every movable event's id, in the same order
+     * @param array<Participant> $participants
+     * @param array<int, array<int, array<int>>> $pinSlots Session => participant => held slots
+     * @param array<int, array<int, int>> $pinCounts Session => slot => events held there
+     * @param array<int, int> $slotCounts
+     * @param StepBudget $budget For the planning and the packing
+     * @param StepBudget $recolourBudget For the steps after the packing
+     * @param (\Closure(array<int, array{int, int}>): list<int>)|null $score What the objectives make
+     *        of a schedule of the subset, given as positions by index into $ids; null with no objective
+     * @param bool $layoutStopped Set when the caller's budget cut the laying out of the rounds short
+     *
+     * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, int>}
+     *         The positions by index into $ids (ascending), the events of the subset with none and
+     *         their reasons, the planner's capacity violations, and the shortfall of every
+     *         over-capacity participant by its index
+     */
+    private function solve(
+        array $subset,
+        array $allPairs,
+        array $ids,
+        array $participants,
+        array $pinSlots,
+        array $pinCounts,
+        array $slotCounts,
+        int $capacityPerSlot,
+        RepackOptions $options,
+        StepBudget $budget,
+        StepBudget $recolourBudget,
+        ?\Closure $score,
+        bool &$layoutStopped
+    ): array {
+        // The events of the subset, still in the repacker's order
+        $pairsInOrder = [];
+        foreach ($subset as $index) {
+            $pairsInOrder[] = $allPairs[$index];
+        }
 
         // Then by round, so that the planner fills sessions with whole
         // rounds (RoundColouring). An event the rounds could not hold
@@ -291,19 +846,29 @@ final readonly class ScheduleRepacker
         $edges = [];
         /** @var array<int, array{int, int}> $roundLayout Event index => the position of its round */
         $roundLayout = [];
+        /** @var list<int> $indexOf Event index here => its index into $ids */
+        $indexOf = [];
         foreach ($byRound as $at) {
             if (isset($roundPositions[$at])) {
                 $roundLayout[count($edges)] = $roundPositions[$at];
             }
-            $eventIds[] = $movables[$byPair[$at]]->getId();
+            $indexOf[] = $subset[$at];
+            $eventIds[] = $ids[$subset[$at]];
             $edges[] = $pairsInOrder[$at];
         }
 
-        // Two budgets: one for the planning and the packing, and one of the
-        // same size for the steps after them, so that a run whose earlier
-        // searches spent the first still gets its last placement step
-        $budget = new StepBudget($options->stepBudget, $options->stepBudget);
-        $recolourBudget = new StepBudget($options->stepBudget, $options->stepBudget);
+        // A schedule by index into $ids, which is how the caller, and so
+        // the score, has it
+        $asGiven = static function (array $schedule) use ($indexOf): array {
+            $keyed = [];
+            foreach ($schedule as $eventIndex => $position) {
+                $keyed[$indexOf[$eventIndex]] = $position;
+            }
+            ksort($keyed);
+
+            return $keyed;
+        };
+        $scoreOf = static fn(array $schedule): array => $score instanceof \Closure ? $score($asGiven($schedule)) : [];
 
         // The planned schedule: sessions by the weights, then slots
         [$positions, $stillLeft, $dropped, $plan, $ceiling] = $this->planned(
@@ -322,11 +887,16 @@ final readonly class ScheduleRepacker
         // Contiguity comes ahead of the weights the sessions were chosen
         // by. The rounds are a schedule themselves, made with no regard to
         // the weights: where they place more events than the planned
-        // schedule, or as many with fewer gap slots, they are the schedule
+        // schedule, or as many with fewer gap slots, they are the schedule.
+        // Where neither has a gap and they place as many, the objectives
+        // decide, when there are any: nothing that follows depends on
+        // which of two such schedules it is
         $roundsLeft = array_values(array_diff(array_keys($edges), array_keys($roundLayout)));
+        $ofRounds = [count($roundsLeft), self::gapSlots($roundLayout, $edges, $pinSlots)];
+        $ofPlanned = [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots)];
         if (
-            [count($roundsLeft), self::gapSlots($roundLayout, $edges, $pinSlots)]
-            < [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots)]
+            $ofRounds < $ofPlanned
+            || ($score instanceof \Closure && $ofRounds === $ofPlanned && $ofRounds[1] === 0 && $scoreOf($roundLayout) < $scoreOf($positions))
         ) {
             $positions = $roundLayout;
             $stillLeft = $roundsLeft;
@@ -352,8 +922,10 @@ final readonly class ScheduleRepacker
         // drops other events of an over-capacity participant and fills the
         // sessions another way. It is a third schedule, made on what the
         // two budgets have left, and it is returned only when it places
-        // more events, or as many with fewer gap slots. The order is the
-        // structural one, so it depends on the ids no more than the rounds
+        // more events, or as many with fewer gap slots (or, with
+        // objectives, as many with as many and a better score). The order
+        // is the structural one, so it depends on the ids no more than the
+        // rounds
         $gapSlots = self::gapSlots($positions, $edges, $pinSlots);
         $byParticipants = array_flip($byRound);
         ksort($byParticipants);
@@ -407,7 +979,10 @@ final readonly class ScheduleRepacker
                     $capacityPerSlot
                 );
             }
-            if ([count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots)] < [count($stillLeft), $gapSlots]) {
+            if (
+                [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions)]
+                < [count($stillLeft), $gapSlots, ...$scoreOf($positions)]
+            ) {
                 $positions = $otherPositions;
                 $stillLeft = $otherLeft;
                 $dropped = $otherDropped;
@@ -415,86 +990,14 @@ final readonly class ScheduleRepacker
             }
         }
 
-        $unplaced = $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants, $budget);
+        $layoutStopped = $layoutStopped || $layoutBudget->stoppedASearch();
 
-        usort(
-            $unplaced,
-            static fn(UnplacedEvent $x, UnplacedEvent $y): int => strcmp($x->getEventId(), $y->getEventId())
-        );
-
-        // The audit reports what is true of the returned schedule
-        $violations = (new RepackAuditor())->audit(
-            $positions,
-            $edges,
-            $pins,
-            $eventIds,
-            $participants,
-            $participantIndexes
-        );
-        foreach ($unplaced as $unplacedEvent) {
-            $violations[] = new EventUnplaced(
-                $unplacedEvent->getEventId(),
-                $unplacedEvent->getReason(),
-                $unplacedEvent->getParticipant()
-            );
-        }
-        // The planner reports the over-capacity participants by shortfall
-        // and then by index; the outcome lists them by shortfall and then
-        // by id, the grid's own violation after them
-        $capacityViolations = $plan->violations;
-        usort($capacityViolations, static function (RepackViolation $x, RepackViolation $y): int {
-            if (!$x instanceof CapacityExceeded || !$y instanceof CapacityExceeded) {
-                return 0;
-            }
-            $px = $x->getParticipant();
-            $py = $y->getParticipant();
-            if ($px === null || $py === null) {
-                return ($px === null) <=> ($py === null);
-            }
-
-            $byShortfall = $y->getShortfall() <=> $x->getShortfall();
-
-            return $byShortfall !== 0 ? $byShortfall : strcmp($px->getId(), $py->getId());
-        });
-        foreach ($capacityViolations as $violation) {
-            $violations[] = $violation;
-        }
-
-        $kindOrder = array_flip(array_map(
-            static fn(ViolationKind $kind): string => $kind->value,
-            ViolationKind::cases()
-        ));
-        usort(
-            $violations,
-            static fn(RepackViolation $x, RepackViolation $y): int => $kindOrder[$x->getKind()->value] <=> $kindOrder[$y->getKind()->value]
-        );
-
-        $assignments = [];
-        foreach ($positions as $eventIndex => [$session, $slot]) {
-            $assignments[] = new SlotAssignment(
-                $eventIds[$eventIndex],
-                $session,
-                $slot,
-                $grid->hasInstants() ? $grid->getSlotTime($session, $slot) : null
-            );
-        }
-        usort(
-            $assignments,
-            static fn(SlotAssignment $x, SlotAssignment $y): int => strcmp($x->getEventId(), $y->getEventId())
-        );
-
-        $outcome = new RepackOutcome(
-            $assignments,
-            $unplaced,
-            $violations,
-            $budget->stoppedASearch() || $recolourBudget->stoppedASearch() || $layoutBudget->stoppedASearch()
-        );
-
-        if ($options->throwOnViolations && !$outcome->isClean()) {
-            throw new RepackViolationsException($outcome);
-        }
-
-        return $outcome;
+        return [
+            $asGiven($positions),
+            $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants, $budget),
+            $plan->violations,
+            $plan->shortfalls,
+        ];
     }
 
     /**
@@ -637,6 +1140,8 @@ final readonly class ScheduleRepacker
      * @param array<string> $eventIds
      * @param array<Participant> $participants
      * @param StepBudget $budget The budget the planner's search for shared events follows here too
+     * @param bool $again Give the reasons again by the planner's rule whatever the drops were:
+     *                    for a schedule whose unplaced events are no longer the ones a plan left
      *
      * @return list<UnplacedEvent> In ascending event id order
      */
@@ -647,10 +1152,11 @@ final readonly class ScheduleRepacker
         array $edges,
         array $eventIds,
         array $participants,
-        StepBudget $budget
+        StepBudget $budget,
+        bool $again = false
     ): array {
         $left = array_fill_keys($stillLeft, true);
-        $dropsAllLeft = array_diff_key($dropped, $left) === [];
+        $dropsAllLeft = !$again && array_diff_key($dropped, $left) === [];
 
         /** @var array<int, int> $overCapacityFor Event index => the participant it is unplaced for */
         $overCapacityFor = [];

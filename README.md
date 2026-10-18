@@ -137,8 +137,13 @@ the last one, which is about the library as a whole.
   comes back as itemised violations instead of an exception. A grid can be
   given without times and with no limit on the events in a slot, and an
   outcome has a fingerprint that tells whether a plan computed again is the
-  plan that was shown.
+  plan that was shown. An outcome also carries the figures to rank it by
+  (events unplaced, gap slots, lone-event sessions, idle sessions, events
+  moved); a repack can be asked to move as few events as it can from where
+  they are, and a helper finds the fewest sessions that place everything.
   [Schedule repacking](docs/USAGE.md#schedule-repacking),
+  [objectives](docs/USAGE.md#objectives),
+  [the shortest grid](docs/USAGE.md#the-shortest-grid),
   [grids without instants](docs/USAGE.md#grids-without-instants),
   [unbounded capacity](docs/USAGE.md#unbounded-capacity),
   [outcome fingerprints](docs/USAGE.md#outcome-fingerprints)
