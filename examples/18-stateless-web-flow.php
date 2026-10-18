@@ -42,7 +42,10 @@ $entrants = [
 $database['stage_42'] = StageState::start($entrants)->toJson();
 $requests[] = ['Request' => 1, 'Did' => 'opened the stage', 'Events' => 0, 'State stored (bytes)' => strlen($database['stage_42'])];
 
-// --- Requests 2..N: pair a round, play it, record results -------------
+// --- Requests 2..N: pair a round, then record its results -------------
+// The request that pairs a round records it as paired, so that a
+// withdrawal or an adjustment made while the round is played comes after
+// it; a later request adds the results once the round has been played.
 while (true) {
     // Each cycle: fresh engine, rehydrated state - no shared memory
     $engine = new SwissPairingEngine(plannedRounds: 3);
@@ -53,22 +56,31 @@ while (true) {
     }
 
     $pairing = $engine->pairNextRound($state);
+    $database['stage_42'] = $state->withRoundPaired($pairing)->toJson();
 
-    // "Play" the round: lower ID wins, as good a rule as any for a demo
+    $requests[] = [
+        'Request' => count($requests) + 1,
+        'Did' => 'paired round ' . $pairing->getRoundNumber(),
+        'Events' => count($pairing->getEvents()),
+        'State stored (bytes)' => strlen($database['stage_42']),
+    ];
+
+    // The round is played. The next request restores the state and adds
+    // the results of the events that await one: lower ID wins, as good a
+    // rule as any for a demo
+    $state = StageState::fromJson($database['stage_42']);
     $results = [];
-    foreach ($pairing->getEvents() as $event) {
+    foreach ($state->getEventsWithoutResult() as $event) {
         [$first, $second] = $event->getParticipants();
         $winner = strcmp($first->getId(), $second->getId()) < 0 ? $first : $second;
         $results[] = new Result($event, $winner);
     }
-
-    $state = $state->withRoundPlayed($pairing, $results);
-    $database['stage_42'] = $state->toJson();
+    $database['stage_42'] = $state->withAdditionalResults($results)->toJson();
 
     $requests[] = [
         'Request' => count($requests) + 1,
-        'Did' => 'paired and recorded round ' . $pairing->getRoundNumber(),
-        'Events' => count($pairing->getEvents()),
+        'Did' => 'recorded the results of round ' . $pairing->getRoundNumber(),
+        'Events' => count($results),
         'State stored (bytes)' => strlen($database['stage_42']),
     ];
 }

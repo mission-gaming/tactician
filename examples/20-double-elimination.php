@@ -35,6 +35,7 @@ $upsetPlayed = false;
 
 while (!$engine->isComplete($state)) {
     $pairing = $engine->pairNextRound($state);
+    $state = $state->withRoundPaired($pairing);
 
     // "Play" the round: the better seed wins, except that the top seed
     // loses its opening match. That one upset sends the favourite the long
@@ -52,7 +53,7 @@ while (!$engine->isComplete($state)) {
         }
     }
 
-    $state = $state->withRoundPlayed($pairing, $results);
+    $state = $state->withAdditionalResults($results);
     $rounds['Round ' . $pairing->getRoundNumber() . ': ' . $pairing->getLabel()] = $results;
 }
 

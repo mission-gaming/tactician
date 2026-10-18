@@ -17,17 +17,32 @@
   State stored (bytes): 427
 -
   Request: 2
-  Did: paired and recorded round 1
+  Did: paired round 1
+  Events: 3
+  State stored (bytes): 712
+-
+  Request: 3
+  Did: recorded the results of round 1
   Events: 3
   State stored (bytes): 1104
 -
-  Request: 3
-  Did: paired and recorded round 2
+  Request: 4
+  Did: paired round 2
+  Events: 3
+  State stored (bytes): 1390
+-
+  Request: 5
+  Did: recorded the results of round 2
   Events: 3
   State stored (bytes): 1783
 -
-  Request: 4
-  Did: paired and recorded round 3
+  Request: 6
+  Did: paired round 3
+  Events: 3
+  State stored (bytes): 2069
+-
+  Request: 7
+  Did: recorded the results of round 3
   Events: 3
   State stored (bytes): 2462
 

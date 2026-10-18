@@ -106,9 +106,15 @@ DB::transaction(function () use ($stageId): void {
         // create one match model per event: round number, label, both roles
     }
 
-    $stage->update(['state_json' => $state->withRoundPlayed($pairing, [])->toJson()]);
+    // Recorded as paired: whatever happens while it is played comes after it
+    $stage->update(['state_json' => $state->withRoundPaired($pairing)->toJson()]);
 });
 ```
+
+The round is recorded in the step that pairs it, with
+`withRoundPaired()`, and its results in later steps with
+`withAdditionalResults()`. A withdrawal or an adjustment recorded while the
+round is played then comes after the round, as it did.
 
 Keep `state_json` as a plain string column or cast, and let only
 `StageState::toJson()` write it. A job that pairs a round is safe to

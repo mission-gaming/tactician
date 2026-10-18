@@ -672,20 +672,25 @@ $demonstrations = [
         $requests = exampleArray($results, 'Requests');
         $standings = exampleResult($results, 'Final standings, read by the last request', Standings::class);
 
-        expect(array_column($requests, 'Request'))->toBe([1, 2, 3, 4])
-            ->and(array_column($requests, 'Events'))->toBe([0, 3, 3, 3])
+        // A round is recorded by the request that pairs it, and its results
+        // by a later one
+        expect(array_column($requests, 'Request'))->toBe([1, 2, 3, 4, 5, 6, 7])
+            ->and(array_column($requests, 'Events'))->toBe([0, 3, 3, 3, 3, 3, 3])
             ->and(array_column($requests, 'Did'))->toBe([
                 'opened the stage',
-                'paired and recorded round 1',
-                'paired and recorded round 2',
-                'paired and recorded round 3',
+                'paired round 1',
+                'recorded the results of round 1',
+                'paired round 2',
+                'recorded the results of round 2',
+                'paired round 3',
+                'recorded the results of round 3',
             ]);
 
         $stored = array_column($requests, 'State stored (bytes)');
         $ascending = $stored;
         sort($ascending);
         expect($stored)->toBe($ascending)
-            ->and(array_unique($stored))->toHaveCount(4);
+            ->and(array_unique($stored))->toHaveCount(7);
 
         // Three rounds of three events: 9 results, each one a win and a loss
         expect($standings->getEntries())->toHaveCount(6)

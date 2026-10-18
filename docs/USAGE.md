@@ -2406,19 +2406,35 @@ $state = StageState::start($participants);
 while (!$engine->isComplete($state)) {
     $pairing = $engine->pairNextRound($state);
 
-    // ...play the round, then record the pairing with its results...
+    // Record the round as soon as it is paired...
+    $state = $state->withRoundPaired($pairing);
+
+    // ...play it, then add its results
     $results = [];
     foreach ($pairing->getEvents() as $event) {
         $results[] = new Result($event, $event->getParticipants()[0]);
     }
 
-    $state = $state->withRoundPlayed($pairing, $results);
+    $state = $state->withAdditionalResults($results);
 }
 
 // The uniform completion product: standings, results, byes, final round
 $outcome = $engine->getOutcome($state);
 $leader = $outcome->getStandings()->getEntries()[0];
 ```
+
+**Record a round when it is paired.** `withRoundPaired()` records the
+pairing, its byes included, with none of its results, and
+`withAdditionalResults()` adds them as they come; the engine waits for them
+before it pairs the next round. A state's clock is the rounds it holds: a
+withdrawal or an [adjustment](#adjustments) is recorded with the number of
+the last round recorded at that moment, and a round is read from what was
+recorded before it. Recorded when it is paired, the round comes before
+whatever happens while it is played, which is what happened (see
+[When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened)).
+`withRoundPlayed($pairing, $results)` records a round and its results in one
+call, where nothing can happen in between; `withRoundPaired($pairing)` is
+`withRoundPlayed($pairing, [])`, and the two store the same state.
 
 The outcome's standings are the table the rounds were paired from. A bye
 counts in it as it counts for pairing: the ranking value of an entry
@@ -3087,13 +3103,15 @@ while (!$engine->isComplete($state)) {
     $pairing = $engine->pairNextRound($state);
     echo "{$pairing->getLabel()}\n"; // 'quarterfinal', 'semifinal', 'final', ...
 
+    $state = $state->withRoundPaired($pairing);
+
     $results = [];
     foreach ($pairing->getEvents() as $event) {
         // ...play the match; an event that finishes level needs a decision
         // (see "Recording a Level Event" below)...
         $results[] = new Result($event, $event->getParticipants()[0]);
     }
-    $state = $state->withRoundPlayed($pairing, $results);
+    $state = $state->withAdditionalResults($results);
 }
 
 $outcome = $engine->getOutcome($state);
@@ -3203,6 +3221,7 @@ $double = new DoubleEliminationEngine();
 $doubleState = StageState::start($participants);
 while (!$double->isComplete($doubleState)) {
     $pairing = $double->pairNextRound($doubleState);
+    $doubleState = $doubleState->withRoundPaired($pairing);
 
     $results = [];
     foreach ($pairing->getEvents() as $event) {
@@ -3211,7 +3230,7 @@ while (!$double->isComplete($doubleState)) {
             && $pairing->getLabel() !== 'grand final reset';
         $results[] = new Result($event, $heidiWins ? $heidi : $event->getParticipants()[0]);
     }
-    $doubleState = $doubleState->withRoundPlayed($pairing, $results);
+    $doubleState = $doubleState->withAdditionalResults($results);
 }
 
 $doubleOutcome = $double->getOutcome($doubleState);

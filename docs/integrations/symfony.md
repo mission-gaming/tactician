@@ -470,12 +470,14 @@ same events as they come back in a restored state. Round numbers are the
 engine's.
 
 `pairNextRound()` does not change the state: asked twice, it returns the
-same round. The round becomes part of the state when you call
-`withRoundPlayed($pairing, $results)`, or when its fixtures are among the
-rows you build the state from. When results arrive one at a time, record
-the pairing as soon as you show it, with the results you have (none is
-allowed), and add the others with `withAdditionalResults()` as they
-come. Three things follow from that:
+same round. The round becomes part of the state when you record it, or
+when its fixtures are among the rows you build the state from. Record it
+as soon as you show it, with `withRoundPaired($pairing)`, and add its
+results with `withAdditionalResults()` as they come: a withdrawal or an
+adjustment recorded while the round is played then comes after the round,
+as it did. (`withRoundPlayed($pairing, $results)` records a round with its
+results in one call, for a round nothing can happen during.) Three things
+follow from that:
 
 - **Every engine waits for the round to finish.** While an event of a
   recorded round has no result, `pairNextRound()` is refused with an
@@ -542,7 +544,8 @@ $this->entityManager->wrapInTransaction(function () use ($stageId): void {
         // create one Match entity per event: round number, label, both roles
     }
 
-    $stage->setStateJson($state->withRoundPlayed($pairing, [])->toJson());
+    // Recorded as paired: whatever happens while it is played comes after it
+    $stage->setStateJson($state->withRoundPaired($pairing)->toJson());
 });
 ```
 
