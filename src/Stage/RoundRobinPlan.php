@@ -88,7 +88,7 @@ final readonly class RoundRobinPlan implements PairwisePlan
     #[Override]
     public function getAlgorithm(): string
     {
-        return 'round-robin';
+        return Algorithm::RoundRobin->value;
     }
 
     /**

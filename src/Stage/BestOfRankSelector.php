@@ -532,12 +532,31 @@ final readonly class BestOfRankSelector implements ProgressionSelector
     }
 
     /**
+     * The count, fixed: how many are selected does not depend on the
+     * outcome.
+     */
+    #[Override]
+    public function getYield(): SelectionYield
+    {
+        return SelectionYield::fixed($this->count);
+    }
+
+    /**
      * The count: how many are selected does not depend on the outcome.
      */
     #[Override]
     public function getSelectionSize(): int
     {
         return $this->count;
+    }
+
+    /**
+     * What the selection does with an order that results do not decide;
+     * Refused unless the selector was told otherwise.
+     */
+    public function getTiePolicy(): SelectionTiePolicy
+    {
+        return SelectionTiePolicy::from($this->ties);
     }
 
     /**

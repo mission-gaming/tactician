@@ -38,10 +38,28 @@ interface ProgressionSelector
     public function select(StageOutcome $outcome): array;
 
     /**
-     * How many participants this selector yields, when knowable without
-     * the outcome — used by ahead-of-time composition validation. Null
-     * means the count depends on the outcome (per-pool selections, round
-     * sizes).
+     * How many participants this selector yields, as a statement made
+     * ahead of any outcome: a fixed count, a count per pool, the winners or
+     * the losers of the last round of the stage before, or a number only the
+     * outcome gives. CompositionValidator checks a chain with it, through
+     * SelectionYield::countFrom(), and reads no other method of a selector.
+     *
+     * The statement is about select(): for an outcome of the shape it is
+     * given in which nobody has withdrawn, the list select() returns has
+     * that many participants, or select() refuses. A withdrawal is not
+     * known ahead of time, and it can make the list shorter: a bracket tie
+     * whose two entrants both withdrew sends nobody on (SettledTie), so the
+     * winners of a last round can be fewer, and an entrant who stands alone
+     * in it because of that has no loser beside it, so the losers can be
+     * fewer too.
+     */
+    public function getYield(): SelectionYield;
+
+    /**
+     * How many participants this selector yields whatever the outcome: the
+     * count of getYield() when its kind is SelectionYieldKind::Fixed, and
+     * null for every other kind (a per-pool selection, the winners or
+     * losers of a round), whose number depends on the stage before.
      */
     public function getSelectionSize(): ?int;
 }

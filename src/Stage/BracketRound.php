@@ -82,12 +82,22 @@ final readonly class BracketRound
     }
 
     /**
-     * The English label of the round (see BracketRoundLabel): the label the
-     * engine puts on the round when it pairs it.
+     * The label of the round, from its place in the bracket
+     * (RoundLabel::ofBracketRound()): the label the engine puts on the round
+     * when it pairs it (RoundPairing::getRoundLabel()).
+     */
+    public function getRoundLabel(): RoundLabel
+    {
+        return RoundLabel::ofBracketRound($this->side, $this->round, $this->roundsOnSide, $this->slotCount);
+    }
+
+    /**
+     * The English text of the label (getRoundLabel()->toString()): the text
+     * the engine writes on the round when it pairs it.
      */
     public function getLabel(): string
     {
-        return BracketRoundLabel::of($this->side, $this->round, $this->roundsOnSide, $this->slotCount);
+        return $this->getRoundLabel()->toString();
     }
 
     /**
