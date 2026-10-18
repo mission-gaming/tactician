@@ -311,7 +311,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $this->standingsCalculator,
             $this->entrantsOf($state),
             $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
-            $reading->placement,
+            $reading,
+            $this->options->legsPerTie,
             $state->getAdjustments()
         );
     }
@@ -333,8 +334,17 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * The records are win/draw/loss records over every result of both
      * brackets. A single-leg event that finished level and was decided by
      * its tie decision counts in them as a win for the participant who
-     * advanced; the legs of a two-legged tie are counted as recorded. The
-     * outcome's results are the results as recorded.
+     * advanced; the legs of a two-legged tie are counted as recorded. A bye
+     * is no win in them (StandingEntry::getByes() counts it): the ranking
+     * value credits each one with what the ranking strategy says a bye is
+     * worth, once for each leg of a tie, as single elimination does. The
+     * byes are every advance without a tie: those the rounds list, and an
+     * advance through a stage that had no tie to play and took no round
+     * number (a losers round whose entrants all stand alone), which the
+     * outcome's bye counts do not have. A tiebreaker between the tied
+     * participants forms its tied sets inside a tier
+     * (StandingsCalculator::calculateWith()). The outcome's results are the
+     * results as recorded.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
@@ -353,7 +363,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $this->standingsCalculator,
                 $entrants,
                 $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
-                $reading->placement,
+                $reading,
+                $this->options->legsPerTie,
                 $state->getAdjustments()
             ),
             $state->getResults(),
@@ -380,6 +391,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
+        $this->requireByesToBeCreditable($this->standingsCalculator, count($entrants));
 
         // The bracket is read as it stood when it was over: a withdrawal
         // after its last tie was decided takes nothing back (see
@@ -671,6 +683,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             if ($wentOn instanceof Participant) {
                 $slots[$index] = $wentOn;
                 $revived[$index] = $wentOn;
+                // It went on from a tie that was not played: a bye, as in
+                // single elimination
+                $reading->byes[$wentOn->getId()] = ($reading->byes[$wentOn->getId()] ?? 0) + 1;
             }
         }
         $slots = array_values($slots);
@@ -708,6 +723,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             null,
             $pairedAt
         );
+        foreach ($read['unplayed'] as $advanced) {
+            $reading->byes[$advanced->getId()] = ($reading->byes[$advanced->getId()] ?? 0) + 1;
+        }
 
         if ($claimed && $recorded instanceof RoundPairing) {
             if (count($read['units']) !== count($pairs)) {

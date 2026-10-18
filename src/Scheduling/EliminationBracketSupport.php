@@ -19,7 +19,7 @@ use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\TieResolution;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\EntryOrder;
-use MissionGaming\Tactician\Standings\StandingEntry;
+use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 
@@ -279,6 +279,42 @@ trait EliminationBracketSupport
     }
 
     /**
+     * Refuse a bracket that will have a bye it cannot credit.
+     *
+     * A field that is not a power of two has byes in its first round, and
+     * every table of the bracket credits each one (the ranking a re-seeded
+     * round is folded from, and the placement table), which needs a
+     * ranking strategy that says what a bye is worth
+     * (RankingStrategyWithByeValue; StandingsCalculator::calculateWith()).
+     * The entrant list says all of that before a round is paired, so the
+     * bracket is refused then, on every call, and not after its first
+     * round has been played, when it could no longer be finished.
+     *
+     * @throws InvalidConfigurationException When the field is not a power of two and the ranking
+     *                                       strategy does not say what a bye is worth (reason
+     *                                       `IncompatibleOptions`)
+     */
+    private function requireByesToBeCreditable(StandingsCalculator $calculator, int $participantCount): void
+    {
+        if ($participantCount === $this->bracketSize($participantCount)) {
+            return;
+        }
+
+        $rankingStrategy = $calculator->getRankingStrategy();
+        if ($rankingStrategy instanceof RankingStrategyWithByeValue) {
+            return;
+        }
+
+        throw new InvalidConfigurationException(
+            "A bracket of {$participantCount} entrants has byes, and crediting a bye requires a ranking strategy that"
+                . ' says what a bye is worth: nothing else says what advancing without a tie counts for on its scale.'
+                . ' Use a RankingStrategyWithByeValue (WinDrawLossRanking is one), or a field that is a power of two',
+            ['ranking_strategy' => $rankingStrategy::class, 'participant_count' => $participantCount],
+            reason: InvalidConfigurationReason::IncompatibleOptions
+        );
+    }
+
+    /**
      * The table of a finished bracket, in placement order.
      *
      * The bracket decides the tiers: the entrant who advanced from the
@@ -290,6 +326,17 @@ trait EliminationBracketSupport
      * leaves two of them level, the position in the entrant list decides.
      * Participants the bracket did not place share a last tier.
      *
+     * The calculator is given the tiers (StandingsCalculator::calculateWith()),
+     * so a tiebreaker between the tied participants forms its tied sets
+     * inside a tier: an event against an entrant of another tier counts in
+     * none of its values.
+     *
+     * Each bye of the bracket (an entrant who went on without a tie being
+     * played) is credited with what the ranking strategy says a bye is
+     * worth, once for each leg of a tie, as the ranking a re-seeded
+     * bracket folds its rounds from credits it: one rule for every table
+     * of a bracket (docs/adr/0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md).
+     *
      * The adjustments of the stage are in the ranking values, and each
      * entry shows its own as a figure. Like every record, an adjustment
      * orders entrants inside a tier and moves nobody from one tier to
@@ -297,34 +344,34 @@ trait EliminationBracketSupport
      *
      * @param array<Participant> $entrants Every participant of the stage, in list order
      * @param array<Result> $results The results the records are computed from
-     * @param array<int|string, int> $placement The tier of each placed participant by ID, 0 best
+     * @param BracketReading $reading The bracket as read: its placement (the tier of each placed
+     *                                participant by ID, 0 best) and its byes
+     * @param int $legsPerTie How many times a bye is credited: the legs of the tie it stands for
      * @param array<Adjustment> $adjustments The adjustments recorded on the stage state
      *
-     * @throws InvalidConfigurationException Not thrown here: the table is given no bye, which is
-     *                                       all the calculator refuses
+     * @throws InvalidConfigurationException When the bracket has a bye and the ranking strategy does
+     *                                       not say what a bye is worth, or the calculator is a
+     *                                       subclass with a tiebreaker between the tied
+     *                                       participants (reason `IncompatibleOptions` for both)
      */
     private function placementStandings(
         StandingsCalculator $calculator,
         array $entrants,
         array $results,
-        array $placement,
+        BracketReading $reading,
+        int $legsPerTie,
         array $adjustments = []
     ): Standings {
-        $table = $calculator
-            ->calculateWith($entrants, $results, [], $adjustments)
-            ->withTiedSetsOrderedBy($entrants);
-
+        $placement = $reading->placement;
         $unplaced = $placement === [] ? 0 : max($placement) + 1;
-        $rows = [];
-        foreach (array_values($table->getEntries()) as $index => $entry) {
-            $rows[] = [$placement[$entry->getParticipant()->getId()] ?? $unplaced, $index, $entry];
+        $tiers = [];
+        foreach ($entrants as $entrant) {
+            $tiers[$entrant->getId()] = $placement[$entrant->getId()] ?? $unplaced;
         }
-        usort($rows, static fn(array $first, array $second): int => [$first[0], $first[1]] <=> [$second[0], $second[1]]);
 
-        return new Standings(
-            array_map(static fn(array $row): StandingEntry => $row[2], $rows),
-            array_map(static fn(array $row): int => $row[0], $rows)
-        );
+        return $calculator
+            ->calculateWith($entrants, $results, $reading->byes, $adjustments, $legsPerTie, $tiers)
+            ->withTiedSetsOrderedBy($entrants);
     }
 
     /**

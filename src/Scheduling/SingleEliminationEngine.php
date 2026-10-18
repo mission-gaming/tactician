@@ -21,7 +21,6 @@ use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\Adjustment;
-use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use Override;
@@ -364,7 +363,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             $this->standingsCalculator,
             $this->entrantsOf($state),
             $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
-            $reading->placement,
+            $reading,
+            $this->options->legsPerTie,
             $state->getAdjustments()
         );
     }
@@ -403,11 +403,18 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * difference, scores-for), and where that leaves them level, by their
      * position in the participant list. Standings::getTiedSets() reports
      * those. The records are win/draw/loss records over the bracket's
-     * results: a bye is no win in them, the legs of a two-legged tie count
-     * as recorded, and a single-leg event that finished level and was
-     * decided by its tie decision counts as a win for the participant who
-     * advanced. The outcome's results are the results as recorded, the
-     * draw included.
+     * results: the legs of a two-legged tie count as recorded, and a
+     * single-leg event that finished level and was decided by its tie
+     * decision counts as a win for the participant who advanced. A bye is
+     * no win in them (StandingEntry::getByes() counts it): the ranking
+     * value credits each one with what the ranking strategy says a bye is
+     * worth, once for each leg of a tie, as the ranking of a re-seeded
+     * round does. The byes are every advance without a tie, also one
+     * through a round no round number was taken for, which the outcome's
+     * bye counts (the byes the rounds list) do not have. A tiebreaker
+     * between the tied participants forms its tied sets inside a tier
+     * (StandingsCalculator::calculateWith()). The outcome's results are
+     * the results as recorded, the draw included.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
@@ -426,7 +433,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $this->standingsCalculator,
                 $entrants,
                 $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
-                $reading->placement,
+                $reading,
+                $this->options->legsPerTie,
                 $state->getAdjustments()
             ),
             $state->getResults(),
@@ -471,7 +479,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
-        $this->requireByesToBeCreditable(count($entrants));
+        $this->requireByesToBeCreditable($this->standingsCalculator, count($entrants));
         $this->requireAThirdPlaceToDecide(count($entrants));
         $this->requireNoThirdPlaceTieRecorded($state);
 
@@ -654,6 +662,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             $previousUnits = $read['units'];
             $slots = array_map(static fn(array $unit): ?Participant => $unit['winner'], $read['units']);
         }
+
+        // The table credits the byes the ranking of a re-seeded round does
+        $reading->byes = $byes;
 
         // The entrant who advanced from the final is in the first tier,
         // and everyone else in the tier of the round they went out in:
@@ -871,42 +882,6 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 );
             }
         }
-    }
-
-    /**
-     * Refuse a re-seeded bracket that will have a bye it cannot credit.
-     *
-     * A field that is not a power of two has byes in its first round, and
-     * the ranking before the second round credits each one, which needs a
-     * ranking strategy that says what a bye is worth
-     * (RankingStrategyWithByeValue; StandingsCalculator::calculateWith()).
-     * The entrant list says all of that before a round is paired, so the
-     * bracket is refused then, on every call, and not after its first
-     * round has been played.
-     *
-     * @throws InvalidConfigurationException When the bracket is re-seeded, the field is not a
-     *                                       power of two and the ranking strategy does not say
-     *                                       what a bye is worth
-     */
-    private function requireByesToBeCreditable(int $participantCount): void
-    {
-        if (!$this->options->reseedEachRound || $participantCount === $this->bracketSize($participantCount)) {
-            return;
-        }
-
-        $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
-        if ($rankingStrategy instanceof RankingStrategyWithByeValue) {
-            return;
-        }
-
-        throw new InvalidConfigurationException(
-            "A re-seeded bracket of {$participantCount} entrants has byes, and crediting a bye requires a ranking strategy"
-                . ' that says what a bye is worth: nothing else says what advancing without a tie counts for on its scale.'
-                . ' Use a RankingStrategyWithByeValue (WinDrawLossRanking is one), a field that is a power of two, or a'
-                . ' bracket on a fixed path',
-            ['ranking_strategy' => $rankingStrategy::class, 'participant_count' => $participantCount],
-            reason: InvalidConfigurationReason::IncompatibleOptions
-        );
     }
 
     /**

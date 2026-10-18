@@ -548,23 +548,29 @@ describe('re-seeding an elimination bracket', function (): void {
 
     // The bracket knows from its entrant list that it has byes, so it
     // refuses before the first round is paired, and not after it has been
-    // played, when the bracket could no longer be finished.
-    it('refuses a bye it cannot credit on a scale that has no value for a bye, before any round is paired', function (int $size): void {
-        $engine = new SingleEliminationEngine(
-            new EliminationOptions(reseedEachRound: true),
-            new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
-                #[Override]
-                public function rank(Participant $participant, array $results): float
-                {
-                    return (float) count($results);
-                }
-            })
-        );
+    // played, when the bracket could no longer be finished. Every bracket
+    // credits its byes in its table, re-seeded or not, so every bracket is
+    // refused (ADR 0014).
+    it('refuses a bye it cannot credit on a scale that has no value for a bye, before any round is paired', function (string $bracket, int $size): void {
+        $calculator = new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
+            #[Override]
+            public function rank(Participant $participant, array $results): float
+            {
+                return (float) count($results);
+            }
+        });
+        $engine = match ($bracket) {
+            're-seeded' => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator),
+            'fixed path' => new SingleEliminationEngine(new EliminationOptions(), $calculator),
+            'double elimination' => new DoubleEliminationEngine(new EliminationOptions(), $calculator),
+            default => throw new LogicException("No bracket {$bracket}."),
+        };
         $state = StageState::start(positionField($size, 1));
 
         $calls = [
             'pairNextRound' => fn(): mixed => $engine->pairNextRound($state),
             'isComplete' => fn(): mixed => $engine->isComplete($state),
+            'getStandings' => fn(): mixed => $engine->getStandings($state),
             'getOutcome' => fn(): mixed => $engine->getOutcome($state),
         ];
         foreach ($calls as $call => $ask) {
@@ -579,9 +585,11 @@ describe('re-seeding an elimination bracket', function (): void {
 
             throw new LogicException("{$call}() went on with a bye that cannot be credited.");
         }
-    })->with([[3], [5], [6], [7], [12]]);
+    })
+        ->with(['re-seeded', 'fixed path', 'double elimination'])
+        ->with([[3], [5], [6], [7], [12]]);
 
-    it('pairs a field that has no bye on any scale, re-seeded or not', function (int $size): void {
+    it('pairs a field that has no bye on any scale, whatever the bracket', function (int $size): void {
         $calculator = new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
             #[Override]
             public function rank(Participant $participant, array $results): float
@@ -590,11 +598,14 @@ describe('re-seeding an elimination bracket', function (): void {
             }
         });
 
-        // A power of two has no bye to credit; a fixed path ranks nobody
-        expect((new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator))
-            ->pairNextRound(StageState::start(positionField($size, 1)))->getEvents())->toHaveCount($size / 2)
-            ->and((new SingleEliminationEngine(new EliminationOptions(), $calculator))
-                ->pairNextRound(StageState::start(positionField($size + 1, 1)))->getRoundNumber())->toBe(1);
+        // A power of two has no bye to credit
+        foreach ([
+            new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator),
+            new SingleEliminationEngine(new EliminationOptions(), $calculator),
+            new DoubleEliminationEngine(new EliminationOptions(), $calculator),
+        ] as $engine) {
+            expect($engine->pairNextRound(StageState::start(positionField($size, 1)))->getEvents())->toHaveCount($size / 2);
+        }
     })->with([[2], [4], [8]]);
 
     // A state stored by 0.2.x. Five entrants, re-seeded: 0.2.x ranked the

@@ -110,6 +110,15 @@ final class BracketReading
     public array $placement = [];
 
     /**
+     * How many times each participant went on without a tie being played,
+     * by ID: the byes of the bracket as far as the walk read it, which the
+     * table credits (see EliminationBracketSupport::placementStandings()).
+     *
+     * @var array<int|string, int>
+     */
+    public array $byes = [];
+
+    /**
      * The ties of the last round the walk read to its end, in bracket
      * order: of a finished bracket, the ties that decided it.
      *
