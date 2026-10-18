@@ -321,6 +321,36 @@ describe('StructuralOrder', function (): void {
             ->and(StructuralOrder::of(9, $line, [])[0])->toBe(4);
     });
 
+    it('leaves the classes past its work limit in the order of their current positions, where those are given', function (): void {
+        // The line of nine again, its events now the later the lower their
+        // numbers: within each class left at the limit the participant with
+        // the earlier current positions goes first
+        $line = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8]];
+        $current = array_map(static fn(array $event): array => [$event[0], $event[1], 8 - $event[0], 0], $line);
+
+        expect(StructuralOrder::of(9, $line, [], 1, $current))->toBe([6, 5, 4, 3, 2, 7, 1, 8, 0]);
+    });
+
+    it('lets the current positions decide nothing more once their refinement is past the work limit', function (): void {
+        // A round robin of six with one round pinned: the six are tried in
+        // number order as the one put first, all with equal descriptions,
+        // and with the whole limit the current positions choose 1. A trial
+        // whose refinement with the positions is cut short describes
+        // nothing, so wherever the limit falls the choice is 1, or 0 when
+        // it falls before 1 is compared. When an empty description counted
+        // as the smallest, the trial under way when the limit was passed
+        // was chosen: 2, 3, 4 or 5, depending on the limit alone
+        [$events, $pins, $current] = roundRobinLaidOut(6, 1, 1);
+
+        $firsts = [];
+        for ($limit = 0; $limit <= 1_200; $limit += 6) {
+            $firsts[StructuralOrder::of(6, $events, $pins, $limit, $current)[0]] = true;
+        }
+
+        expect(StructuralOrder::of(6, $events, $pins, StructuralOrder::WORK_LIMIT, $current)[0])->toBe(1)
+            ->and(array_keys($firsts))->toEqualCanonicalizing([0, 1]);
+    });
+
     it('orders a round robin of forty with one round played within its work limit', function (): void {
         // The hardest request of that size for the ordering: everybody has
         // the same events and the same pin, and no two can be exchanged,
@@ -343,6 +373,50 @@ describe('StructuralOrder', function (): void {
         [$events, $pins] = renumbered(40, $events, $pins, 7);
 
         expect(StructuralOrder::of(40, $events, $pins))->toBe(StructuralOrder::of(40, $events, $pins, PHP_INT_MAX));
+    });
+
+    it('never cuts the refinement short for reading the current positions', function (): void {
+        // The same round robin of forty, every event where it was laid out.
+        // Reading the positions takes about twice the work and is past the
+        // limit here, but it is counted apart: the refinement without them
+        // still finishes, and the order is the one without them up to a
+        // symmetry of the request. Counted together, the refinement was
+        // cut short and the participants left fell to their positions alone
+        $events = [];
+        $pins = [];
+        $current = [];
+        for ($i = 0; $i < 40; ++$i) {
+            for ($j = $i + 1; $j < 40; ++$j) {
+                $round = $j === 39 ? (2 * $i) % 39 : ($i + $j) % 39;
+                if ($round === 0) {
+                    $pins[] = [$i, $j, 0, 0];
+                } else {
+                    $events[] = [$i, $j];
+                    $current[] = [$i, $j, $round, 0];
+                }
+            }
+        }
+        /**
+         * @param list<int> $order
+         *
+         * @return list<string>
+         */
+        $form = static function (array $order) use ($events, $pins): array {
+            $place = array_flip($order);
+            $written = [];
+            foreach ($events as [$a, $b]) {
+                $written[] = min($place[$a], $place[$b]) . '-' . max($place[$a], $place[$b]);
+            }
+            foreach ($pins as [$a, $b]) {
+                $written[] = min($place[$a], $place[$b]) . '-' . max($place[$a], $place[$b]) . ' pinned';
+            }
+            sort($written);
+
+            return $written;
+        };
+
+        expect($form(StructuralOrder::of(40, $events, $pins, StructuralOrder::WORK_LIMIT, $current)))
+            ->toBe($form(StructuralOrder::of(40, $events, $pins)));
     });
 
     it('orders no participants as nothing, and participants with no events by their numbers', function (): void {

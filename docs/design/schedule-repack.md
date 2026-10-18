@@ -965,7 +965,7 @@ signature changed.
       three rounds played came back as other schedules under other
       participant ids at a budget below the default. Left whole it costs
       what it costs at the default, at most about a tenth of a second
-      whatever the request (12 milliseconds on the seasons of 40 measured
+      whatever the request, as much again under `LeastChurn` (12 milliseconds on the seasons of 40 measured
       here), and the invariance holds at every budget as decision 39
       states it, with its two exceptions and no third: 2,840 requests
       at budgets of 1, 100, 2,000 and 20,000 steps, each under three
@@ -1359,7 +1359,18 @@ golden fixtures are untouched.
     kept, until no member is alike; between trials with equal
     descriptions, the one whose classes refine with the positions to the
     smaller description is chosen. That refinement counts its work
-    apart, against the same limit, and settles nothing but the choice.
+    apart, against the same limit, and settles nothing but the choice;
+    one cut short by the limit decides nothing, and the trial chosen
+    before it stays (when an empty description counted as the smallest,
+    the trial under way at the limit was chosen, whichever it was). It
+    takes about twice the work of the refinement without positions: a
+    complete round robin with one round played and every other event
+    where it was laid out takes 1,370,000 at 34 participants and
+    2,610,000 at 40, so from 36 the positions decide only part of the
+    order, and the moved events of such a request can follow the ids
+    again (one of 36 with a few events elsewhere moved 85 to 147 under
+    four namings, one of 34 moved 72 under each). Sizing it for 40
+    would take about a tenth of a second more in that case.
     Events of the same two participants are ordered by
     current position before id (an event that states none last). The
     refinement itself does not read them, so the classes, and the order

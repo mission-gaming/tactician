@@ -67,7 +67,10 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * nor past the work limit below. The refinements that read the current
  * positions count their work apart, against the same limit, so that
  * reading them never cuts the refinement without them short; past it
- * they decide no more.
+ * they decide no more, and a choice they made before stays. They need
+ * about twice the work of the refinement without them, so the hardest
+ * request (below) is past their limit from 36 participants, and from
+ * there its current positions decide only part of the order.
  *
  * The work is bounded by a count of its own (WORK_LIMIT: one for every
  * participant looked at and one for each of its opponents), not by a step
@@ -81,7 +84,8 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * the default (StepBudget::workLimit()): a share of it would send
  * requests back to their ids that the whole limit orders, and the ids
  * would decide more at a small budget than at a large one. It costs at
- * most about a tenth of a second whatever the request and the budget.
+ * most about a tenth of a second whatever the request and the budget,
+ * and as much again where current positions are given.
  *
  * @internal
  */
@@ -244,8 +248,9 @@ final class StructuralOrder
             // The description of the best trial refined with the current
             // positions, made only once another trial is level with it
             $bestPlaced = null;
-            // Decided once for every trial of this class, so that all of
-            // them are compared alike
+            // Whether the current positions still decide between trials
+            // with equal descriptions: not once their refinement is past
+            // the limit
             $byPlaced = $this->current !== [] && $this->placedWork <= $this->workLimit;
             foreach ($class as $first) {
                 if ($this->work > $this->workLimit) {
@@ -266,9 +271,15 @@ final class StructuralOrder
                     $bestDescription = $description;
                     $bestPlaced = null;
                 } elseif ($byDescription === 0 && $byPlaced) {
-                    $bestPlaced ??= $this->refineWithPositions($best)[1];
-                    $placed = $this->refineWithPositions($refined)[1];
-                    if (strcmp($placed, $bestPlaced) < 0) {
+                    // A refinement cut short by its limit describes nothing,
+                    // so from there on the positions decide no more and the
+                    // trial already chosen stays
+                    if ($bestPlaced === null) {
+                        [, $bestPlaced, $byPlaced] = $this->refineWithPositions($best);
+                    }
+                    [, $placed, $finished] = $byPlaced ? $this->refineWithPositions($refined) : [[], '', false];
+                    $byPlaced = $finished;
+                    if ($byPlaced && strcmp($placed, $bestPlaced) < 0) {
                         $best = $refined;
                         $bestPlaced = $placed;
                     }

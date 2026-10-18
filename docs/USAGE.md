@@ -5282,7 +5282,13 @@ Three limits are worth knowing:
   current positions say nothing either (participants they do not tell
   apart even when each is put first in turn and the others are told
   apart by where they meet it, or no current positions at all), and in
-  the two exceptions given there. The schedule made with no objective, which
+  the two exceptions given there. Reading the current positions has a
+  work limit of its own, as large as the ordering's, and takes about
+  twice the work: in a complete round robin with one round played they
+  stop deciding from 36 participants, and the count of moved events can
+  then follow the ids again (85 to 147 under four namings of one such
+  round robin of 36 with a few events elsewhere, 72 under each of one
+  of 34). The schedule made with no objective, which
   no outcome with an objective is worse than on events placed or gap
   slots, is made in this order too: the same schedule up to a symmetry
   of the request, and on all of those requests the same events placed,
@@ -5504,7 +5510,8 @@ events than the 12 positions: 36 milliseconds at the default, 160 to
 step the largest was a few milliseconds (12 for 11). What no budget
 shortens is in the first column: reading the request, ordering the
 participants (bounded by a fixed limit of its own, at most about a
-tenth of a second and 12 milliseconds on these seasons; it is left
+tenth of a second and 12 milliseconds on these seasons, and as much
+again under the objective `LeastChurn`; it is left
 whole so that the ids of a request decide no more at a small budget
 than at a large one), the passes over the events that are not searches,
 one position check for every event and position in the layout and the

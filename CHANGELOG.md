@@ -1560,7 +1560,10 @@ entry on the engine fingerprint.
   the ids would decide only between participants a symmetry of the
   request exchanges; renaming every participant and event changed no
   figure on 3,455 generated requests, double round robins among them,
-  where 19 of 560 changed before the current positions decided. Without
+  where 19 of 560 changed before the current positions decided. Reading
+  the current positions has a work limit of its own, which a complete
+  round robin with one round played passes from 36 participants; the
+  moved events of such a request can then follow the ids. Without
   `LeastChurn` the order is the one a request with no objective has, and
   the count of moved events can depend on the ids, because the schedule
   is the same under other ids only up to a symmetry of the request.
