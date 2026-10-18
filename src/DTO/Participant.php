@@ -26,7 +26,9 @@ readonly class Participant
      * participants share an ID.
      *
      * @param string $id The identity: any string but the empty one
-     * @param string $label Display name; the library orders nothing by it
+     * @param string|null $label Display name; the library orders nothing by it. Null, or left
+     *                           out, for a participant with no name of its own: getLabel()
+     *                           then gives the ID
      * @param int|null $seed Seeding number, lower is better; null for unseeded. Stages seed
      *                       entrants from their position in the list, not from this
      * @param array<string, mixed> $metadata Free-form data; MetadataConstraint reads the key it is given
@@ -35,7 +37,7 @@ readonly class Participant
      */
     public function __construct(
         private string $id,
-        private string $label,
+        private ?string $label = null,
         private ?int $seed = null,
         private array $metadata = []
     ) {
@@ -53,11 +55,22 @@ readonly class Participant
     }
 
     /**
-     * The display name.
+     * The display name: the label the participant was given, or its ID
+     * where it was given none (hasLabel()). The library writes it wherever
+     * it names a participant for a person to read (diagnostics, messages).
      */
     public function getLabel(): string
     {
-        return $this->label;
+        return $this->label ?? $this->id;
+    }
+
+    /**
+     * Whether the participant was given a label of its own; false where
+     * getLabel() gives the ID.
+     */
+    public function hasLabel(): bool
+    {
+        return $this->label !== null;
     }
 
     /**
@@ -123,25 +136,29 @@ readonly class Participant
      * JSON, say) is up to the values in it. The first key is
      * `format_version`, the version of this form (1). A form that holds
      * participants (a schedule, a stage state) writes them without it: one
-     * array has one version, at its top.
+     * array has one version, at its top. The key `label` is written only
+     * for a participant that was given one (hasLabel()), so a participant
+     * with a label has the keys it has always had.
      *
-     * @return array{format_version: int, id: string, label: string, seed: int|null, metadata: array<string, mixed>}
+     * @return array{format_version: int, id: string, label?: string, seed: int|null, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
-        return [
-            PlainData::VERSION_KEY => PlainData::VERSION,
-            'id' => $this->id,
-            'label' => $this->label,
-            'seed' => $this->seed,
-            'metadata' => $this->metadata,
-        ];
+        $data = [PlainData::VERSION_KEY => PlainData::VERSION, 'id' => $this->id];
+        if ($this->label !== null) {
+            $data['label'] = $this->label;
+        }
+        $data['seed'] = $this->seed;
+        $data['metadata'] = $this->metadata;
+
+        return $data;
     }
 
     /**
      * Recreate a participant from the array form toArray() produces.
      *
-     * 'id' and 'label' are required; a missing 'seed' is null and a missing
+     * 'id' is required. A missing or null 'label' is a participant without
+     * one (hasLabel() is false), a missing 'seed' is null and a missing
      * 'metadata' is empty. Any other key is refused: data of your own
      * belongs in the metadata.
      *
@@ -149,7 +166,7 @@ readonly class Participant
      *
      * @throws InvalidInputException When the format version is not one this release reads,
      *                               a key is unknown, the ID is not a non-empty string,
-     *                               the label is not a string, the seed is neither an
+     *                               the label is neither a string nor null, the seed is neither an
      *                               integer nor null, or the metadata is not an array
      */
     public static function fromArray(array $data): self
@@ -158,8 +175,12 @@ readonly class Participant
 
         $id = $data['id'] ?? null;
         $label = $data['label'] ?? null;
-        if (!is_string($id) || $id === '' || !is_string($label)) {
+        if (!is_string($id) || $id === '') {
+            // The message is the one this refusal always had
             throw new InvalidInputException('Participant data requires a non-empty string id and a string label');
+        }
+        if ($label !== null && !is_string($label)) {
+            throw new InvalidInputException('Participant label must be a string or null');
         }
 
         $seed = $data['seed'] ?? null;
