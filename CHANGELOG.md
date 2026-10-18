@@ -1843,6 +1843,44 @@ entry on the engine fingerprint.
   (`isProvenShortest()`). It tries the numbers one at a time, upwards.
   New example: `examples/29-rescheduling-with-least-churn.php`.
 
+- **Typed identifiers for configuration-driven applications
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** An
+  application that maps its configuration to the library no longer matches
+  on strings it copied:
+  - `Stage\Algorithm` has a case for every algorithm identifier
+    (`round-robin`, `swiss`, `pot-draw`, `single-elimination`,
+    `double-elimination`), backed by the string `StagePlan::getAlgorithm()`
+    returns and a generated schedule records under `algorithm`.
+  - `Stage\MatchOutcomeMode` and `Stage\RankRangeMode` are the modes of the
+    two selectors (`MatchOutcomeSelector::getMode()`,
+    `RankRangeSelector::getMode()`), and `Stage\SelectionTiePolicy` is what a
+    rank selection does with an order results leave open
+    (`getTiePolicy()` on `RankRangeSelector` and `BestOfRankSelector`). Each
+    is backed by the identifier of the plain-data form, which is unchanged.
+  - `Stage\RoundLabel` reads the label of a bracket round as typed data, a
+    `Stage\RoundLabelKind` and, for 'round of', 'winners round' and 'losers
+    round', a number: `RoundPairing::getRoundLabel()`,
+    `RoundLabel::ofRound()` for the `DTO\Round` of an event, and
+    `RoundLabel::fromString()`. `toString()` gives the engine's text back.
+    The engines write the labels they wrote.
+  - `DTO\MetadataKey` holds the metadata keys the library writes on a
+    schedule, a round and an event, as constants with the strings it has
+    always written.
+- **Every progression selector states its yield
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `ProgressionSelector::getYield()` returns a `Stage\SelectionYield`: a
+  fixed count, a count per pool, the winners or the losers of the last round
+  of the stage before, or a number only the outcome gives
+  (`Stage\SelectionYieldKind`). `SelectionYield::countFrom()` gives the
+  number for a stage before of a given shape. `CompositionValidator` now
+  counts every transition by it, a selector of an application's included,
+  where it recognised the match-outcome selector by its class and counted
+  any other selector only by a fixed size. A per-group rank range, which
+  always passed unchecked, is checked where the transition declares the
+  pools of the stage before (`StageTransition`'s new `sourcePools`); without
+  them it passes as before. Every chain the validator accepted or refused
+  before gets the same answer.
+
 ### Changed
 
 - **Breaking: the roles of a round robin are balanced where possible by
@@ -3258,6 +3296,16 @@ entry on the engine fingerprint.
   until the job took 25 to 40 minutes under Xdebug. The `Mutation testing`
   workflow still uses Xdebug, and `composer test-coverage` works with either
   driver as before. Nothing a consumer installs changes.
+
+- **Breaking for a progression selector of an application's:
+  `ProgressionSelector` has a new method, `getYield()`
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** The
+  interface is experimental. A class that implements it adds the method and
+  returns what it yields: `SelectionYield::fixed($n)` where
+  `getSelectionSize()` returns `$n`, and otherwise the kind that says what
+  the number depends on, `SelectionYield::dependsOnOutcome()` where nothing
+  can be said. `getSelectionSize()` stays, and is the count of a fixed
+  yield.
 
 ### Deprecated
 
