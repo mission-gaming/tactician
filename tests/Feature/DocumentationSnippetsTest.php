@@ -786,6 +786,20 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["1. Bob (2-0)\n2. Alice (1-1)\n3. Carol (1-1)\n4. Dave (0-2)\nThird: Carol\nWon the bracket: Bob\n"],
             [],
         ],
+        // The bracket view of a field of five, before the first round and after it
+        'a bracket drawn from its view, before and after its first round' => [
+            'docs/USAGE.md',
+            '$draw(StageState::start($field));',
+            [
+                "quarterfinal: Ana v bye (bye) | Di v Ed (to-be-paired) | Ben v bye (bye) | Cy v bye (bye)\n"
+                . "semifinal: Ana v advancer-of main:1:2 (awaiting-entrants) | Ben v Cy (to-be-paired)\n"
+                . "final: advancer-of main:2:1 v advancer-of main:2:2 (awaiting-entrants)\n"
+                . "quarterfinal: Ana v bye (bye) | Di v Ed (decided) | Ben v bye (bye) | Cy v bye (bye)\n"
+                . "semifinal: Ana v Ed (to-be-paired) | Ben v Cy (to-be-paired)\n"
+                . "final: advancer-of main:2:1 v advancer-of main:2:2 (awaiting-entrants)\n",
+            ],
+            [],
+        ],
         'a selection that results do not decide is refused, and says what is undecided' => [
             'docs/USAGE.md',
             'RankRangeSelector::topPerGroup(2)->select($undecided);',

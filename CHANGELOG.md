@@ -941,6 +941,50 @@ entry on the engine fingerprint.
 
 ### Added
 
+- **The structured bracket view: `getBracket()`
+  ([#57](https://github.com/mission-gaming/tactician/issues/57),
+  [#93](https://github.com/mission-gaming/tactician/issues/93)).** Both
+  elimination engines implement a new capability interface,
+  `Stage\BracketViewEngine`, whose one method `getBracket(StageState)`
+  returns a `Stage\Bracket`: every round of every side of the bracket, the
+  rounds still to come included, each with its nodes, and each node with
+  its slots, where it stands and who went through. A bracket with byes,
+  two-legged ties, a third-place tie or a losers bracket can be drawn from
+  it alone, at any point of the stage: it is built from the same walk
+  through the state as `getReadiness()`, `getRecordedRounds()`,
+  `getStandings()` and `getOutcome()`, agrees with them, and throws nothing
+  for a round in play, a level tie awaiting its decider, a withdrawal or a
+  void tie. New types, all experimental:
+  - `Bracket` (`getRounds()`, `getRoundsOn()`, `getSides()`, `getNodes()`,
+    `getNode()`, `getNextRound()`, `isComplete()`), `BracketRound` (side,
+    structural round, slot count, label, round number, `isManual()`,
+    `isNext()`), `BracketNode` (ID `<side>:<round>:<position>`, kind,
+    slots, status, advancer, losers, recorded events) and `BracketSlot`
+    (entrant or placeholder, source, source nodes, re-seeded, draw
+    position, withdrawn);
+  - the enums `BracketSide` (`Main`, `Winners`, `Losers`, `GrandFinal`),
+    `BracketNodeStatus` (awaiting entrants, to be paired, in play, awaiting
+    a decision, decided, uncontested, bye, void, empty, not played),
+    `SlotSource` (draw, advancer of, loser of, recorded) and
+    `SlotPlaceholder` (advancer of, loser of, re-seeded, bye, void, not
+    played);
+  - `BracketRoundLabel::of()`, which renders the English label of a round
+    from its side, structural round and slot count.
+
+  The third-place tie of a single elimination bracket is a node of its own
+  in the last round, after the final, of kind `BracketTie::ThirdPlace`, its
+  slots filled from the losers of the two nodes before the final (#93). The
+  reset of a double elimination grand final is shown as its second round,
+  with the status `NotPlayed` where it is not due. The view is never
+  stored: it has no `toArray()`. See the usage guide, "Drawing the
+  Bracket", and example 30.
+
+- **The round labels are a rendering of the bracket view.** Both
+  elimination engines now label the rounds they pair with
+  `BracketRoundLabel::of()` over the round's place in the view, which is the
+  label `BracketRound::getLabel()` gives. Every label is the one it was:
+  no golden fixture changed.
+
 - **The roles of the first leg are searched within what the role
   assignment keeps, without `backtracking`
   ([#51](https://github.com/mission-gaming/tactician/issues/51)).** A role

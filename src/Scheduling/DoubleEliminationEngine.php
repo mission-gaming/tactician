@@ -9,6 +9,10 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
+use MissionGaming\Tactician\Stage\Bracket;
+use MissionGaming\Tactician\Stage\BracketRoundLabel;
+use MissionGaming\Tactician\Stage\BracketSide;
+use MissionGaming\Tactician\Stage\BracketViewEngine;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
@@ -67,7 +71,7 @@ use Override;
  *
  * @experimental
  */
-final readonly class DoubleEliminationEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
+final readonly class DoubleEliminationEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine, BracketViewEngine
 {
     use EliminationBracketSupport;
 
@@ -378,6 +382,48 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
+     * The bracket as this engine reads the state (see Bracket): the winners
+     * side, the losers side (for a field of more than 2) and the grand
+     * final, whose round 2 is the reset where grandFinalReset is on.
+     *
+     * The rounds are in the order the engine plays them: winners round 1,
+     * losers round 1, then each later winners round followed by the losers
+     * rounds it feeds, the grand final and the reset. The first winners
+     * round's slots are the entry fold (SlotSource::Draw). A slot of a
+     * later winners round is filled from the node in the same place of the
+     * winners round before (AdvancerOf). Losers round 1 is filled by the
+     * losers of winners round 1, in order (LoserOf). A later losers round
+     * that takes droppers holds, in each node, the loser of a node of the
+     * winners round (in reverse order after an even winners round, as the
+     * engine pairs it) and then the advancer of the node in the same place
+     * of the losers round before; one that takes none pairs the advancers
+     * of the losers round before. The grand final holds the advancers of
+     * the winners final and of the losers final; the reset, the loser of
+     * the grand final and then its advancer, which is the order the engine
+     * pairs it in when the losers champion won. A reset that is not due is
+     * shown with the status NotPlayed.
+     *
+     * The rounds the engine has read are as it read them, the round it
+     * pairs next is isNext(), and the rounds after it are the shape of the
+     * bracket from there, as for single elimination (see
+     * SingleEliminationEngine::getBracket()). A dropper from a bye is no
+     * entrant: the losers slot it would fill holds the placeholder Bye.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getBracket(StageState $state): Bracket
+    {
+        $reading = $this->resolveState($state, true);
+
+        return BracketViewBuilder::doubleElimination(
+            $reading,
+            $this->bracketSize(count($state->getEntrants())),
+            $this->options->grandFinalReset
+        );
+    }
+
+    /**
      * Walk the fixed stage sequence, advancing through the stages that are
      * finished: recorded with every tie settled, or with no tie to play.
      *
@@ -385,7 +431,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      *                                       the stage it is read as, or the state is stamped
      *                                       with another engine's fingerprint
      */
-    private function resolveState(StageState $state): BracketReading
+    private function resolveState(StageState $state, bool $capture = false): BracketReading
     {
         $state->requireEngineFingerprint($this->getFingerprint());
 
@@ -400,8 +446,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         return $this->readUntilOver(
             $state,
-            function (?int $counted, array $heldFrom) use ($state, $entrants, &$deprecationRaised): BracketReading {
-                $reading = $this->walk($state, $entrants, $counted, $heldFrom, $deprecationRaised);
+            function (?int $counted, array $heldFrom) use ($state, $entrants, &$deprecationRaised, $capture): BracketReading {
+                $reading = $this->walk($state, $entrants, $counted, $heldFrom, $deprecationRaised, $capture);
                 $deprecationRaised = $reading->tieWinnerDeprecationRaised;
 
                 return $reading;
@@ -434,9 +480,11 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         array $entrants,
         ?int $counted = null,
         array $heldFrom = [],
-        bool $deprecationRaised = false
+        bool $deprecationRaised = false,
+        bool $capture = false
     ): BracketReading {
         $reading = $this->beginReading($state, $counted, $heldFrom, $deprecationRaised);
+        $reading->capture = $capture;
         $slots = $this->buildInitialSlots($entrants);
         $winnersRounds = (int) log(count($slots), 2);
 
@@ -487,8 +535,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         };
 
         // Winners round 1
-        $winnersStage = $this->winnersStageName(1, $winnersRounds);
-        $stage = $this->resolveStage($slots, $winnersStage, $reading);
+        $losersRounds = 2 * ($winnersRounds - 1);
+        $stage = $this->resolveStage($slots, BracketSide::Winners, 1, $winnersRounds, $reading);
         if ($stage['stopped']) {
             return $unfinished();
         }
@@ -504,7 +552,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $losersStructuralRound = 1;
             $stage = $this->resolveStage(
                 $stage['losers'],
-                $this->losersStageName($losersStructuralRound, $winnersRounds),
+                BracketSide::Losers,
+                $losersStructuralRound,
+                $losersRounds,
                 $reading
             );
             if ($stage['stopped']) {
@@ -516,8 +566,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $losersChampion = null;
 
             for ($winnersRound = 2; $winnersRound <= $winnersRounds; ++$winnersRound) {
-                $winnersStage = $this->winnersStageName($winnersRound, $winnersRounds);
-                $stage = $this->resolveStage($winnersSlots, $winnersStage, $reading, $winnersContended);
+                $stage = $this->resolveStage($winnersSlots, BracketSide::Winners, $winnersRound, $winnersRounds, $reading, $winnersContended);
                 $revive($stage['revived']);
                 if ($stage['stopped']) {
                     return $unfinished();
@@ -545,7 +594,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 ++$losersStructuralRound;
                 $stage = $this->resolveStage(
                     $majorSlots,
-                    $this->losersStageName($losersStructuralRound, $winnersRounds),
+                    BracketSide::Losers,
+                    $losersStructuralRound,
+                    $losersRounds,
                     $reading,
                     $majorContended
                 );
@@ -560,7 +611,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     ++$losersStructuralRound;
                     $stage = $this->resolveStage(
                         $stage['winners'],
-                        $this->losersStageName($losersStructuralRound, $winnersRounds),
+                        BracketSide::Losers,
+                        $losersStructuralRound,
+                        $losersRounds,
                         $reading,
                         $stage['contended']
                     );
@@ -591,7 +644,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         // Grand final
         $reading->lastRoundReached = true;
-        $stage = $this->resolveStage([$winnersSlots[0] ?? null, $losersChampion], 'grand final', $reading, $grandFinalContended);
+        $stage = $this->resolveStage([$winnersSlots[0] ?? null, $losersChampion], BracketSide::GrandFinal, 1, 2, $reading, $grandFinalContended);
         $revive($stage['revived']);
         if ($stage['stopped']) {
             return $unfinished();
@@ -608,7 +661,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         ) {
             // The losers champion won: both finalists now have one loss,
             // so a reset match decides the title.
-            $stage = $this->resolveStage([$winnersChampion, $losersChampion], 'grand final reset', $reading);
+            $stage = $this->resolveStage([$winnersChampion, $losersChampion], BracketSide::GrandFinal, 2, 2, $reading);
             if ($stage['stopped']) {
                 return $unfinished();
             }
@@ -666,9 +719,16 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * @throws InvalidConfigurationException When a tie is broken, or the recorded stage leaves
      *                                       another number of entrants than the stage has places
      */
-    private function resolveStage(array $slots, string $stageName, BracketReading $reading, array $contended = []): array
-    {
+    private function resolveStage(
+        array $slots,
+        BracketSide $side,
+        int $structuralRound,
+        int $roundsOnSide,
+        BracketReading $reading,
+        array $contended = []
+    ): array {
         $slots = array_values($slots);
+        $stageName = BracketRoundLabel::of($side, $structuralRound, $roundsOnSide, count($slots));
 
         // The stage is read from who was in the bracket when it was paired:
         // for the recorded round with the next number where there is one,
@@ -707,6 +767,18 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         if (!$claimed && $toPlay) {
             $reading->pending = $derivation;
+            if ($reading->capture) {
+                $reading->walked[] = [
+                    'side' => $side,
+                    'round' => $structuralRound,
+                    'slots' => $slots,
+                    'number' => null,
+                    'manual' => false,
+                    'next' => true,
+                    'nodes' => $this->pendingNodes($pairs, $out),
+                    'extra' => null,
+                ];
+            }
 
             return $stopped;
         }
@@ -725,6 +797,19 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         );
         foreach ($read['unplayed'] as $advanced) {
             $reading->byes[$advanced->getId()] = ($reading->byes[$advanced->getId()] ?? 0) + 1;
+        }
+
+        if ($reading->capture) {
+            $reading->walked[] = [
+                'side' => $side,
+                'round' => $structuralRound,
+                'slots' => $slots,
+                'number' => $claimed ? $reading->number : null,
+                'manual' => $claimed && $read['manual'],
+                'next' => false,
+                'nodes' => $read['nodes'],
+                'extra' => null,
+            ];
         }
 
         if ($claimed && $recorded instanceof RoundPairing) {
@@ -830,17 +915,5 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         }
 
         return new RoundPairing($roundNumber, $stageName, $events, $byes);
-    }
-
-    private function winnersStageName(int $round, int $totalWinnersRounds): string
-    {
-        return $round === $totalWinnersRounds ? 'winners final' : "winners round {$round}";
-    }
-
-    private function losersStageName(int $structuralRound, int $totalWinnersRounds): string
-    {
-        $totalLosersRounds = 2 * ($totalWinnersRounds - 1);
-
-        return $structuralRound === $totalLosersRounds ? 'losers final' : "losers round {$structuralRound}";
     }
 }

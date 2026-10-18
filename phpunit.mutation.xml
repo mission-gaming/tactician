@@ -41,6 +41,7 @@
         <testsuite name="Mutation">
             <directory suffix="Test.php">./tests/Unit/Scheduling</directory>
             <directory suffix="Test.php">./tests/Unit/Repack</directory>
+            <file>./tests/Feature/BracketViewTest.php</file>
             <file>./tests/Feature/ComplexConstraintTest.php</file>
             <file>./tests/Feature/ConstraintRetryTest.php</file>
             <file>./tests/Feature/GroupsToKnockoutTest.php</file>

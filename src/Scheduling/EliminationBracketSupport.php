@@ -11,6 +11,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\BracketFold;
+use MissionGaming\Tactician\Stage\BracketNodeStatus;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -33,6 +34,8 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * selector outputs behave identically by construction.
  *
  * @internal Not public API: implementation the two elimination engines share.
+ *
+ * @phpstan-import-type WalkedNode from BracketReading
  */
 trait EliminationBracketSupport
 {
@@ -832,7 +835,9 @@ trait EliminationBracketSupport
      * @param int|null $pairedAt The number of the recorded round the slots were paired for (the
      *                           round itself, or the one this round was skipped before); null
      *                           when the round is read from the state as it stands
-     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, unplayed: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
+     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, unplayed: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
+     *                                                                                                                                                                                                                                                                              `nodes` is what the bracket view shows of each unit, in
+     *                                                                                                                                                                                                                                                                              the same order, and `extraNode` of the extra tie;
      *                                                                                                                                                                                                                                                                              `unplayed` lists who went on without a tie being played;
      *                                                                                                                                                                                                                                                                              `unresolved` the events that await a result, and
      *                                                                                                                                                                                                                                                                              `undecided` the events of the ties that have every
@@ -882,6 +887,7 @@ trait EliminationBracketSupport
         }
         $rows = [];
         $extra = null;
+        $extraNode = null;
         $inTie = [];
         $unplayed = [];
         $unresolved = [];
@@ -961,6 +967,7 @@ trait EliminationBracketSupport
 
             if ($key === $extraKey || $tie['thirdPlace']) {
                 $extra = $settled;
+                $extraNode = $this->walkedNode([$first, $second], $tie['events'], $settled['winner'], $settled['losers'], $settled['open'], $settled['undecided'], $settled['uncontested']);
                 continue;
             }
 
@@ -970,6 +977,7 @@ trait EliminationBracketSupport
                 min($position[$first->getId()] ?? PHP_INT_MAX, $position[$second->getId()] ?? PHP_INT_MAX),
                 $sequence++,
                 $settled,
+                $this->walkedNode([$first, $second], $tie['events'], $settled['winner'], $settled['losers'], $settled['open'], $settled['undecided'], $settled['uncontested']),
             ];
         }
 
@@ -982,7 +990,12 @@ trait EliminationBracketSupport
             if ($first instanceof Participant && $second instanceof Participant && $firstFree && $secondFree) {
                 $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $out, $reading->levelAdvancers);
                 if (!$settled['open']) {
-                    $rows[] = [2 * $index, $sequence++, $settled];
+                    $rows[] = [
+                        2 * $index,
+                        $sequence++,
+                        $settled,
+                        $this->walkedNode([$first, $second], [], $settled['winner'], $settled['losers'], false, false, $settled['uncontested']),
+                    ];
                     if ($settled['winner'] instanceof Participant) {
                         $unplayed[] = $settled['winner'];
                     }
@@ -1008,16 +1021,20 @@ trait EliminationBracketSupport
                 // One who had withdrawn by then has nobody to go through
                 // against and nobody to go through: it goes out here, as
                 // the two of a void tie do.
+                // The node of an entrant who stands alone is its pair of
+                // slots where the other slot is empty, and the entrant alone
+                // where the other is in a tie of the round
                 $held = true;
+                $entrants = ($first instanceof Participant && $second instanceof Participant) ? [$occupant] : $pair;
                 if (isset($out[$occupant->getId()]) && !isset($recordedByes[$occupant->getId()])) {
-                    $rows[] = [$at, $sequence++, ['winner' => null, 'losers' => [$occupant]]];
+                    $rows[] = [$at, $sequence++, ['winner' => null, 'losers' => [$occupant]], $this->walkedNode($entrants, [], null, [$occupant], false, false, false)];
                     continue;
                 }
-                $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []]];
+                $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []], $this->walkedNode($entrants, [], $occupant, [], false, false, false)];
                 $unplayed[] = $occupant;
             }
             if (!$held) {
-                $rows[] = [2 * $index, $sequence++, ['winner' => null, 'losers' => []]];
+                $rows[] = [2 * $index, $sequence++, ['winner' => null, 'losers' => []], $this->walkedNode($pair, [], null, [], false, false, false)];
             }
         }
 
@@ -1027,6 +1044,9 @@ trait EliminationBracketSupport
             // undecided otherwise.
             $settled = $this->settleTie($reading, $round, $extraTie[0], $extraTie[1], $legsPerTie, $out, $reading->levelAdvancers);
             $extra = $settled['open'] ? null : $settled;
+            $extraNode = $settled['open']
+                ? $this->walkedNode([$extraTie[0], $extraTie[1]], [], null, [], false, false, false, $recorded instanceof RoundPairing)
+                : $this->walkedNode([$extraTie[0], $extraTie[1]], [], $settled['winner'], $settled['losers'], false, false, $settled['uncontested']);
         }
 
         if ($refusals !== []) {
@@ -1057,10 +1077,107 @@ trait EliminationBracketSupport
                 $rows
             ),
             'extra' => $extra === null ? null : ['winner' => $extra['winner'], 'losers' => $extra['losers']],
+            'nodes' => array_map(static fn(array $row): array => $row[3], $rows),
+            'extraNode' => $extraNode,
             'unplayed' => $unplayed,
             'unresolved' => $unresolved,
             'uncontested' => $uncontested,
             'undecided' => $undecided,
+        ];
+    }
+
+    /**
+     * What the bracket view shows of the nodes of the round a walk stopped
+     * at to pair: a node for each pair of slots, as the pairing the engine
+     * makes of the round settles it.
+     *
+     * @param array<array<Participant|null>> $pairs The pairs of slots of the round
+     * @param array<int|string, true> $out Who has withdrawn, by ID
+     *
+     * @return list<WalkedNode>
+     */
+    private function pendingNodes(array $pairs, array $out): array
+    {
+        $nodes = [];
+        foreach ($pairs as $pair) {
+            $nodes[] = $this->pendingNode(array_values($pair), $out);
+        }
+
+        return $nodes;
+    }
+
+    /**
+     * What the bracket view shows of one node of the round a walk stopped
+     * at to pair: to be paired where both of its entrants are in the
+     * stage, and otherwise settled as the pairing settles it: the entrant
+     * still in goes on (an uncontested tie, or a bye), and a node with
+     * nobody in it sends nobody on.
+     *
+     * @param list<Participant|null> $entrants The slots of the node, in bracket order
+     * @param array<int|string, true> $out Who has withdrawn, by ID
+     *
+     * @return WalkedNode
+     */
+    private function pendingNode(array $entrants, array $out): array
+    {
+        $present = array_values(array_filter($entrants, static fn(?Participant $entrant): bool => $entrant instanceof Participant));
+        $in = array_values(array_filter($present, static fn(Participant $entrant): bool => !isset($out[$entrant->getId()])));
+        $gone = array_values(array_filter($present, static fn(Participant $entrant): bool => isset($out[$entrant->getId()])));
+
+        if (count($present) === 2 && count($in) === 2) {
+            return ['entrants' => $entrants, 'status' => BracketNodeStatus::ToBePaired, 'events' => [], 'advancer' => null, 'losers' => []];
+        }
+
+        return $this->walkedNode($entrants, [], $in[0] ?? null, $gone, false, false, count($present) === 2);
+    }
+
+    /**
+     * What the bracket view shows of one node a round was read as: its
+     * entrants in slot order, where it stands, its recorded events in leg
+     * order, and who went on from it.
+     *
+     * @param list<Participant|null> $entrants
+     * @param array<Event> $events
+     * @param array<Participant> $losers
+     * @param bool $leftOut Whether the node is a tie the recorded round does not hold and that
+     *                      nothing settles (a third-place tie a round drawn by hand left out)
+     *
+     * @return WalkedNode
+     */
+    private function walkedNode(
+        array $entrants,
+        array $events,
+        ?Participant $winner,
+        array $losers,
+        bool $open,
+        bool $undecided,
+        bool $uncontested,
+        bool $leftOut = false
+    ): array {
+        $events = array_values($events);
+        usort(
+            $events,
+            static fn(Event $one, Event $other): int => (is_int($one->getMetadataValue('tie_leg')) ? $one->getMetadataValue('tie_leg') : 1)
+                <=> (is_int($other->getMetadataValue('tie_leg')) ? $other->getMetadataValue('tie_leg') : 1)
+        );
+
+        $status = match (true) {
+            $leftOut => BracketNodeStatus::NotPlayed,
+            $open && $undecided => BracketNodeStatus::AwaitingDecision,
+            $open => BracketNodeStatus::InPlay,
+            $winner instanceof Participant && $uncontested => BracketNodeStatus::Uncontested,
+            $winner instanceof Participant && $losers !== [] => BracketNodeStatus::Decided,
+            $winner instanceof Participant => BracketNodeStatus::Bye,
+            $losers !== [] => BracketNodeStatus::Void,
+            default => BracketNodeStatus::Empty,
+        };
+
+        return [
+            'entrants' => array_values($entrants),
+            'status' => $status,
+            'events' => $events,
+            'advancer' => $winner,
+            'losers' => array_values($losers),
         ];
     }
 
