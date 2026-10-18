@@ -9,6 +9,7 @@ use MissionGaming\Tactician\Constraints\MetadataConstraint;
 use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\NoRepeatPairings;
 use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
@@ -778,6 +779,73 @@ function roleSweepOutcome(
 }
 
 /**
+ * One question put to a constraint, as text: the event as named, its
+ * round, and how many events its context holds. Two runs that ask the same
+ * questions in the same order give the same list.
+ */
+function roleSweepQuestion(Event $event, SchedulingContext $context): string
+{
+    return implode(' v ', array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants()))
+        . ' in ' . ($event->getRound()?->getNumber() ?? 0)
+        . ' after ' . count($context->getExistingEvents());
+}
+
+/**
+ * The questions a constraint was asked under the default, split around the
+ * run of round parity the default makes: those asked before it (the
+ * balanced roles as given in the first layout) and those asked after it
+ * (the search for balanced roles with the outcome of round parity in hand).
+ * The run of round parity is found as the questions
+ * RoundParityRoleAssignment, named, asks, in their order, since the default
+ * makes that run as it is made named. Null where they are not there.
+ *
+ * @param list<string> $underTheDefault
+ * @param list<string> $underRoundParity
+ * @return array{list<string>, list<string>}|null
+ */
+function roleSweepAroundRoundParity(array $underTheDefault, array $underRoundParity): ?array
+{
+    $length = count($underRoundParity);
+    $first = $underRoundParity[0] ?? null;
+    for ($start = 0; $start + $length <= count($underTheDefault); ++$start) {
+        if ($underTheDefault[$start] === $first && array_slice($underTheDefault, $start, $length) === $underRoundParity) {
+            return [array_slice($underTheDefault, 0, $start), array_slice($underTheDefault, $start + $length)];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The two participants who meet in the given round of a schedule's first
+ * layout, as a constraint reads a pairing: whichever is named first. Read
+ * from the schedule round parity gives without constraints, which has one
+ * layout, the first a call with constraints lays out: the participants in
+ * the order given, or in the first shuffle of a randomizer seeded the same.
+ *
+ * @param list<Participant> $field
+ * @return list<string>
+ *
+ * @throws IncompleteScheduleException Never: the schedule it reads has no constraints
+ * @throws InvalidConfigurationException Never: the fields of the sweeps are valid
+ */
+function roleSweepPairingOfTheFirstLayout(array $field, int $legs, LegStrategyInterface $strategy, int $round, string $participant, ?int $seed): array
+{
+    $schedule = (new RoundRobinScheduler(null, $seed === null ? null : new Randomizer(new Mt19937($seed))))
+        ->schedule($field, new RoundRobinOptions($legs, $strategy, false, new RoundParityRoleAssignment()));
+    foreach (RoleScheduleOracle::read($schedule->getEvents()) as [$eventRound, $first, $second]) {
+        if ($eventRound === $round && in_array($participant, [$first, $second], true)) {
+            $pairing = [$first, $second];
+            sort($pairing);
+
+            return $pairing;
+        }
+    }
+
+    return [];
+}
+
+/**
  * A rule that the roles the generator proposes keep and no balanced leg
  * does, as the constraint set and as the oracle reads it; null where there
  * is none of this kind.
@@ -1532,6 +1600,193 @@ describe('the default, balanced where possible', function (): void {
     })->with([
         'few pinned pairings: balanced within the bound' => [12, 4, null],
         'many pinned pairings: the bound ends the passes' => [20, 6, RoleFallback::BalancedRolesRejected],
+    ]);
+
+    // The bound of 4,000 events with a schedule in hand holds the search of
+    // the later legs of shuffled legs as it holds every other search for
+    // balanced roles. Two shuffled legs of ten participants under a rule
+    // written as a closure that the later legs cannot keep after a balanced
+    // first leg: an event of the last round is accepted only once some
+    // participant ended the first leg more than one apart in its roles.
+    // Round parity leaves participants three apart, so its schedule keeps
+    // the rule; the search of the later legs after a balanced first leg
+    // goes through their roles one event at a time and stops at its bound
+    // of rejected roles, far past 4,000 events.
+    //
+    // It runs in the first layout before round parity is tried, with no
+    // schedule in hand and its own bound, as BalancedRoleAssignment named
+    // runs it. After round parity the first rotated order of the search for
+    // balanced roles is that same layout, and would end where it ended:
+    // past the 4,000 events. Nothing more is put to the constraints.
+    //
+    // With a second rule, which keeps the pairing that the first layout has
+    // in the first round of the second leg out of that round, the first
+    // layout fails at once and round parity completes in the second. The
+    // search for balanced roles then goes on from the second rotated order,
+    // whose later legs it searches in the 4,000 events less what the first
+    // layout spent. The questions counted are the closure's, so the events
+    // the search puts to it and the rejected events of each layout it asks
+    // about once more, for the record, are counted alike: two for the event
+    // each of the two layouts ends on.
+    it('holds the search of shuffled later legs to the bound of events once a schedule is in hand', function (bool $theFirstLayoutFailsAtOnce): void {
+        $size = 10;
+        $legs = 2;
+        $roundsPerLeg = $size - 1;
+        $field = roleSweepField($size);
+        $strategy = static fn(): ShuffledLegStrategy => new ShuffledLegStrategy(seed: 1);
+        $keptOut = $theFirstLayoutFailsAtOnce
+            ? roleSweepPairingOfTheFirstLayout($field, $legs, $strategy(), $roundsPerLeg + 1, 'p1', null)
+            : [];
+        /** @var list<string> $questions */
+        $questions = [];
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context) use (&$questions, $roundsPerLeg, $legs, $keptOut): bool {
+                $questions[] = roleSweepQuestion($event, $context);
+                $round = $event->getRound()?->getNumber();
+                $pairing = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+                sort($pairing);
+                if ($round === $roundsPerLeg + 1 && $pairing === $keptOut) {
+                    return false;
+                }
+                if ($round !== $roundsPerLeg * $legs) {
+                    return true;
+                }
+
+                $differences = [];
+                foreach ($context->getExistingEvents() as $existing) {
+                    if (($existing->getRound()?->getNumber() ?? 0) > $roundsPerLeg) {
+                        continue;
+                    }
+                    [$first, $second] = $existing->getParticipants();
+                    $differences[$first->getId()] = ($differences[$first->getId()] ?? 0) + 1;
+                    $differences[$second->getId()] = ($differences[$second->getId()] ?? 0) - 1;
+                }
+
+                return array_filter($differences, static fn(int $difference): bool => abs($difference) > 1) !== [];
+            },
+            'The last round once the first leg is out of balance'
+        )->build();
+
+        $underRoundParity = roleSweepOutcome($constraints, $field, $legs, $strategy(), false, new RoundParityRoleAssignment());
+        $askedUnderRoundParity = $questions;
+        $questions = [];
+        $schedule = roleSweepOutcome($constraints, $field, $legs, $strategy(), false, null);
+        $around = roleSweepAroundRoundParity($questions, $askedUnderRoundParity);
+
+        assert($underRoundParity instanceof Schedule && $schedule instanceof Schedule && $around !== null);
+        [$before, $after] = $around;
+        expect(RoleFallback::of($schedule))->toBe(RoleFallback::BalancedRolesRejected)
+            ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray());
+
+        if (!$theFirstLayoutFailsAtOnce) {
+            expect(count($before))->toBeGreaterThan(4_000)
+                ->and($after)->toBe([]);
+
+            return;
+        }
+
+        expect($keptOut)->toHaveCount(2)
+            ->and(count($before))->toBeLessThan(100)
+            ->and(count($before) + count($after))->toBeLessThanOrEqual(4_000 + 2 + 2)
+            // The search went into the later legs of the second rotated order
+            ->and(count($after))->toBeGreaterThan(3_000)
+            // and did not lay the first layout out again
+            ->and(array_slice($after, 0, count($before)))->not->toBe($before);
+    })->with([
+        'the first layout spends the bound' => [false],
+        'the first layout fails at once' => [true],
+    ]);
+
+    // The first rotated order of the search for balanced roles with round
+    // parity's outcome in hand is the layout the balanced roles as given
+    // were put to before round parity was tried, and it is not laid out
+    // again. The later rotated orders still have the shuffles of the
+    // randomizer and the draws of the leg strategy that they have under
+    // BalancedRoleAssignment, named: here the first layout fails in the
+    // first round of the second leg, after the draws of the events before,
+    // and the second rotated order completes with balanced roles, the same
+    // schedule as the strict role assignment's.
+    it('goes on from the second rotated order after round parity, with the draws BalancedRoleAssignment has there', function (
+        Closure $makeStrategy,
+        int $legs,
+        ?int $seed
+    ): void {
+        $size = 8;
+        $roundsPerLeg = $size - 1;
+        $field = roleSweepField($size);
+        $keptOut = roleSweepPairingOfTheFirstLayout($field, $legs, $makeStrategy(), $roundsPerLeg + 1, 'p1', $seed);
+        /** @var list<string> $questions */
+        $questions = [];
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context) use (&$questions, $roundsPerLeg, $keptOut): bool {
+                $questions[] = roleSweepQuestion($event, $context);
+                $pairing = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+                sort($pairing);
+
+                return $event->getRound()?->getNumber() !== $roundsPerLeg + 1 || $pairing !== $keptOut;
+            },
+            'One pairing kept out of the first round of the second leg'
+        )->build();
+
+        roleSweepOutcome($constraints, $field, $legs, $makeStrategy(), false, new RoundParityRoleAssignment(), $seed);
+        $askedUnderRoundParity = $questions;
+        $questions = [];
+        $schedule = roleSweepOutcome($constraints, $field, $legs, $makeStrategy(), false, null, $seed);
+        $around = roleSweepAroundRoundParity($questions, $askedUnderRoundParity);
+        $strict = roleSweepOutcome($constraints, $field, $legs, $makeStrategy(), false, new BalancedRoleAssignment(), $seed);
+
+        assert($schedule instanceof Schedule && $strict instanceof Schedule && $around !== null);
+        [$before, $after] = $around;
+        expect($keptOut)->toHaveCount(2)
+            ->and(RoleFallback::of($schedule))->toBeNull()
+            ->and($schedule->toArray())->toBe($strict->toArray())
+            ->and($before)->not->toBe([])
+            ->and(array_slice($after, 0, count($before)))->not->toBe($before);
+    })->with([
+        'two shuffled legs from a seed' => [static fn(): ShuffledLegStrategy => new ShuffledLegStrategy(seed: 3), 2, null],
+        'three shuffled legs from a seed, with a randomizer' => [static fn(): ShuffledLegStrategy => new ShuffledLegStrategy(seed: 8), 3, 11],
+        'two mirrored legs, with a randomizer' => [static fn(): MirroredLegStrategy => new MirroredLegStrategy(), 2, 5],
+        'two repeated legs' => [static fn(): RepeatedLegStrategy => new RepeatedLegStrategy(), 2, null],
+    ]);
+
+    // The same where round parity fails too, and the search for balanced
+    // roles that follows has its full bounds: three participants, two legs,
+    // the third never first-named (a closure) and the two top seeds kept
+    // apart in the first round (SeedProtectionConstraint). The first layout
+    // seats the top seeds together in its second round, which the seed rule
+    // rejects whatever the roles. Neither the rotated orders after round
+    // parity nor the search of first-leg roles that follows them lays that
+    // layout out again: its first question is never asked after round
+    // parity's. The call fails as round parity fails.
+    it('lays the first layout out once before round parity and not again after it, where round parity fails', function (Closure $makeStrategy): void {
+        $field = [new Participant('p1', 'P1', 1), new Participant('p2', 'P2', 2), new Participant('p3', 'P3', 3)];
+        /** @var list<string> $questions */
+        $questions = [];
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context) use (&$questions): bool {
+                $questions[] = roleSweepQuestion($event, $context);
+
+                return $event->getParticipants()[0]->getId() !== 'p3';
+            },
+            'p3 is never first-named'
+        )->add(new SeedProtectionConstraint(2, 0.5))->build();
+
+        $underRoundParity = roleSweepOutcome($constraints, $field, 2, $makeStrategy(), false, new RoundParityRoleAssignment());
+        $askedUnderRoundParity = $questions;
+        $questions = [];
+        $underTheDefault = roleSweepOutcome($constraints, $field, 2, $makeStrategy(), false, null);
+        $around = roleSweepAroundRoundParity($questions, $askedUnderRoundParity);
+
+        assert($around !== null);
+        [$before, $after] = $around;
+        expect($underTheDefault)->toBeString()->toBe($underRoundParity)
+            ->and($before)->not->toBe([])
+            ->and($after)->not->toBe([])
+            ->and($after)->not->toContain($before[0]);
+    })->with([
+        'mirrored legs' => [static fn(): MirroredLegStrategy => new MirroredLegStrategy()],
+        'repeated legs' => [static fn(): RepeatedLegStrategy => new RepeatedLegStrategy()],
+        'shuffled legs from a seed' => [static fn(): ShuffledLegStrategy => new ShuffledLegStrategy(seed: 2)],
     ]);
 
     // The smallest field. A leg of two participants is one event, and it
