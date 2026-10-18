@@ -362,8 +362,9 @@ StageState::start(participants)
 ┌──────────────────────────────────────────────┐
 │  while (!$engine->isComplete($state))        │
 │      pairing = $engine->pairNextRound(state) │──► RoundPairing (events, byes, label)
+│      state = state->withRoundPaired(pairing) │◄── recorded when it is drawn
 │      results = playRound(pairing)            │    ...played application-side...
-│      state = state->withRoundPlayed(...)     │◄── state serializes between rounds
+│      state = state->withAdditionalResults(…) │◄── state serializes between steps
 └──────────────────────────────────────────────┘
         │
         ▼
