@@ -176,8 +176,7 @@ readonly class Participant
         $id = $data['id'] ?? null;
         $label = $data['label'] ?? null;
         if (!is_string($id) || $id === '') {
-            // The message is the one this refusal always had
-            throw new InvalidInputException('Participant data requires a non-empty string id and a string label');
+            throw new InvalidInputException('Participant data requires a non-empty string id, and a string label when it has one');
         }
         if ($label !== null && !is_string($label)) {
             throw new InvalidInputException('Participant label must be a string or null');

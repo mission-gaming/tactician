@@ -1924,7 +1924,9 @@ entry on the engine fingerprint.
   gives its ID, and `hasLabel()` is false. Its plain data has no `label`
   key, and `Participant::fromArray()` reads one without the key, or with
   `null`, as a participant without a label. A participant with a label is
-  written as it always was.
+  written as it always was. The refusal of participant data without a
+  valid ID now reads "Participant data requires a non-empty string id, and
+  a string label when it has one".
 
 ### Changed
 
