@@ -271,7 +271,7 @@ final readonly class StageState
         // result of no recorded event goes last, where the replay finds it
         // and refuses it with the verb's reason.
         $ordered = [];
-        $seen = [];
+        $resultEvents = [];
         foreach (array_values($results) as $index => $result) {
             $event = $result->getEvent();
             foreach ($event->getParticipants() as $participant) {
@@ -279,7 +279,7 @@ final readonly class StageState
             }
 
             $key = $state->eventKey($event);
-            if (isset($seen[$key])) {
+            if (isset($resultEvents[$key])) {
                 throw new InvalidConfigurationException(
                     'The history holds two results for one event',
                     [
@@ -292,7 +292,7 @@ final readonly class StageState
                     reason: InvalidConfigurationReason::DuplicateResult
                 );
             }
-            $seen[$key] = true;
+            $resultEvents[$key] = true;
 
             $ordered[] = [$positions[$key] ?? [PHP_INT_MAX, PHP_INT_MAX], $index, $result];
         }
