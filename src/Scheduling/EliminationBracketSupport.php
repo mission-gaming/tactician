@@ -654,7 +654,9 @@ trait EliminationBracketSupport
      * round that pairs them otherwise gives the next round from what was
      * played. A pair of slots the round has no tie for is settled without
      * one where an entrant of it has withdrawn; an entrant who stands
-     * alone goes on, withdrawn or not.
+     * alone goes on where it was in the stage when the round was paired,
+     * or the round lists it among its byes, and goes out in the round
+     * otherwise: with nobody to meet, nobody is there to go through.
      *
      * @param list<Participant|null> $slots The slots the round is entered with, in bracket order
      * @param RoundPairing|null $recorded The recorded round, or null where the round is not recorded
@@ -833,17 +835,20 @@ trait EliminationBracketSupport
                     continue;
                 }
 
-                // An entrant who has withdrawn goes on like any other: the
-                // tie it stands in next is settled for its opponent there.
-                // It went on without playing where it was in the stage when
-                // the round was paired, or where the round says so by
-                // listing it among its byes: that is recorded, and its
-                // leaving later does not take it back.
-                $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []]];
-                if (!isset($out[$occupant->getId()]) || isset($recordedByes[$occupant->getId()])) {
-                    $unplayed[] = $occupant;
-                }
+                // An entrant who stands alone went on without playing where
+                // it was in the stage when the round was paired, or where
+                // the round says so by listing it among its byes: that is
+                // recorded, and its leaving later does not take it back.
+                // One who had withdrawn by then has nobody to go through
+                // against and nobody to go through: it goes out here, as
+                // the two of a void tie do.
                 $held = true;
+                if (isset($out[$occupant->getId()]) && !isset($recordedByes[$occupant->getId()])) {
+                    $rows[] = [$at, $sequence++, ['winner' => null, 'losers' => [$occupant]]];
+                    continue;
+                }
+                $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []]];
+                $unplayed[] = $occupant;
             }
             if (!$held) {
                 $rows[] = [2 * $index, $sequence++, ['winner' => null, 'losers' => []]];

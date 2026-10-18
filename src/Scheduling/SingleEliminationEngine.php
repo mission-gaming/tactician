@@ -207,7 +207,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * event is paired for it. Nothing is drawn again. A tie both of whose
      * entrants have withdrawn before either went through it is void: it
      * sends nobody on, and the entrant who would have met its winner
-     * stands alone and is listed among the byes (see Withdrawal).
+     * stands alone and is listed among the byes (see Withdrawal). An
+     * entrant who stands alone and had withdrawn when the round was paired
+     * goes nowhere: it goes out in that round, and a final it stands alone
+     * in has no winner.
      *
      * Round numbers are 1-based, and the round carries its label ('round
      * of 16', 'quarterfinal', 'semifinal', 'final'). The events are in

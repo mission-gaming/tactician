@@ -64,7 +64,11 @@ play. A tie its results decided is never void, whoever withdraws afterwards.
 - The slot it would have filled is empty. The entrant who would have met its
   winner stands alone and goes on (it is listed among the byes of the round
   the engine pairs); where both ties that feed a tie are void, that tie holds
-  nobody and its slot is empty in turn.
+  nobody and its slot is empty in turn. An entrant who stands alone and had
+  withdrawn when its round was paired goes on no more than the two of a void
+  tie do: it goes out in that round, and a last tie it stands alone in has no
+  winner. (Before, such an entrant went on regardless, so that a bracket
+  every entrant had left could still be won.)
 - Its two entrants go out in it, and share the tier of its round in the table.
   A void final leaves the first tier empty, the two finalists sharing the
   second; a void third-place tie leaves the third place empty, the two sharing

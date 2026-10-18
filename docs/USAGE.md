@@ -4066,7 +4066,10 @@ echo $first->getLabel() . ' v ' . $second->getLabel() . "\n"; // Ada v Bo
   would have filled is empty, so the entrant who would have met its winner
   goes on alone (it is among the byes of the round the engine pairs), and
   where the two ties that feed a tie are both void, that tie has nobody in
-  it. The two entrants of a void tie go out in it and share the tier of
+  it. An entrant who stands alone and had withdrawn when its round was
+  paired has nobody to go through against and is not there to go
+  through: it goes out in that round, and a final it stands alone in has
+  no winner. The two entrants of a void tie go out in it and share the tier of
   its round. An entrant who was given a tie because the other had left
   went through it only if it was still in the stage when its next tie was
   paired (a round that names it was paired while it was in): leaving

@@ -167,8 +167,10 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * is drawn again. A tie both of whose entrants have withdrawn before
      * either went through it is void (see Withdrawal): it sends nobody on
      * and drops nobody, so the entrant who would have met its winner, or
-     * the dropper from it, goes on alone and is listed among the byes. The
-     * two entrants of a void winners tie go out with those the next losers
+     * the dropper from it, goes on alone and is listed among the byes,
+     * unless it had withdrawn by then: it then goes out there, as an
+     * entrant who stands alone and has withdrawn always does. The two
+     * entrants of a void winners tie go out with those the next losers
      * round puts out; a void grand final, or reset, leaves the bracket with
      * nobody in its first tier.
      *

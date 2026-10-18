@@ -1330,7 +1330,9 @@ entry on the engine fingerprint.
     before either went through the tie, nobody is there to go through. It
     sends nobody on, the slot it would have filled is empty (the entrant
     who would have met its winner goes on alone, and a tie fed by two void
-    ties holds nobody), its two entrants go out in it and share the tier of
+    ties holds nobody; an entrant who stands alone and had withdrawn when
+    its round was paired goes out in that round, so a final it stands
+    alone in has no winner), its two entrants go out in it and share the tier of
     its round, and in double elimination nobody drops from it to the losers
     bracket (its two entrants go out with those the next losers round puts
     out). An entrant given a tie because the other had left went through

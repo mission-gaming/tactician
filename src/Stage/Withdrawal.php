@@ -48,9 +48,11 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * A bracket engine reads a tie the participant was in and has no complete
  * result for as given to its opponent. Where both entrants of such a tie
  * have withdrawn before the bracket moved on from it, nobody went on from
- * it: the tie is void (see StageState::withoutParticipant()). The order of
- * two withdrawals after the same round is kept as given and decides
- * nothing.
+ * it: the tie is void (see StageState::withoutParticipant()). An entrant
+ * who stands alone, the other slot of its tie empty, and had withdrawn
+ * when the round was paired goes nowhere either: it goes out in that
+ * round. The order of two withdrawals after the same round is kept as
+ * given and decides nothing.
  *
  * @experimental
  */
