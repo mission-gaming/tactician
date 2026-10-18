@@ -5274,19 +5274,20 @@ Three limits are worth knowing:
   them, under the condition of "The ids decide as little as they can":
   wherever the ids would decide only between participants that a
   symmetry of the request exchanges. Renaming every participant and
-  event changed nothing on 400 seasons and 160 round robins with
-  scattered pins, under `LeastChurn` alone and with all three
-  objectives; before the current positions decided, 10 of the seasons
-  and 9 of the round robins came back with other figures. The ids still
-  decide where the current positions say nothing either (two
-  participants whose events are at the same positions against
-  opponents that look alike, or no current positions at all), and in
+  event changed nothing on 400 seasons, 160 round robins with scattered
+  pins and 2,895 requests of other shapes (double round robins among
+  them), under `LeastChurn` alone and with all three objectives; before
+  the current positions decided, 10 of the seasons and 9 of the round
+  robins came back with other figures. The ids still decide where the
+  current positions say nothing either (participants they do not tell
+  apart even when each is put first in turn and the others are told
+  apart by where they meet it, or no current positions at all), and in
   the two exceptions given there. The schedule made with no objective, which
   no outcome with an objective is worse than on events placed or gap
   slots, is made in this order too: the same schedule up to a symmetry
-  of the request, and on all 560 requests the same events placed, the
-  same gap slots and the same number of events at every position as the
-  repack with no objective.
+  of the request, and on all of those requests the same events placed,
+  the same gap slots and the same number of events at every position as
+  the repack with no objective.
 
 **What objectives cost.** The schedule with no objective is always made
 first, on the two budgets as before, so that no objective can cost an

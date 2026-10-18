@@ -1559,11 +1559,11 @@ entry on the engine fingerprint.
   ids comes back with the same figures, moved events included, wherever
   the ids would decide only between participants a symmetry of the
   request exchanges; renaming every participant and event changed no
-  figure on 560 generated requests, where 19 changed before the current
-  positions decided. Without `LeastChurn` the order is the one a request
-  with no objective has, and the count of moved events can depend on the
-  ids, because the schedule is the same under other ids only up to a
-  symmetry of the request.
+  figure on 3,455 generated requests, double round robins among them,
+  where 19 of 560 changed before the current positions decided. Without
+  `LeastChurn` the order is the one a request with no objective has, and
+  the count of moved events can depend on the ids, because the schedule
+  is the same under other ids only up to a symmetry of the request.
   A repack with objectives takes longer, and still spends at most twice
   the step budget; the usage guide ("Objectives") has the limits and the
   times.

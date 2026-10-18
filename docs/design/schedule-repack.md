@@ -1351,9 +1351,16 @@ golden fixtures are untouched.
     positions and reads them at the two places an id decides between
     participants after refinement: the order of a class whose members
     can be exchanged, and the choice between trials with equal
-    descriptions. A participant's key there is its current positions in
-    grid order, each with the class of the opponent at it, so it names
-    no participant. Events of the same two participants are ordered by
+    descriptions. There the classes are refined once more with the
+    current positions read as well, each position in grid order with the
+    class of the opponent at it, so that nothing names a participant: in
+    a class whose members can be exchanged, each member still alike is
+    put first in turn and the refinement with the smallest description
+    kept, until no member is alike; between trials with equal
+    descriptions, the one whose classes refine with the positions to the
+    smaller description is chosen. That refinement counts its work
+    apart, against the same limit, and settles nothing but the choice.
+    Events of the same two participants are ordered by
     current position before id (an event that states none last). The
     refinement itself does not read them, so the classes, and the order
     up to which participant of a class goes where, are those of the
@@ -1364,15 +1371,23 @@ golden fixtures are untouched.
     condition of decision 39, and outside it (its two exceptions) the
     schedule made first can be another one, with no promise on events
     placed or gap slots against the repack with no objective; on 560
-    generated requests it was never that, with the same events placed,
-    gap slots, events at every position and violations on every one.
+    generated requests and 2,895 of a review it was never that, with the
+    same events placed, gap slots, events at every position and
+    violations on every one.
     Reading the positions only where the trials leave every class with
     one participant, where equal descriptions are known to be a
     symmetry, was tried and left 10 of 400 seasons with other figures
     under other ids: the choice between equal descriptions with larger
-    classes is the one that decides them. Reading them in the refinement
-    was not tried: it would change the classes, and with them the
-    schedule made first, for every request with current positions.
+    classes is the one that decides them. Comparing each participant's
+    own positions against the classes as they stood, with no further
+    refinement, was the first form of this decision, and left 9 of the
+    2,895 requests of the review with other figures under other ids: in
+    a round robin everybody is at every position, so those keys were
+    equal and the id chose the participant put first, where meeting it
+    at different positions tells the others apart once it is. Reading
+    the positions in the refinement the order is made from was not
+    tried: it would change the classes, and with them the schedule made
+    first, for every request with current positions.
 
 What was measured (PHP 8.4, no OPcache, on a machine that was doing
 other work at the time, so the times are indications), with a
@@ -1477,13 +1492,20 @@ on 10 seasons and 9 round robins under `LeastChurn` (10 and 9 with all
 three objectives), and after it on none, the schedule mapped back by
 event being the same on every one. The events moved, `LeastChurn`
 alone: 5,757 on the seasons and 5,159 on the round robins before,
-5,825 and 4,894 after (10,916 and 10,719 in all), with the same events
-placed, and gap slots 89 and 116 before, 91 and 115 after. With no
-objective nothing changed: the 560 outcomes are byte for byte those of
-the code before, and 1,200 requests without current positions those of
-the code before the objectives were added. On 9,000 small requests against every
-placement, the fewest moved events were reached on 8,291 (8,296
-before), worst excess 3 on both.
+5,918 and 5,117 after (10,916 and 11,035 in all), with the same events
+placed, and gap slots 89 and 116 before, 92 and 116 after. A review's
+generator (2,895 requests: double round robins with their rounds in
+order or shuffled, some played, a few events lost or moved; small
+requests with events at the same or off-grid positions; pairs that meet
+several times), renamed three times each with ids of other lengths:
+after it no figure changed on any, under `LeastChurn` alone or with all
+three, and the moved events came to 10,762 for 10,924 with the first
+form of the decision. With no objective nothing changed: the 560
+outcomes are byte for byte those of the code before, and 1,200 requests
+without current positions those of the code before the objectives were
+added. On 9,000 small requests against every placement, the fewest
+moved events were reached on 8,281 (8,296 before), worst excess 3 on
+both.
 
 *Two choices that were not taken, in numbers* (400 of the seasons, 150
 of the scattered requests). Holding every event that can stay and
