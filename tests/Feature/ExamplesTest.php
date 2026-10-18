@@ -1368,6 +1368,76 @@ $demonstrations = [
                 'Proven the fewest' => true,
             ]);
     },
+    // Brackets drawn from the view alone, a row for each node. The rows are checked against the objects the
+    // example also presents: the results of the first legs, the round the engine pairs next, the final table
+    '30-drawing-a-bracket' => function (array $results): void {
+        $rowsOf = static function (string $name) use ($results): array {
+            $rows = [];
+            foreach (exampleArray($results, $name) as $row) {
+                assert(is_array($row));
+                $rows[] = $row;
+            }
+
+            return $rows;
+        };
+        $ofRound = static fn(array $rows, string $round): array => array_values(array_filter($rows, static fn(array $row): bool => $row['Round'] === $round));
+        $labels = static fn(Event $event): array => array_map(static fn(Participant $participant): string => $participant->getLabel(), array_values($event->getParticipants()));
+
+        // Two byes into the semifinals of a field of six, two-legged ties, and the third-place tie as a node
+        // of its own, filled from the semifinals before they are decided
+        $cup = $rowsOf('Single elimination, two legs, third place');
+        expect(array_values(array_unique(array_column($cup, 'Round'))))->toBe(['quarterfinal', 'semifinal', 'final'])
+            ->and($cup[0])->toBe(['Round' => 'quarterfinal', 'Played as' => 'round 1', 'Tie' => '1', 'First' => 'Ines', 'Second' => 'bye', 'Where it stands' => 'Ines through on a bye'])
+            ->and($cup[1]['Where it stands'])->toBe('Kasia through over 2 legs')
+            ->and(array_map(
+                static fn(array $row): array => [$row['First'], $row['Second'], $row['Where it stands']],
+                $ofRound($cup, 'semifinal')
+            ))->toBe(array_map(
+                static fn(mixed $result): array => $result instanceof Result ? [...$labels($result->getEvent()), 'in play'] : [],
+                exampleArray($results, 'The semifinal first legs')
+            ))
+            ->and(array_map(static fn(array $row): array => [$row['Tie'], $row['First'], $row['Second']], $ofRound($cup, 'final')))->toBe([
+                ['1', 'winner of semifinal 1', 'winner of semifinal 2'],
+                ['third place', 'loser of semifinal 1', 'loser of semifinal 2'],
+            ]);
+
+        // The losers bracket while it is played: the withdrawn squad's slot sends nobody on, a bye is passed
+        // on as a bye, and the round marked as paired next is the round the engine pairs
+        $inPlay = $rowsOf('Double elimination, Merlins withdrawn, in play');
+        $next = exampleResult($results, 'The round its engine pairs next', RoundPairing::class);
+        $pairedNext = array_values(array_filter($inPlay, static fn(array $row): bool => $row['Played as'] === 'paired next'));
+        expect(array_map(static fn(array $row): array => [$row['Round'], $row['First'], $row['Second']], $pairedNext))
+            ->toBe(array_map(static fn(Event $event): array => [$next->getLabel(), ...$labels($event)], $next->getEvents()))
+            ->and(array_map(static fn(array $row): array => [$row['First'], $row['Second'], $row['Where it stands']], $ofRound($inPlay, 'losers round 1')))->toBe([
+                ['bye', 'Merlins (withdrawn)', 'void, nobody through'],
+                ['bye', 'bye', 'empty'],
+            ])
+            ->and(array_map(static fn(array $row): array => [$row['First'], $row['Second']], $ofRound($inPlay, 'losers round 2')))->toBe([
+                ['Ospreys', 'nobody (void)'],
+                ['Swifts', 'bye'],
+            ])
+            ->and(array_map(static fn(array $row): array => [$row['First'], $row['Second']], $ofRound($inPlay, 'grand final reset')))->toBe([
+                ['loser of grand final', 'winner of grand final'],
+            ]);
+
+        // Finished: every round the bracket in play showed, the reset played, and the squad it sends through
+        // first in the table
+        $finished = $rowsOf('The same bracket, finished');
+        $standings = exampleResult($results, 'Final standings', Standings::class);
+        $reset = $ofRound($finished, 'grand final reset');
+        expect(array_column($finished, 'Round'))->toBe(array_column($inPlay, 'Round'))
+            ->and($reset)->toHaveCount(1)
+            ->and($reset[0]['Where it stands'])->toBe($standings->getEntries()[0]->getParticipant()->getLabel() . ' through')
+            ->and($standings->getTiers()[0])->toBe(0)
+            ->and(array_filter($finished, static fn(array $row): bool => in_array($row['Where it stands'], ['waiting', 'to be paired', 'in play'], true)))->toBe([]);
+
+        // A re-seeded bracket knows its final only once the semifinals are settled
+        expect(array_map(static fn(array $row): array => [$row['First'], $row['Second'], $row['Where it stands']], $rowsOf('Re-seeded, before the first round')))->toBe([
+            ['Ines', 'Wren', 'to be paired'],
+            ['Tomas', 'Olu', 'to be paired'],
+            ['to be re-seeded', 'to be re-seeded', 'waiting'],
+        ]);
+    },
 ];
 
 /**
