@@ -1273,7 +1273,10 @@ entry on the engine fingerprint.
     and so is a withdrawal given as a plain participant in a history with
     rounds (the new reason `WithdrawalWithoutRound`,
     `withdrawal_without_round`, with `participant` and `last_round` in the
-    context; ADR 0012, `docs/adr/0012-a-withdrawal-states-its-round.md`).
+    context; ADR 0012, `docs/adr/0012-a-withdrawal-states-its-round.md`),
+    and an adjustment without `madeAfterRound()` in a history with rounds
+    (the new reason `AdjustmentWithoutRound`, `adjustment_without_round`,
+    the same context; ADR 0012, amended).
     `fromArray()`, `fromJson()` and the verbs accept what they accepted.
   - **History is supplied, never recomputed.** An engine reads the rounds
     recorded on a state as they are and derives only the round that does
@@ -1337,11 +1340,20 @@ entry on the engine fingerprint.
     bracket (its two entrants go out with those the next losers round puts
     out). An entrant given a tie because the other had left went through
     it when its next tie was paired, or at once where the other had left
-    before the round of the tie was paired; the last tie of a bracket (the
-    final, the third-place tie, the grand final or its reset) has no next
-    tie, so where both of its entrants have withdrawn without a result that
-    decides it, it is void whenever they left: the bracket ends with nobody
-    in its first tier, and the selector names no winner. A void semifinal
+    before the round of the tie was paired. **A finished bracket keeps its
+    winner** (ADR 0013, `docs/adr/0013-a-finished-bracket-keeps-its-winner.md`):
+    the last tie of a bracket (the final, the third-place tie, the grand
+    final or its reset) has no next tie, and is decided the moment its
+    results, or the withdrawal of one of its entrants while the other is
+    still in the stage, decide it; the bracket is over once its last ties
+    are, and is read as it stood then, so a withdrawal afterwards, the
+    winner's included, takes nothing back. The final and the third-place
+    tie are each decided on their own, and a finalist who was given the
+    final and has withdrawn since is listed among the byes of a last round
+    paired for the third-place tie. Only data stored by 0.2.x, whose
+    withdrawals carry no time, can hold a last tie both entrants left at
+    times nobody knows: it is void, the bracket ends with nobody in its
+    first tier, and the selector names no winner. A void semifinal
     leaves the third place to the loser of the other semifinal without a
     tie being played. In single elimination with a third-place tie, the
     entrant who takes the third place from a tie the other has left is
@@ -1368,8 +1380,9 @@ entry on the engine fingerprint.
     (#154, its option 2; ADR 0007, "A state says when"). Each is recorded
     with the number of the last round that was recorded at that moment:
     - `Adjustment::getAfterRound(): ?int`, a fifth constructor argument of
-      `Adjustment` (`?int $afterRound = null`; 0 is before the first round)
-      and `Adjustment::madeAfterRound(int): Adjustment`.
+      `Adjustment` (`?int $afterRound = null`; 0 is before the first round;
+      null only for an adjustment that belongs to no stage) and
+      `Adjustment::madeAfterRound(int): Adjustment`.
       `StageState::withAdjustment()` records an adjustment that states no
       round as made after the last round the state holds, so nothing is
       passed between rounds; one that states a round keeps it, and a round
@@ -1384,19 +1397,28 @@ entry on the engine fingerprint.
     - `StageState::fromHistory()` takes a `Withdrawal` among its
       withdrawals, and requires one once the history holds a round (a plain
       participant is accepted only where no round is supplied, as a
-      withdrawal after round 0), and reads the round of each adjustment. A
-      round after the last one supplied is refused (`ValueOutOfRange`, with
-      `participant`, `after_round` and `last_round` in the context).
-    - Plain data: an adjustment writes `after_round` when it says one, and
-      a stage state writes `withdrawals`
+      withdrawal after round 0); it requires the round of each adjustment
+      the same way (one without it is made after round 0 where no round is
+      supplied, and refused otherwise, `AdjustmentWithoutRound`). A round
+      after the last one supplied is refused (`ValueOutOfRange`, with
+      `participant`, `after_round` and `last_round` in the context). The
+      withdrawals after one round are kept in the order given, which is
+      the order they happened: it decides who has a last tie both of its
+      entrants left.
+    - Plain data: an adjustment writes `after_round` when it says one (an
+      adjustment of a stage state always does), and a stage state writes
+      `withdrawals`
       (`[['participant' => id, 'after_round' => n], ...]`, in the order
       they happened) when it holds one, with `entrants`: one entry for
       every entrant who is not active. `fromArray()` refuses a round after
       the last recorded one, a withdrawal of an active participant, of one
       who is not an entrant, of one listed twice, or out of the order of the
       rounds, a withdrawal after round 0 of a participant the first recorded
-      round does not name, and an entrant who is not active and has no
-      withdrawal. Data stored by 0.2.x has neither key and loads as it did.
+      round does not name, an entrant who is not active and has no
+      withdrawal, and an adjustment without `after_round` in a state that
+      holds a round (one in a state that holds none is read as made after
+      round 0; no release wrote either, 0.2.x stored no adjustments). Data
+      stored by 0.2.x has neither key and loads as it did.
 
     What the engines do with it. A re-seeded bracket ranks the survivors of
     a recorded round from the adjustments made before that round, so an
@@ -1408,13 +1430,22 @@ entry on the engine fingerprint.
     is no longer reported as manual for an adjustment or a withdrawal
     recorded after it. Where both entrants of a bracket tie have withdrawn
     and its results are not complete, the tie is void unless one of them
-    was still in the stage when its next tie was paired (see above); the
-    order of the two withdrawals decides nothing.
+    was still in the stage when its next tie was paired, and a last tie
+    goes to the one still in the stage when the other left (see above).
 
-    **To a state a round is paired when it is recorded.** An application
-    that pairs a round, has it played and records it only then (the loop
-    in the README) records what happens during that round before the
-    round. A withdrawal of an entrant the round names is read correctly
+    **To a state a round is paired when it is recorded, so a round is
+    recorded when it is paired:** `StageState::withRoundPaired(RoundPairing):
+    StageState` (new) records the pairing, its byes included, with none of
+    its results, and `withAdditionalResults()` adds them as they come. It
+    is `withRoundPlayed($pairing, [])` by name, and stores the same state.
+    The driver loops of the README, the usage guide, the integration guides
+    and the examples record each round that way: pair, record as paired,
+    play, add the results. Example 18 now records the pairing of a round
+    and its results in two requests (its golden fixture lists seven
+    requests where it listed four; the states and the final table are the
+    same). An application that pairs a round, has it played and records it
+    only then records what happens during that round before the round. A
+    withdrawal of an entrant the round names is read correctly
     either way, the first round included: a round that names a
     participant, in an event or as a bye, was paired while it was in the
     stage, and the engines read that before the round its withdrawal
@@ -1423,40 +1454,34 @@ entry on the engine fingerprint.
     a losers round with no tie to play (which is not recorded) and
     withdraws while the next winners round is played is placed one stage
     lower when the withdrawal is recorded first; who goes on and every
-    round are the same. One thing it asks of an application: no
+    round are the same, and a round recorded when it is paired has no such
+    limit. One thing it asks of an application: no
     round may name a participant who had left before it was paired (among
     byes listed as everyone without an event, for example: the participant
     is then read as in the stage for that round and every round before
     it). An adjustment is not read correctly either way: one made while a
     round is played and recorded before the round is read as known when
     that round was paired (the ranking of a re-seeded round, and the
-    derivation beside the round in a re-seeded bracket and a Swiss stage).
-    Where adjustments are made while a round is played, record the round
-    when it is paired (`withRoundPlayed($pairing, [])`) and add its results
-    with `withAdditionalResults()`.
+    derivation beside the round in a re-seeded bracket and a Swiss stage):
+    recorded when it is paired, the round comes first. Measured against
+    models that know when everything happened, with adjustments made while
+    a round is played, a Swiss engine-paired round was reported as manual
+    in 361 of 2,000 generated stages, and a re-seeded one in 7 of 3,000,
+    where the round was recorded once played, and in none where it was
+    recorded when paired.
 
-    **Without a round the time is not known, and it is not guessed.** An
-    adjustment reaches a state without one from a history that does not
-    state it, or from data stored by an earlier revision of this release; a
-    withdrawal only from data stored by 0.2.x, because a history with rounds
-    states the round of every withdrawal (undated withdrawals were read
-    otherwise than the stage was played in 438 of 3,380 generated single and
-    430 of 1,500 double elimination stages). Such data loads. It is read neither as "after the last
-    round" nor as "before the first": an adjustment counts in the tables
-    and in the round paired next; the engine gives no derivation, and
-    reports nothing as manual, for a recorded round it could have changed
-    (every round of a Swiss stage, every round after the first of a
-    re-seeded bracket); and a re-seeded bracket refuses a recorded round
-    after the first that an entrant had withdrawn before
-    (`RecordedRoundMismatch`, with `round`, `adjusted_without_round` and
-    `withdrawn` in the context), because what became of that entrant
-    depends on a ranking that is not known. A withdrawal without a round
-    (0.2.x data) is read from the rounds that name the participant: of two
-    withdrawn entrants of a tie, the one a later recorded round names went
-    on, and the tie is void where a later round names neither; and a
-    participant neither a round nor a later one names is taken to have left
-    before it. Supply the byes of every round. A bracket on a fixed path and
-    a double elimination bracket rank nothing and refuse no state for this.
+    **Every withdrawal and adjustment states its round once there are
+    rounds**, so no state holds one whose time is guessed: undated
+    withdrawals were read otherwise than the stage was played in 438 of
+    3,380 generated single and 430 of 1,500 double elimination stages, and
+    an adjustment without its round left the engines without a derivation
+    for the rounds it could have changed and made a re-seeded bracket refuse
+    a round it could not read. Only data stored by 0.2.x has a withdrawal
+    without a round. It loads, and is read from the rounds that name the
+    participant: of two withdrawn entrants of a tie, the one a later
+    recorded round names went on, and the tie is void where a later round
+    names neither; and a participant neither a round nor a later one names
+    is taken to have left before it. Supply the byes of every round.
   - **The outcome of a bracket says who went on from its last tie.**
     `StageOutcome::getSettledTies(): ?list<SettledTie>`, an eighth
     constructor argument of `StageOutcome` (`?array $settledTies = null`),

@@ -2,7 +2,10 @@
 
 Status: accepted. Replaces, in [0007](0007-recorded-rounds-are-read-not-derived.md),
 the rule that the first of two entrants to withdraw from a tie gave it to the
-other.
+other. What it says of the last tie of a bracket is replaced by
+[0013](0013-a-finished-bracket-keeps-its-winner.md): a last tie goes to the
+entrant still in the stage when the other left, and a finished bracket keeps
+its winner.
 
 ## Context
 
@@ -49,7 +52,9 @@ cannot settle: a losers round with no tie to play is not recorded, and is read
 from who was in the stage when the next recorded round was paired. An entrant
 who went on alone from it and withdraws while that round (a winners round) is
 played is placed one stage lower when the withdrawal is recorded first; who
-goes on, the rounds and the winner are the same.
+goes on, the rounds and the winner are the same. A round recorded when it is
+paired (`StageState::withRoundPaired()`, which came after this record) comes
+before every withdrawal while it is played, and leaves nothing to read so.
 
 **The last tie of a bracket has no next tie.** The final, the third-place tie,
 the grand final and its reset are void whenever both of their entrants have
@@ -79,14 +84,19 @@ play. A tie its results decided is never void, whoever withdraws afterwards.
 - In double elimination a void winners tie drops nobody to the losers bracket:
   the losers slot it would have filled is empty, and its two entrants go out
   together with those the next losers round puts out. Which of two entrants
-  went through a winners tie is read at the next winners round, and the other
-  is the one who dropped; the engine reads the bracket a second time when it
-  finds such an entrant, because the losers bracket that the dropper enters
-  comes first in the walk.
+  went through a winners tie is read at the next winners round. The other,
+  who would have dropped, had withdrawn by then, and an entrant who stands
+  alone in a losers round after withdrawing goes out there as the two of a
+  void tie do, so the losers slot is read as empty in either case and the
+  engine reads the bracket once. (It read it a second time while such a
+  dropper went on alone; once that changed, a measurement over 3,000
+  generated stages found no output the second reading changed, and it was
+  removed.)
 - The outcome says it: the settled tie of a void last tie has no advancer and
   both entrants among the eliminated (`Stage\SettledTie`), and
   `MatchOutcomeSelector` names nobody in winners mode and both in losers mode.
-- The order of two withdrawals decides nothing. A state keeps it as given.
+- The order of two withdrawals decides nothing here. A state keeps it as
+  given, and [0013](0013-a-finished-bracket-keeps-its-winner.md) reads it for a last tie.
 
 A tie is pairwise, and so is this rule ([0003](0003-multi-participant-events-are-a-2-0-goal.md)).
 

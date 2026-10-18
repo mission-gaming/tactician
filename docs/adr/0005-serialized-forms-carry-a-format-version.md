@@ -59,8 +59,10 @@ One form that is written and never read has a key 0.2.x did not write: the
 Two of them say when something happened, and what leaving them out means
 is stated where it is decided
 ([ADR 0007](0007-recorded-rounds-are-read-not-derived.md), "A state says
-when"): an adjustment without `after_round` is of unknown time, and is
-never read as made at a time that would suit. A withdrawal has its time
+when", and [ADR 0012](0012-a-withdrawal-states-its-round.md)): a stage
+state with a recorded round requires `after_round` of every adjustment, and
+reads one without it in a state with no round as made after round 0 (no
+release wrote an adjustment without it). A withdrawal has its time
 wherever the state has the entrant list: `entrants` and `withdrawals` come
 together, with an entry under `withdrawals` (`after_round` from 0) for every
 entrant who is not active ([ADR 0012](0012-a-withdrawal-states-its-round.md)),

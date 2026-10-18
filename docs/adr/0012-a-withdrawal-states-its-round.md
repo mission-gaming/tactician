@@ -1,7 +1,9 @@
 # 0012. A withdrawal states its round
 
-Status: accepted. Narrows, in [0007](0007-recorded-rounds-are-read-not-derived.md),
-what an absent round means for a withdrawal.
+Status: accepted; amended (see "Amendment: an adjustment states its round
+too" below). Narrows, in [0007](0007-recorded-rounds-are-read-not-derived.md),
+what an absent round means for a withdrawal and, with the amendment, for an
+adjustment.
 
 ## Context
 
@@ -69,10 +71,54 @@ The undated reading of 0007 stays for that data only.
 - A stage state with a withdrawal before the first round is stored with the
   `entrants` and `withdrawals` keys (`after_round` 0) until the first round is
   recorded, where it was stored as a state that never held the entrant.
-- The adjustments are not changed by this record: an adjustment that states
-  no round is still accepted and read as 0007 describes.
+- The adjustments were not changed by this record as first accepted; the
+  amendment below changes them the same way.
 - `tests/Feature/StageTimesTest.php` ("a withdrawal says after which round it
   happened") holds the rules, and the sweep "reads a bracket the same whether a
   round or the withdrawals during it are recorded first" in
   `tests/Feature/EliminationInvariantsTest.php` now withdraws entrants while
   the first round is played as well.
+
+## Amendment: an adjustment states its round too
+
+**Context.** As first accepted, this record left adjustments as 0007 had
+them: one without a round was accepted and read as of unknown time. The
+engines then showed no derivation beside a round it could have changed, and
+a re-seeded bracket refused a recorded round it could not read without the
+ranking of the time (`RecordedRoundMismatch`, with `adjusted_without_round`
+in the context). That refusal was wide (every round after the first that an
+entrant had withdrawn before), and the reading was weaker than the one a
+history with its rounds stated gets, for the same reason as for withdrawals:
+rows that do not say when something happened cannot be read as it happened.
+
+**Decision.** An adjustment states its round once there are rounds, as a
+withdrawal does. `fromHistory()` refuses an adjustment without
+`Adjustment::madeAfterRound()` in a history that holds a round
+(`InvalidConfigurationException`, reason `AdjustmentWithoutRound`, with
+`participant` and `last_round` in the context); with no round supplied it is
+made after round 0. `fromArray()` refuses a stored adjustment without
+`after_round` in a state that holds a round, and reads one in a state that
+holds none as made after round 0. `withAdjustment()` always records the
+round, as it did. So no state an engine reads holds an adjustment without
+its round, and the engines lose the reading of one and the refusal that went
+with it (`SingleEliminationEngine::requireNoRankingToReadBy()` and the
+derivation-less rounds of a re-seeded bracket and a Swiss stage are gone).
+
+No release wrote an adjustment without its round: 0.2.x stored no
+adjustments, and the key `after_round` and the adjustments themselves are
+both of 0.3.0, which is not released. Data stored by 0.2.x is read exactly as
+before. A state stored by an unreleased revision with an undated adjustment
+and a round is refused with a message that names the key.
+
+**Consequences.**
+
+- Every adjustment of a state has its round, and the engines read every
+  recorded round from the adjustments made before it was paired, in every
+  engine and with no exception: no derivation is withheld for an adjustment
+  and no re-seeded bracket is refused for one.
+- What remains of the time of an adjustment is the application's: an
+  adjustment made while a round is played is recorded after that round only
+  where the round was recorded when it was paired
+  (`StageState::withRoundPaired()`), which the documented loop does.
+- `tests/Feature/StageTimesTest.php` ("an adjustment that does not say after
+  which round it was made") holds the rules.

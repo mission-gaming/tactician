@@ -4,9 +4,12 @@ Status: accepted. Narrows the first sentence of
 [0001](0001-reseeded-brackets-rank-from-earlier-rounds.md): an engine still
 keeps no state of its own, and it no longer resolves the recorded rounds
 again. What it says of a tie both entrants left is replaced by
-[0011](0011-a-tie-both-entrants-left-is-void.md), and what it says of a
+[0011](0011-a-tie-both-entrants-left-is-void.md) and, for a last tie,
+[0013](0013-a-finished-bracket-keeps-its-winner.md); what it says of a
 withdrawal without its round is narrowed by
-[0012](0012-a-withdrawal-states-its-round.md).
+[0012](0012-a-withdrawal-states-its-round.md), and what it says of an
+adjustment without its round is replaced by the amendment of 0012 (no state
+holds one any more).
 
 ## Context
 

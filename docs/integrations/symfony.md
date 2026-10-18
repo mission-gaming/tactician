@@ -380,9 +380,11 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     that results leave open.
   - **When each of them withdrew**: the number of the last round that
     was on record at that moment (0 before the first), as a
-    `Withdrawal`. An engine reads a round from who was in the stage when
-    it was paired, and whether a tie both entrants left is void from when
-    each left. Once your rows hold a round, a withdrawal given as a plain
+    `Withdrawal`, and those after one round in the order they happened.
+    An engine reads a round from who was in the stage when it was paired,
+    whether a tie both entrants left is void from when each left, and who
+    has a last tie of a bracket from which of its two entrants left first.
+    Once your rows hold a round, a withdrawal given as a plain
     participant is refused (`WithdrawalWithoutRound`; see
     [When a Withdrawal or an Adjustment Happened](../USAGE.md#when-a-withdrawal-or-an-adjustment-happened)).
   - **Their IDs, and nothing else about them, for the pairing order.**
@@ -403,7 +405,8 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     A result finds its event by round number, participants and leg.
   - **Adjustments**, where you make any, each with the round it was made
     after (`Adjustment::madeAfterRound()`): a round is ranked from the
-    adjustments made before it was paired.
+    adjustments made before it was paired. Once your rows hold a round,
+    an adjustment without it is refused (`AdjustmentWithoutRound`).
 
   `fromHistory()` checks what rows can get wrong and a stored state
   cannot: round numbers that are not 1, 2, 3 and so on
