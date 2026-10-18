@@ -29,6 +29,10 @@ use Random\Randomizer;
 // small table of the same tied sets.
 // Every amount generated is a multiple of a quarter, which a float holds
 // exactly, so the figures are the same in whatever order they are added.
+//
+// A table can also be given tiers (the placement of a bracket): the oracle
+// then orders by the tier first and forms every tied set inside a tier
+// (docs/adr/0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md).
 
 const BYE_TABLE_CASES = 240;
 
@@ -175,6 +179,30 @@ function byeTableCalculator(array $case): StandingsCalculator
 }
 
 /**
+ * Tiers for the participants of a case: up to three, and one participant in
+ * four left out, which puts it in the tier after the last given. Drawn from
+ * a generator of their own, so that the case is the one it is without them.
+ *
+ * @param list<Participant> $participants
+ *
+ * @return array<string, int>
+ */
+function byeTableTiers(array $participants, int $seed): array
+{
+    $rng = new Randomizer(new Xoshiro256StarStar($seed + 7919));
+    $count = $rng->getInt(1, 3);
+
+    $tiers = [];
+    foreach ($participants as $participant) {
+        if ($rng->getInt(0, 3) > 0) {
+            $tiers[$participant->getId()] = $rng->getInt(0, $count - 1);
+        }
+    }
+
+    return $tiers;
+}
+
+/**
  * The table of a case, as the library calculates it in one call.
  *
  * @param array{
@@ -187,10 +215,11 @@ function byeTableCalculator(array $case): StandingsCalculator
  *     perBye: int,
  *     chain: list<string|array{tiebreaker: string, byes: string}>
  * } $case
+ * @param array<string, int> $tiers The tier of each participant by ID; none for a table without
  *
  * @throws InvalidConfigurationException When the calculator refuses the table (not expected here)
  */
-function byeTableOf(array $case): Standings
+function byeTableOf(array $case, array $tiers = []): Standings
 {
     return byeTableCalculator($case)->calculateWith(
         $case['participants'],
@@ -200,7 +229,8 @@ function byeTableOf(array $case): Standings
             static fn(array $adjustment): Adjustment => new Adjustment($adjustment['id'], $adjustment['amount']),
             $case['adjustments']
         ),
-        $case['perBye']
+        $case['perBye'],
+        $tiers
     );
 }
 
@@ -314,16 +344,23 @@ function byeTableMeasure(string $measure, string $treatment, string $id, array $
  *     perBye: int,
  *     chain: list<string|array{tiebreaker: string, byes: string}>
  * } $case
+ * @param array<string, int> $tiers The tier of each participant by ID; none for a table without
  *
  * @return list<array{id: string, played: int, wins: int, draws: int, losses: int, byes: int, for: float, against: float, results: float, earned: float, adjustment: float, total: float, tiebreakers: array<string, float>}>
  */
-function byeTableOracle(array $case): array
+function byeTableOracle(array $case, array $tiers = []): array
 {
     $ids = [];
     $seeds = [];
     foreach ($case['participants'] as $participant) {
         $ids[] = $participant->getId();
         $seeds[$participant->getId()] = $participant->getSeed() ?? PHP_INT_MAX;
+    }
+
+    // A participant the tiers leave out is in the tier after the last given
+    $tier = [];
+    foreach ($ids as $id) {
+        $tier[$id] = $tiers === [] ? 0 : ($tiers[$id] ?? max($tiers) + 1);
     }
 
     $figures = byeTableFigures($ids, $case['games'], $case['scale']);
@@ -360,12 +397,15 @@ function byeTableOracle(array $case): array
                 continue;
             }
 
-            // The tied set of this participant: everyone level with it on
-            // the total and on every tiebreaker before the run this one is
-            // in, whatever the earlier ones of the run made of the set
+            // The tied set of this participant: everyone of its tier level
+            // with it on the total and on every tiebreaker before the run
+            // this one is in, whatever the earlier ones of the run made of
+            // the set
             $set = array_values(array_filter(
                 $ids,
-                static fn(string $other): bool => $total[$other] === $total[$id] && $levelBefore[$other] === $levelBefore[$id]
+                static fn(string $other): bool => $tier[$other] === $tier[$id]
+                    && $total[$other] === $total[$id]
+                    && $levelBefore[$other] === $levelBefore[$id]
             ));
             $among = array_values(array_filter(
                 $case['games'],
@@ -384,9 +424,10 @@ function byeTableOracle(array $case): array
         }
     }
 
-    usort($ids, static function (string $one, string $other) use ($total, $values, $figures, $earned, $seeds): int {
-        // Each pair is compared so that the better of the two comes first
-        $steps = [[$total[$other], $total[$one]]];
+    usort($ids, static function (string $one, string $other) use ($tier, $total, $values, $figures, $earned, $seeds): int {
+        // Each pair is compared so that the better of the two comes first:
+        // the lower tier, then the higher figures
+        $steps = [[(float) $tier[$one], (float) $tier[$other]], [$total[$other], $total[$one]]];
         foreach (array_keys($values[$one]) as $name) {
             $steps[] = [$values[$other][$name], $values[$one][$name]];
         }
@@ -663,6 +704,81 @@ describe('the bye treatment of a tiebreaker computed from opponents, over genera
                 expect($withByes->getEntryFor($participant)?->getTiebreakers())
                     ->toBe($without->getEntryFor($participant)?->getTiebreakers(), "case {$seed}");
             }
+        }
+    });
+});
+
+describe('a table with tiers, over generated cases', function (): void {
+    it('has the figures, the tiers and the order an independent calculation gives', function (): void {
+        $moved = 0;
+
+        for ($seed = 1; $seed <= BYE_TABLE_CASES; ++$seed) {
+            $case = byeTableCase($seed);
+            $tiers = byeTableTiers($case['participants'], $seed);
+            $oracle = byeTableOracle($case, $tiers);
+            $table = byeTableOf($case, $tiers);
+
+            $tierOf = static fn(string $id): int => $tiers[$id] ?? max([...array_values($tiers), -1]) + 1;
+            expect(byeTableLines($table))->toBe(array_map(
+                static fn(array $line): array => [...$line, 'tiebreakers' => array_map(static fn(float $value): float => $value + 0.0, $line['tiebreakers'])],
+                $oracle
+            ), "case {$seed}")
+                ->and($table->getTiers())->toBe(array_map(static fn(array $line): int => $tierOf($line['id']), $oracle), "case {$seed}");
+
+            // A tiebreaker between the tied participants whose value the
+            // tiers change: the case is one the tiers are there for
+            $without = byeTableOracle($case);
+            foreach ($oracle as $line) {
+                foreach ($without as $other) {
+                    $moved += $other['id'] === $line['id'] && $other['tiebreakers'] !== $line['tiebreakers'] ? 1 : 0;
+                }
+            }
+        }
+
+        expect($moved)->toBeGreaterThan(40);
+    });
+
+    it('is the same table for every order of the participants, the results, the byes and the tiers', function (): void {
+        for ($seed = 1; $seed <= BYE_TABLE_CASES; $seed += 3) {
+            $case = byeTableCase($seed);
+            $tiers = byeTableTiers($case['participants'], $seed);
+            $expected = byeTableLines(byeTableOf($case, $tiers));
+            $rng = new Randomizer(new Xoshiro256StarStar($seed));
+
+            for ($order = 0; $order < 3; ++$order) {
+                $shuffledTiers = [];
+                foreach ($rng->shuffleArray(array_keys($tiers)) as $id) {
+                    $shuffledTiers[$id] = $tiers[$id];
+                }
+
+                $shuffled = [
+                    ...$case,
+                    'participants' => $rng->shuffleArray($case['participants']),
+                    'games' => $rng->shuffleArray($case['games']),
+                ];
+
+                expect(byeTableLines(byeTableOf($shuffled, $shuffledTiers)))->toBe($expected, "case {$seed}, order {$order}");
+            }
+        }
+    });
+
+    // Where no tiebreaker is computed between the tied participants, tiers
+    // only sort the table: each entry goes to its tier in the order the
+    // table without tiers has it
+    it('is the table without tiers put into tiers where no tiebreaker is computed between the tied', function (): void {
+        for ($seed = 1; $seed <= BYE_TABLE_CASES; ++$seed) {
+            $case = byeTableCase($seed);
+            $case['chain'] = array_values(array_filter(
+                $case['chain'],
+                static fn(string|array $entry): bool => !is_string($entry) || !str_starts_with($entry, 'between-tied:')
+            ));
+            $tiers = byeTableTiers($case['participants'], $seed);
+            $last = max([...array_values($tiers), -1]) + 1;
+
+            $sorted = byeTableLines(byeTableOf($case));
+            usort($sorted, static fn(array $one, array $other): int => ($tiers[$one['id']] ?? $last) <=> ($tiers[$other['id']] ?? $last));
+
+            expect(byeTableLines(byeTableOf($case, $tiers)))->toBe($sorted, "case {$seed}");
         }
     });
 });

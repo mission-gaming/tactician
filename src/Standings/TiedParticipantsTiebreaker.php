@@ -16,7 +16,10 @@ namespace MissionGaming\Tactician\Standings;
  * - Who is tied. The participants are level in groups: those with the same
  *   ranking value (the total, with byes and adjustments) and the same value
  *   for every tiebreaker before the run this one is in. Each such group is
- *   a tied set. A participant level with nobody is a set of one.
+ *   a tied set. A participant level with nobody is a set of one. In a table
+ *   with tiers (StandingsCalculator::calculateWith(), the placement of a
+ *   bracket) the groups are formed inside a tier: participants of two
+ *   tiers are never one set.
  * - What a run is. Tiebreakers of this kind that follow one another in the
  *   chain are a run, and every one of a run is asked about the same tied
  *   sets: those level when the first of the run was asked. Together they
