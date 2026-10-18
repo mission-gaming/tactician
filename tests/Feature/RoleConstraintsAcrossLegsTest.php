@@ -60,6 +60,13 @@ final readonly class RoleSweepConstraintSetOfTheCallers extends ConstraintSet {}
 final readonly class RoleSweepLimitSubclassOfTheCallers extends ConsecutiveRoleConstraint {}
 
 /**
+ * A subclass of the shuffled leg strategy that changes nothing. The
+ * scheduler cannot know that its clone draws from the seed again, so it
+ * clones only the library's class.
+ */
+final readonly class RoleSweepShuffledLegsOfTheCallers extends ShuffledLegStrategy {}
+
+/**
  * A constraint class of the caller's that answers as the limit it is given
  * answers.
  */
@@ -1628,12 +1635,18 @@ describe('the default, balanced where possible', function (): void {
     // the search puts to it and the rejected events of each layout it asks
     // about once more, for the record, are counted alike: two for the event
     // each of the two layouts ends on.
-    it('holds the search of shuffled later legs to the bound of events once a schedule is in hand', function (bool $theFirstLayoutFailsAtOnce): void {
+    //
+    // Under a subclass of the strategy, which the scheduler does not clone,
+    // the first layout is laid out again after round parity, and its later
+    // legs are searched within the 4,000 events and not to their own bound.
+    it('holds the search of shuffled later legs to the bound of events once a schedule is in hand', function (bool $theFirstLayoutFailsAtOnce, bool $aSubclassOfTheCallers = false): void {
         $size = 10;
         $legs = 2;
         $roundsPerLeg = $size - 1;
         $field = roleSweepField($size);
-        $strategy = static fn(): ShuffledLegStrategy => new ShuffledLegStrategy(seed: 1);
+        $strategy = static fn(): ShuffledLegStrategy => $aSubclassOfTheCallers
+            ? new RoleSweepShuffledLegsOfTheCallers(seed: 1)
+            : new ShuffledLegStrategy(seed: 1);
         $keptOut = $theFirstLayoutFailsAtOnce
             ? roleSweepPairingOfTheFirstLayout($field, $legs, $strategy(), $roundsPerLeg + 1, 'p1', null)
             : [];
@@ -1678,6 +1691,17 @@ describe('the default, balanced where possible', function (): void {
         expect(RoleFallback::of($schedule))->toBe(RoleFallback::BalancedRolesRejected)
             ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray());
 
+        if ($aSubclassOfTheCallers) {
+            expect(count($before))->toBeGreaterThan(4_000)
+                // The first layout again, from its first question
+                ->and(array_slice($after, 0, 100))->toBe(array_slice($before, 0, 100))
+                // and its later legs searched within the 4,000 events
+                ->and(count($after))->toBeGreaterThan(3_000)
+                ->and(count($after))->toBeLessThanOrEqual(4_000 + 2);
+
+            return;
+        }
+
         if (!$theFirstLayoutFailsAtOnce) {
             expect(count($before))->toBeGreaterThan(4_000)
                 ->and($after)->toBe([]);
@@ -1695,6 +1719,7 @@ describe('the default, balanced where possible', function (): void {
     })->with([
         'the first layout spends the bound' => [false],
         'the first layout fails at once' => [true],
+        'the first layout spends the bound, under a subclass of the strategy' => [false, true],
     ]);
 
     // The first rotated order of the search for balanced roles with round
