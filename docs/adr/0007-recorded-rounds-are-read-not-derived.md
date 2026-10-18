@@ -3,7 +3,10 @@
 Status: accepted. Narrows the first sentence of
 [0001](0001-reseeded-brackets-rank-from-earlier-rounds.md): an engine still
 keeps no state of its own, and it no longer resolves the recorded rounds
-again.
+again. What it says of a tie both entrants left is replaced by
+[0011](0011-a-tie-both-entrants-left-is-void.md), and what it says of a
+withdrawal without its round is narrowed by
+[0012](0012-a-withdrawal-states-its-round.md).
 
 ## Context
 
@@ -87,9 +90,11 @@ state as they are and derives only the round that does not exist yet.
    of an engine that waits.
 5. **A withdrawal keeps the entrant's place.** `StageState` keeps the
    entrant list with the withdrawn in their places once a round is recorded
-   (`getEntrants()`; before that, a withdrawal removes the entrant, as it
-   always did). A bracket folds from that list, so a tie of a withdrawn
-   entrant is not played and the other entrant advances.
+   (`getEntrants()`; before that, the entrant is out of the draw, and the
+   first round says whether it was in it after all:
+   [0012](0012-a-withdrawal-states-its-round.md)). A bracket folds from that
+   list, so a tie of a withdrawn entrant is not played and the other
+   entrant advances.
 6. **A state says when.** A round is paired from what is known at that
    moment (ADR 0001), so reading it afterwards takes the same knowledge,
    and two facts a state holds can come later than a round: an adjustment
@@ -126,18 +131,16 @@ state as they are and derives only the round that does not exist yet.
      one after a round nobody played, is told by whether a tie could be
      played at the time;
    - where both entrants of a tie have withdrawn and its results are not
-     complete, the first of them to withdraw gave the tie to the other,
-     who went on. That holds whether the round holds the tie or not and
-     whenever the bracket is read: the answer for a history does not
-     depend on the moment an engine was asked.
+     complete, the tie is void unless one of them was still in the stage
+     when its next tie was paired ([0011](0011-a-tie-both-entrants-left-is-void.md),
+     which replaces the rule this record first stated: that the first of
+     the two to withdraw gave the tie to the other).
 
-   The reading of a named entrant has two edges, and both are the
-   application's to keep clear of. It does not reach the first round: a
-   state that holds no round removes an entrant who withdraws and keeps no
-   withdrawal (decision 5), so a first round recorded afterwards names
-   somebody the state does not list, and is read as a round drawn by hand
-   for the field without it; the bracket that follows from that fold can be
-   another, or be refused. And it takes every name as a fact: a round that
+   The reading of a named entrant reaches the first round as well, since
+   a withdrawal before any round is recorded is kept after round 0
+   ([0012](0012-a-withdrawal-states-its-round.md); this record first left
+   the first round out). It has one edge, which is the application's to
+   keep clear of: it takes every name as a fact. A round that
    names an entrant who had left before it was paired (among byes listed as
    everyone without an event, say) puts the entrant in the stage for that
    round and for every round before it, so that the rounds between can be
@@ -175,9 +178,12 @@ state as they are and derives only the round that does not exist yet.
      in the stage for every round that names it and for those before, and
      for no round after the last that does. Where both entrants of a
      tie have withdrawn that way, the one a later recorded round names went
-     on, and where a later round names neither, or both, neither is read as
-     having gone on: they share the tier of the round, and a bracket that
-     ends with such a tie has nobody in its first tier.
+     on, and where a later round names neither, or both, the tie is void
+     ([0011](0011-a-tie-both-entrants-left-is-void.md)). Since
+     [0012](0012-a-withdrawal-states-its-round.md) only data stored by 0.2.x
+     holds such a withdrawal: a history with rounds states the round of
+     every withdrawal, and a stored entrant list carries one for every
+     withdrawn entrant.
 7. **The outcome of a bracket says who went on from its last tie.** The
    results do not say it where a finalist withdrew: the final then has no
    complete result, or no round at all. `StageOutcome::getSettledTies()`
