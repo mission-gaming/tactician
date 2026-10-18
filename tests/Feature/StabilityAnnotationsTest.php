@@ -162,6 +162,8 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             'RoleAssignment\LegBalanceRule',
             'Scheduling\BacktrackingRoundRobinGenerator',
             'Scheduling\BracketReading',
+            // New in 0.3.0 and never public: builds the bracket view from an engine's walk
+            'Scheduling\BracketViewBuilder',
             'Scheduling\ConstraintPurity',
             'Scheduling\EliminationBracketSupport',
             'Scheduling\EventIndex',
