@@ -21,8 +21,9 @@ readonly class Round implements \Stringable
     /**
      * @param int $number The round number, 1 or higher
      * @param array<string, mixed> $metadata Free-form data. The library reads none of it; the
-     *                                       elimination engines set 'label' to the name of the
-     *                                       bracket stage
+     *                                       elimination engines set 'label'
+     *                                       (Stage\FormatMetadataKey::ROUND_LABEL) to the text of
+     *                                       the round's label (Stage\RoundLabel)
      *
      * @throws InvalidInputException When the round number is below 1
      */

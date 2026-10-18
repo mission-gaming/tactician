@@ -35,7 +35,8 @@ readonly class Event
      *                                       of a two-legged tie. 'bracket_tie' is set by the
      *                                       single elimination engine on the events of the last
      *                                       round of a bracket with a third-place tie, and is
-     *                                       read through Stage\BracketTie::of()
+     *                                       read through Stage\BracketTie::of(). Both are
+     *                                       constants of Stage\FormatMetadataKey
      *
      * @throws InvalidInputException When fewer than 2 participants are provided, or one
      *                               participant ID is listed twice

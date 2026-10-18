@@ -358,8 +358,22 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         ],
         'schedule metadata' => [
             'docs/USAGE.md',
-            "getMetadataValue('participant_count')",
-            ["Algorithm: round-robin\nParticipant count: 4\nTotal rounds: 3\n"],
+            'getMetadataValue(MetadataKey::PARTICIPANT_COUNT)',
+            ["Algorithm: round-robin\nParticipant count: 4\nTotal rounds: 3\na round robin\n"],
+            [],
+        ],
+        'a round label as typed data' => [
+            'docs/USAGE.md',
+            '$label = $firstRound->getRoundLabel();',
+            ["Quarterfinal\nLast 16\nLast eight\n"],
+            [],
+        ],
+        'the yield of a per-group selection' => [
+            'docs/USAGE.md',
+            '$topTwo = RankRangeSelector::topPerGroup(2);',
+            [
+                "PerPool\n8\n0\nStage 'quarterfinals' expects 8 entrants but its selection yields 6 from the previous stage's 12.\n",
+            ],
             [],
         ],
         'multi-leg analysis' => [

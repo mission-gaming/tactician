@@ -13,6 +13,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\BracketFold;
 use MissionGaming\Tactician\Stage\BracketNodeStatus;
 use MissionGaming\Tactician\Stage\BracketTie;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\SettledTie;
@@ -100,8 +101,8 @@ trait EliminationBracketSupport
         }
 
         return [
-            new Event([$first, $second], $round, ['tie_leg' => 1] + $metadata),
-            new Event([$second, $first], $round, ['tie_leg' => 2] + $metadata),
+            new Event([$first, $second], $round, [FormatMetadataKey::TIE_LEG => 1] + $metadata),
+            new Event([$second, $first], $round, [FormatMetadataKey::TIE_LEG => 2] + $metadata),
         ];
     }
 
@@ -139,7 +140,7 @@ trait EliminationBracketSupport
                 );
             }
 
-            $key = $this->legKey($round, $eventParticipants[0], $eventParticipants[1], $event->getMetadataValue('tie_leg'));
+            $key = $this->legKey($round, $eventParticipants[0], $eventParticipants[1], $event->getMetadataValue(FormatMetadataKey::TIE_LEG));
 
             if (isset($index[$key])) {
                 $ids = PairKey::order([$eventParticipants[0]->getId(), $eventParticipants[1]->getId()]);
@@ -245,7 +246,7 @@ trait EliminationBracketSupport
 
             $advancer = $round === null || count($eventParticipants) !== 2 || $result->getWinner() !== null
                 ? null
-                : $levelAdvancers[$this->legKey($round, $eventParticipants[0], $eventParticipants[1], $event->getMetadataValue('tie_leg'))] ?? null;
+                : $levelAdvancers[$this->legKey($round, $eventParticipants[0], $eventParticipants[1], $event->getMetadataValue(FormatMetadataKey::TIE_LEG))] ?? null;
 
             $decided[] = $advancer === null
                 ? $result
@@ -571,7 +572,7 @@ trait EliminationBracketSupport
             }
 
             $key = 'tie ' . PairKey::of($participants[0]->getId(), $participants[1]->getId());
-            $leg = is_int($event->getMetadataValue('tie_leg')) ? $event->getMetadataValue('tie_leg') : 1;
+            $leg = is_int($event->getMetadataValue(FormatMetadataKey::TIE_LEG)) ? $event->getMetadataValue(FormatMetadataKey::TIE_LEG) : 1;
             $ties[$key] ??= ['participants' => [$participants[0], $participants[1]], 'events' => [], 'thirdPlace' => false];
             if ($leg < ($namedByLeg[$key] ??= $leg)) {
                 $namedByLeg[$key] = $leg;
@@ -902,7 +903,7 @@ trait EliminationBracketSupport
             }
 
             foreach ($tie['events'] as $event) {
-                if (isset($reading->resultIndex[$this->legKey($round, $first, $second, $event->getMetadataValue('tie_leg'))])) {
+                if (isset($reading->resultIndex[$this->legKey($round, $first, $second, $event->getMetadataValue(FormatMetadataKey::TIE_LEG))])) {
                     if ($settled['undecided']) {
                         $undecided[] = $event;
                     }
@@ -1110,8 +1111,8 @@ trait EliminationBracketSupport
         $events = array_values($events);
         usort(
             $events,
-            static fn(Event $one, Event $other): int => (is_int($one->getMetadataValue('tie_leg')) ? $one->getMetadataValue('tie_leg') : 1)
-                <=> (is_int($other->getMetadataValue('tie_leg')) ? $other->getMetadataValue('tie_leg') : 1)
+            static fn(Event $one, Event $other): int => (is_int($one->getMetadataValue(FormatMetadataKey::TIE_LEG)) ? $one->getMetadataValue(FormatMetadataKey::TIE_LEG) : 1)
+                <=> (is_int($other->getMetadataValue(FormatMetadataKey::TIE_LEG)) ? $other->getMetadataValue(FormatMetadataKey::TIE_LEG) : 1)
         );
 
         $status = match (true) {

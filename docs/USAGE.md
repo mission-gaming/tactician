@@ -70,6 +70,7 @@ anything else that competes.
 | **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
 | **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
 | **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Selection yield** | How many participants a progression selector hands on, as the selector states it before any outcome exists (`ProgressionSelector::getYield()`, a `SelectionYield`): a fixed count, a count per pool, the winners or the losers of the last round of the stage before, or a number only the outcome gives. `CompositionValidator` counts a chain with it. See [Multi-Stage Tournaments](#ahead-of-time-composition-validation). |
 | **Best of a rank** | The best few of the entrants that hold one rank in their pools, compared with each other across the pools and listed best first (`BestOfRankSelector`): the two best of those placed third. See [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
 | **Pool comparison** | How entrants of pools of unequal size are compared (`PoolComparison`): by raw totals, per event played, or without the results against the lowest-placed entrants of the larger pools. The caller's choice; a selection across pools of unequal size is refused until it is made. Pools are unequal when their tables do not have the same number of entries. |
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as the **decider** of the event's result, or of one leg's result. Ties are not legs: brackets have no legs concept. |
@@ -98,6 +99,7 @@ anything else that competes.
 | **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes the **bye value** for every bye a participant has had, as the table of the outcome does. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, the structural final round and the entrant list. Deliberately free of champion/winner vocabulary. The standings are the table of the whole stage: for an elimination stage the bracket placement, so rank 1 is the participant who advanced from its last tie (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes, and a mark when the round was paired, on request, before the results of the round before it were all in. |
+| **Round label** | The name an elimination engine gives a bracket round ('semifinal', 'round of 16', 'losers round 2'), from where the round stands in the bracket. It is typed data (`RoundLabel`): a kind (`RoundLabelKind`) and, for three kinds, a number, built from the round's side, structural round and slot count (`RoundLabel::ofBracketRound()`); `RoundPairing::getRoundLabel()` and `BracketRound::getRoundLabel()` give it, so an application can word a round its own way without parsing text. Its English text (`toString()`) is what the round pairing and the metadata of its round hold. Swiss and round-robin rounds have none. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
 | **Slot** | One kickoff time within a round, holding one event per resource (one event total when no resources are declared). A round's events fill its slots deterministically: schedule order against slot time order, resource by resource within a slot. |
 | **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline adds its intervals in the stage's declared timezone (see [Timeline Assignment](#timeline-assignment) for what that means across a daylight-saving change). |
@@ -132,6 +134,8 @@ anything else that competes.
 | **Configuration error reason** | The kind of mistake behind an `InvalidConfigurationException`, as a case of the `InvalidConfigurationReason` enum (`getReason()`). It says what was wrong, not which component found it, and its backing string is a stable identifier. Code branches on the reason and never on the message text. See [Configuration Errors](#configuration-errors). |
 | **Failure analysis** | What the round-robin scheduler finds when it cannot complete a schedule under constraints (`DiagnosticReport`, from `IncompleteScheduleException::getAnalysis()`): the missing pairings, what each constraint rejects, the **blocked pairings** that no round of the generated schedule accepts, and the pairings allowed only in rounds that are already full (**at capacity**). Each finding is there as a line of text and as typed data by participant ID. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
+| **Algorithm identifier** | The stable string by which a stage plan names its algorithm (`StagePlan::getAlgorithm()`): `round-robin`, `swiss`, `pot-draw`, `single-elimination`, `double-elimination`. The cases of `Stage\Algorithm` are backed by them, and a generated schedule records its one under the `algorithm` key of its metadata. |
+| **Metadata key** | A key of the free-form metadata of a schedule, round or event that the library itself writes (`algorithm`, `byes`, `label`, `tie_leg`...), held as a constant that says which object carries it and when. `DTO\MetadataKey` holds the keys whose meaning the stable surface owns, those the round-robin scheduler writes, and their values do not change between releases; `Stage\FormatMetadataKey` holds the keys only the experimental formats write (the Swiss preset's `rounds`, the pot draw's, the round label, `tie_leg`, `bracket_tie`), which change with those formats. |
 
 ## Basic Usage
 
@@ -172,8 +176,10 @@ foreach ($schedule as $event) {
 ### Tournament with Seeded Participants
 
 ```php
+use MissionGaming\Tactician\DTO\MetadataKey;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Stage\Algorithm;
 
 // Create seeded participants with metadata
 $participants = [
@@ -186,11 +192,30 @@ $participants = [
 $scheduler = new RoundRobinScheduler();
 $schedule = $scheduler->schedule($participants);
 
-// Access schedule metadata
-echo "Algorithm: " . $schedule->getMetadataValue('algorithm') . "\n";
-echo "Participant count: " . $schedule->getMetadataValue('participant_count') . "\n";
-echo "Total rounds: " . $schedule->getMetadataValue('total_rounds') . "\n";
+// Access schedule metadata, by the keys the library writes
+echo "Algorithm: " . $schedule->getMetadataValue(MetadataKey::ALGORITHM) . "\n"; // round-robin
+echo "Participant count: " . $schedule->getMetadataValue(MetadataKey::PARTICIPANT_COUNT) . "\n"; // 4
+echo "Total rounds: " . $schedule->getMetadataValue(MetadataKey::TOTAL_ROUNDS) . "\n"; // 3
+
+// The algorithm identifier as a case
+$algorithm = Algorithm::from($scheduler->getPlan($participants)->getAlgorithm());
+echo ($algorithm === Algorithm::RoundRobin ? 'a round robin' : 'another format') . "\n"; // a round robin
 ```
+
+The metadata of a schedule is free-form, and an application may add keys of
+its own. The keys the library writes are constants, each with the object
+that carries it and when, and their string values are the ones the library
+has always written. `DTO\MetadataKey` holds the keys the round-robin
+scheduler writes (`ALGORITHM`, `PARTICIPANT_COUNT`, `TOTAL_ROUNDS`,
+`EXPECTED_EVENT_COUNT`, `LEGS`, `ROUNDS_PER_LEG`, `BYES`, `ROLE_FALLBACK`),
+which are stable. `Stage\FormatMetadataKey` holds the keys only the
+experimental formats write: `ROUNDS` of the Swiss preset, `POTS`,
+`POT_SIZE`, `OPPONENTS_PER_POT` and `SEED` of the pot draw, and on the
+rounds and events of a bracket `ROUND_LABEL`, `TIE_LEG` and `BRACKET_TIE`.
+Those are as experimental as the formats, and change with them.
+The algorithm identifiers (`round-robin`, `swiss`, `pot-draw`,
+`single-elimination`, `double-elimination`) are the cases of
+`Stage\Algorithm`, whose backing values they are.
 
 ## Participants and Events
 
@@ -3149,6 +3174,36 @@ $outcome = $engine->getOutcome($state);
 $titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
 ```
 
+The engine labels every round it pairs from where the round stands in the
+bracket. To word a round your own way, or to translate it, read the label
+as typed data: `getRoundLabel()` gives a `RoundLabel`, whose kind is a case
+of `RoundLabelKind` and whose number is set for the three kinds that name
+one ('round of 16', 'winners round 2', 'losers round 3'). `getLabel()` is
+its English text, which is what is stored. For text that was stored,
+`RoundLabel::fromString()` reads it back to the label it was, and
+`RoundLabel::ofRound()` reads it from the `DTO\Round` of an event, where it
+is under `FormatMetadataKey::ROUND_LABEL`. Text the library does not write,
+and a round without a label (Swiss), give null.
+
+```php
+use MissionGaming\Tactician\Stage\RoundLabel;
+use MissionGaming\Tactician\Stage\RoundLabelKind;
+
+$firstRound = $state->getRoundsPlayed()[0];
+$label = $firstRound->getRoundLabel();
+echo $label?->getKind()->name . "\n"; // Quarterfinal
+
+$wording = fn (RoundLabel $label): string => match ($label->getKind()) {
+    RoundLabelKind::Final => 'The final',
+    RoundLabelKind::Semifinal => 'Last four',
+    RoundLabelKind::Quarterfinal => 'Last eight',
+    RoundLabelKind::RoundOf => "Last {$label->getNumber()}",
+    default => ucfirst($label->toString()),
+};
+echo $wording(RoundLabel::fromString('round of 16')) . "\n"; // Last 16
+echo $wording($label) . "\n"; // Last eight
+```
+
 The outcome's standings are the bracket placement, with the win/loss record
 of every entrant. In the bracket above (single elimination, one event per
 tie, eight entrants): the winner 3-0, the runner-up 2-1, the semifinal
@@ -3825,11 +3880,12 @@ elimination winners round 1, losers round 1, then each later winners round
 followed by the losers rounds it feeds, the grand final and its reset.
 
 **The labels are a rendering of the view.** The engines label every round
-they pair with `BracketRoundLabel::of()` over the round's side, structural
-round and slot count, and `BracketRound::getLabel()` is the same call, so
-`'quarterfinal'`, `'losers round 3'` and `'grand final reset'` say nothing
-the view does not. An application that wants other words renders its own
-from the same values.
+they pair with `RoundLabel::ofBracketRound()` over the round's side,
+structural round and slot count, and `BracketRound::getRoundLabel()` is the
+same call, so a quarterfinal, losers round 3 and the grand final reset say
+nothing the view does not. `BracketRound::getLabel()` is its English text.
+An application that wants other words maps the label's kind and number to
+its own (see [Elimination Brackets](#elimination-brackets)).
 
 A node (`BracketNode`) has an ID, `<side>:<round>:<position>` (`main:2:1`,
 `losers:3:2`, `grand-final:2:1`), by which a later slot names it and
@@ -4760,8 +4816,10 @@ events to play. Check that before you select, as the loop above does with
 `findUnplayedPairings()`, or with `isComplete()` for a stage an engine
 drives.
 
-**Ahead-of-time composition validation** checks that a declared
-multi-stage structure telescopes before any fixture exists:
+### Ahead-of-time composition validation
+
+`CompositionValidator` checks that a declared multi-stage structure
+telescopes before any fixture exists:
 
 ```php
 use MissionGaming\Tactician\Stage\CompositionValidator;
@@ -4793,6 +4851,55 @@ Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
 forward, losers to a repechage) validate as separate chains from the same
 source.
+
+**Every selector states its yield.** The validator counts a transition by
+what its selector declares, `getYield()`, and reads no other method: a
+selector of your own is counted the way the library's are. A
+`SelectionYield` is one of five kinds (`SelectionYieldKind`), and
+`countFrom()` turns it into a number for a stage before of a given shape:
+
+| Selector | Kind | Yield from the stage before |
+|---|---|---|
+| `RankRangeSelector::overall(from, to)`, `BestOfRankSelector::ofRank(rank, count)` | `Fixed` | the count |
+| `RankRangeSelector::perGroup(from, to)`, `topPerGroup(n)` | `PerPool` | the count per pool times the pools |
+| `MatchOutcomeSelector::winners()` | `WinnersOfLastRound` | half the entrants rounded up; 1 after a whole bracket |
+| `MatchOutcomeSelector::losers()` | `LosersOfLastRound` | half the entrants rounded down; 1 after a whole bracket |
+| a selector whose count only the outcome gives | `DependsOnOutcome` | not counted |
+
+The yield is stated before any outcome exists, so it cannot know of a
+withdrawal. A bracket tie whose two entrants both withdrew sends nobody on,
+and the entrant who then stands alone in the next round goes on with no
+loser beside it, so a match-outcome selection can hand on fewer than its
+yield says. The validator checks the chain as declared; the stage after
+still checks the entrants it is given.
+
+A count per pool needs the number of pools, which the validator cannot see
+either; declare it on the transition as `sourcePools`, or the transition
+passes unchecked:
+
+```php
+use MissionGaming\Tactician\Stage\RankRangeSelector;
+
+$topTwo = RankRangeSelector::topPerGroup(2);
+echo $topTwo->getYield()->getKind()->name . "\n"; // PerPool
+echo $topTwo->getYield()->countFrom(16, sourcePools: 4) . "\n"; // 8
+
+$fourPoolsOfFour = 16;
+$fourPools = (new CompositionValidator())->validateChain($fourPoolsOfFour, [
+    new StageTransition('quarterfinals', 8, $topTwo, sourcePools: 4),
+    new StageTransition('semifinals', 4, MatchOutcomeSelector::winners()),
+]);
+echo count($fourPools) . "\n"; // 0: four pools of four, two from each, make 8
+
+$threePools = (new CompositionValidator())->validateChain(12, [
+    new StageTransition('quarterfinals', 8, $topTwo, sourcePools: 3),
+]);
+echo $threePools[0] . "\n";
+// Stage 'quarterfinals' expects 8 entrants but its selection yields 6 from the previous stage's 12.
+```
+
+`getSelectionSize()` stays: it is the count of a `Fixed` yield and null
+for every other kind.
 
 ### The best of a rank across pools
 
@@ -5010,8 +5117,8 @@ and a per-group selection takes no method at all; both are refused with
 `IncompatibleOptions`.
 
 **The selector states its yield, and does not place for a bracket.**
-`getSelectionSize()` is the count, so composition validation checks a
-transition that uses it. The list is best first and nothing else: put
+Its yield is the count, fixed (`getYield()`, and `getSelectionSize()`), so
+composition validation checks a transition that uses it. The list is best first and nothing else: put
 after a per-group selection (`[...$topTwo, ...$bestThirds]`) it can pair an
 entrant with one of its own pool in the first round of a bracket, because
 where each has to go depends on which pools the selected entrants come

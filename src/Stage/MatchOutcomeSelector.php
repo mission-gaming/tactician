@@ -40,8 +40,8 @@ use Override;
  */
 final readonly class MatchOutcomeSelector implements ProgressionSelector
 {
-    private const string MODE_WINNERS = 'winners';
-    private const string MODE_LOSERS = 'losers';
+    private const string MODE_WINNERS = MatchOutcomeMode::Winners->value;
+    private const string MODE_LOSERS = MatchOutcomeMode::Losers->value;
 
     /**
      * @param 'winners'|'losers' $mode
@@ -270,6 +270,19 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     }
 
     /**
+     * The winners or the losers of the last round of the stage before, by
+     * the mode: a number the shape of that stage decides
+     * (SelectionYield::countFrom()).
+     */
+    #[Override]
+    public function getYield(): SelectionYield
+    {
+        return $this->mode === self::MODE_WINNERS
+            ? SelectionYield::winnersOfLastRound()
+            : SelectionYield::losersOfLastRound();
+    }
+
+    /**
      * Always null: the count is the number of ties in the final round,
      * plus its byes in winners mode, which only the outcome says.
      */
@@ -278,6 +291,14 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     {
         // Depends on the final round's size
         return null;
+    }
+
+    /**
+     * Which side of the last round's ties the selector reads.
+     */
+    public function getMode(): MatchOutcomeMode
+    {
+        return MatchOutcomeMode::from($this->mode);
     }
 
     /**
@@ -346,7 +367,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             );
         }
 
-        $leg = $event->getMetadataValue('tie_leg');
+        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
 
         return $round . ':' . PairKey::of(...$this->participantIds($event)) . ':' . (is_int($leg) ? $leg : 1);
     }

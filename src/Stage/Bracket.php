@@ -15,7 +15,7 @@ namespace MissionGaming\Tactician\Stage;
  * LoserOf, Reseeded) and the slots that will hold nobody (Bye, Void,
  * NotPlayed). A bracket with byes, two-legged ties, a third-place tie or a
  * losers bracket can be drawn from it alone, and the English labels of the
- * rounds are a rendering of it (BracketRoundLabel).
+ * rounds are a rendering of it (RoundLabel::ofBracketRound()).
  *
  * It is the engine's reading and not a second record: it is built from the
  * same walk through the state as getReadiness(), getRecordedRounds(),

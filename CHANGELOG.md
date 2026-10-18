@@ -912,8 +912,9 @@ entry on the engine fingerprint.
     `SlotSource` (draw, advancer of, loser of, recorded) and
     `SlotPlaceholder` (advancer of, loser of, re-seeded, bye, void, not
     played);
-  - `BracketRoundLabel::of()`, which renders the English label of a round
-    from its side, structural round and slot count.
+  - `BracketRound::getRoundLabel()`, the label of a round from its side,
+    structural round and slot count (`RoundLabel::ofBracketRound()`, under
+    "Typed identifiers" below), and `getLabel()`, its English text.
 
   The third-place tie of a single elimination bracket is a node of its own
   in the last round, after the final, of kind `BracketTie::ThirdPlace`, its
@@ -925,9 +926,10 @@ entry on the engine fingerprint.
 
 - **The round labels are a rendering of the bracket view.** Both
   elimination engines now label the rounds they pair with
-  `BracketRoundLabel::of()` over the round's place in the view, which is the
-  label `BracketRound::getLabel()` gives. Every label is the one it was:
-  no golden fixture changed.
+  `RoundLabel::ofBracketRound()` over the round's place in the view, which is
+  the label `BracketRound::getRoundLabel()` gives, and write its English
+  text where they wrote the label. Every label is the one it was: no golden
+  fixture changed.
 
 - **The roles of the first leg are searched within what the role
   assignment keeps, without `backtracking`
@@ -1927,6 +1929,54 @@ entry on the engine fingerprint.
   written as it always was. The refusal of participant data without a
   valid ID now reads "Participant data requires a non-empty string id, and
   a string label when it has one".
+- **Typed identifiers for configuration-driven applications
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** An
+  application that maps its configuration to the library no longer matches
+  on strings it copied:
+  - `Stage\Algorithm` has a case for every algorithm identifier
+    (`round-robin`, `swiss`, `pot-draw`, `single-elimination`,
+    `double-elimination`), backed by the string `StagePlan::getAlgorithm()`
+    returns and a generated schedule records under `algorithm`.
+  - `Stage\MatchOutcomeMode` and `Stage\RankRangeMode` are the modes of the
+    two selectors (`MatchOutcomeSelector::getMode()`,
+    `RankRangeSelector::getMode()`), and `Stage\SelectionTiePolicy` is what a
+    rank selection does with an order results leave open
+    (`getTiePolicy()` on `RankRangeSelector` and `BestOfRankSelector`). Each
+    is backed by the identifier of the plain-data form, which is unchanged.
+  - `Stage\RoundLabel` is the label of a bracket round as typed data, a
+    `Stage\RoundLabelKind` and, for 'round of', 'winners round' and 'losers
+    round', a number. The engines build it from the round's place in the
+    bracket (`RoundLabel::ofBracketRound()`) and write its English text
+    (`toString()`), the text they wrote before; `RoundPairing::getRoundLabel()`
+    and `BracketRound::getRoundLabel()` give it. `RoundLabel::fromString()`
+    and `RoundLabel::ofRound()` (for the `DTO\Round` of an event) read stored
+    text back. A `RoundPairing` takes its label as a `RoundLabel` or as text,
+    and stores the text as before.
+  - `DTO\MetadataKey` holds the metadata keys whose meaning the stable
+    surface owns, those the round-robin scheduler writes on a schedule, as
+    constants with the strings it has always written.
+    `Stage\FormatMetadataKey`, experimental, holds the keys only the
+    experimental formats write: the rounds of the Swiss preset, the pots,
+    pot size, opponents per pot and seed of the pot draw, and the round
+    label, tie leg and bracket tie of the elimination engines.
+- **Every progression selector states its yield
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `ProgressionSelector::getYield()` returns a `Stage\SelectionYield`: a
+  fixed count, a count per pool, the winners or the losers of the last round
+  of the stage before, or a number only the outcome gives
+  (`Stage\SelectionYieldKind`). `SelectionYield::countFrom()` gives the
+  number for a stage before of a given shape. `CompositionValidator` now
+  counts every transition by it, a selector of an application's included,
+  where it recognised the match-outcome selector by its class and counted
+  any other selector only by a fixed size. A per-group rank range, which
+  always passed unchecked, is checked where the transition declares the
+  pools of the stage before (`StageTransition`'s new `sourcePools`); without
+  them it passes as before. Every chain of the library's selectors that the
+  validator accepted or refused before gets the same answer; a selector of
+  an application's is now counted by the yield it declares, where it was
+  counted by `getSelectionSize()` alone. The yield is stated before any
+  outcome, so a withdrawal can make a match-outcome selection hand on fewer
+  than it says (a bracket tie both entrants left sends nobody on).
 
 ### Changed
 
@@ -3337,6 +3387,15 @@ entry on the engine fingerprint.
   After: the exception. Where a `MinimumRestRule` reported such a clash,
   the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
   because the round is refused before the rules are asked (#121, item 10).
+- **Breaking for a progression selector of an application's:
+  `ProgressionSelector` has a new method, `getYield()`
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** The
+  interface is experimental. A class that implements it adds the method and
+  returns what it yields: `SelectionYield::fixed($n)` where
+  `getSelectionSize()` returns `$n`, and otherwise the kind that says what
+  the number depends on, `SelectionYield::dependsOnOutcome()` where nothing
+  can be said. `getSelectionSize()` stays, and is the count of a fixed
+  yield.
 
 - The `Coverage` job of CI measures with PCOV where it used Xdebug. It
   reports line coverage only, which PCOV measures, and the suite had grown
