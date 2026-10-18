@@ -98,7 +98,7 @@ anything else that competes.
 | **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes the **bye value** for every bye a participant has had, as the table of the outcome does. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, the structural final round and the entrant list. Deliberately free of champion/winner vocabulary. The standings are the table of the whole stage: for an elimination stage the bracket placement, so rank 1 is the participant who advanced from its last tie (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes, and a mark when the round was paired, on request, before the results of the round before it were all in. |
-| **Round label** | The name an elimination engine gives a bracket round ('semifinal', 'round of 16', 'losers round 2'), on its round pairing and in the metadata of its round. As typed data (`RoundLabel`) it is a kind (`RoundLabelKind`) and, for three kinds, a number; `RoundPairing::getRoundLabel()` reads it, so an application can word a round its own way without parsing text. Swiss and round-robin rounds have none. |
+| **Round label** | The name an elimination engine gives a bracket round ('semifinal', 'round of 16', 'losers round 2'), from where the round stands in the bracket. It is typed data (`RoundLabel`): a kind (`RoundLabelKind`) and, for three kinds, a number, built from the round's side, structural round and slot count (`RoundLabel::ofBracketRound()`); `RoundPairing::getRoundLabel()` and `BracketRound::getRoundLabel()` give it, so an application can word a round its own way without parsing text. Its English text (`toString()`) is what the round pairing and the metadata of its round hold. Swiss and round-robin rounds have none. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
 | **Slot** | One kickoff time within a round, holding one event per resource (one event total when no resources are declared). A round's events fill its slots deterministically: schedule order against slot time order, resource by resource within a slot. |
 | **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline adds its intervals in the stage's declared timezone (see [Timeline Assignment](#timeline-assignment) for what that means across a daylight-saving change). |
@@ -133,7 +133,7 @@ anything else that competes.
 | **Configuration error reason** | The kind of mistake behind an `InvalidConfigurationException`, as a case of the `InvalidConfigurationReason` enum (`getReason()`). It says what was wrong, not which component found it, and its backing string is a stable identifier. Code branches on the reason and never on the message text. See [Configuration Errors](#configuration-errors). |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 | **Algorithm identifier** | The stable string by which a stage plan names its algorithm (`StagePlan::getAlgorithm()`): `round-robin`, `swiss`, `pot-draw`, `single-elimination`, `double-elimination`. The cases of `Stage\Algorithm` are backed by them, and a generated schedule records its one under the `algorithm` key of its metadata. |
-| **Metadata key** | A key of the free-form metadata of a schedule, round or event that the library itself writes (`algorithm`, `byes`, `label`, `tie_leg`...). `DTO\MetadataKey` holds each as a constant and says which object carries it and when. |
+| **Metadata key** | A key of the free-form metadata of a schedule, round or event that the library itself writes (`algorithm`, `byes`, `label`, `tie_leg`...), held as a constant that says which object carries it and when. `DTO\MetadataKey` holds the keys whose meaning the stable surface owns, those the round-robin scheduler writes, and their values do not change between releases; `Stage\FormatMetadataKey` holds the keys only the experimental formats write (the Swiss preset's `rounds`, the pot draw's, the round label, `tie_leg`, `bracket_tie`), which change with those formats. |
 
 ## Basic Usage
 
@@ -201,10 +201,16 @@ echo ($algorithm === Algorithm::RoundRobin ? 'a round robin' : 'another format')
 ```
 
 The metadata of a schedule is free-form, and an application may add keys of
-its own. The keys the library writes are constants of `DTO\MetadataKey`
-(`ALGORITHM`, `PARTICIPANT_COUNT`, `TOTAL_ROUNDS`, `EXPECTED_EVENT_COUNT`,
-`LEGS`, `ROUNDS_PER_LEG`, `BYES`, ...), each with the object that carries it
-and when; their string values are the ones the library has always written.
+its own. The keys the library writes are constants, each with the object
+that carries it and when, and their string values are the ones the library
+has always written. `DTO\MetadataKey` holds the keys the round-robin
+scheduler writes (`ALGORITHM`, `PARTICIPANT_COUNT`, `TOTAL_ROUNDS`,
+`EXPECTED_EVENT_COUNT`, `LEGS`, `ROUNDS_PER_LEG`, `BYES`, `ROLE_FALLBACK`),
+which are stable. `Stage\FormatMetadataKey` holds the keys only the
+experimental formats write: `ROUNDS` of the Swiss preset, `POTS`,
+`POT_SIZE`, `OPPONENTS_PER_POT` and `SEED` of the pot draw, and on the
+rounds and events of a bracket `ROUND_LABEL`, `TIE_LEG` and `BRACKET_TIE`.
+Those are as experimental as the formats, and change with them.
 The algorithm identifiers (`round-robin`, `swiss`, `pot-draw`,
 `single-elimination`, `double-elimination`) are the cases of
 `Stage\Algorithm`, whose backing values they are.
@@ -3148,14 +3154,16 @@ $outcome = $engine->getOutcome($state);
 $titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
 ```
 
-A round label is text, written by the engine. To word a round your own way,
-or to translate it, read it as typed data: `getRoundLabel()` gives a
-`RoundLabel`, whose kind is a case of `RoundLabelKind` and whose number is
-set for the three kinds that name one ('round of 16', 'winners round 2',
-'losers round 3'). `RoundLabel::ofRound()` reads the label from the
-`DTO\Round` of an event, where it is stored under `MetadataKey::ROUND_LABEL`.
-A label the library does not write, and a round without one (Swiss), give
-null.
+The engine labels every round it pairs from where the round stands in the
+bracket. To word a round your own way, or to translate it, read the label
+as typed data: `getRoundLabel()` gives a `RoundLabel`, whose kind is a case
+of `RoundLabelKind` and whose number is set for the three kinds that name
+one ('round of 16', 'winners round 2', 'losers round 3'). `getLabel()` is
+its English text, which is what is stored. For text that was stored,
+`RoundLabel::fromString()` reads it back to the label it was, and
+`RoundLabel::ofRound()` reads it from the `DTO\Round` of an event, where it
+is under `FormatMetadataKey::ROUND_LABEL`. Text the library does not write,
+and a round without a label (Swiss), give null.
 
 ```php
 use MissionGaming\Tactician\Stage\RoundLabel;
@@ -3852,11 +3860,12 @@ elimination winners round 1, losers round 1, then each later winners round
 followed by the losers rounds it feeds, the grand final and its reset.
 
 **The labels are a rendering of the view.** The engines label every round
-they pair with `BracketRoundLabel::of()` over the round's side, structural
-round and slot count, and `BracketRound::getLabel()` is the same call, so
-`'quarterfinal'`, `'losers round 3'` and `'grand final reset'` say nothing
-the view does not. An application that wants other words renders its own
-from the same values.
+they pair with `RoundLabel::ofBracketRound()` over the round's side,
+structural round and slot count, and `BracketRound::getRoundLabel()` is the
+same call, so a quarterfinal, losers round 3 and the grand final reset say
+nothing the view does not. `BracketRound::getLabel()` is its English text.
+An application that wants other words maps the label's kind and number to
+its own (see [Elimination Brackets](#elimination-brackets)).
 
 A node (`BracketNode`) has an ID, `<side>:<round>:<position>` (`main:2:1`,
 `losers:3:2`, `grand-final:2:1`), by which a later slot names it and

@@ -912,8 +912,9 @@ entry on the engine fingerprint.
     `SlotSource` (draw, advancer of, loser of, recorded) and
     `SlotPlaceholder` (advancer of, loser of, re-seeded, bye, void, not
     played);
-  - `BracketRoundLabel::of()`, which renders the English label of a round
-    from its side, structural round and slot count.
+  - `BracketRound::getRoundLabel()`, the label of a round from its side,
+    structural round and slot count (`RoundLabel::ofBracketRound()`, under
+    "Typed identifiers" below), and `getLabel()`, its English text.
 
   The third-place tie of a single elimination bracket is a node of its own
   in the last round, after the final, of kind `BracketTie::ThirdPlace`, its
@@ -925,9 +926,10 @@ entry on the engine fingerprint.
 
 - **The round labels are a rendering of the bracket view.** Both
   elimination engines now label the rounds they pair with
-  `BracketRoundLabel::of()` over the round's place in the view, which is the
-  label `BracketRound::getLabel()` gives. Every label is the one it was:
-  no golden fixture changed.
+  `RoundLabel::ofBracketRound()` over the round's place in the view, which is
+  the label `BracketRound::getRoundLabel()` gives, and write its English
+  text where they wrote the label. Every label is the one it was: no golden
+  fixture changed.
 
 - **The roles of the first leg are searched within what the role
   assignment keeps, without `backtracking`
@@ -1901,15 +1903,22 @@ entry on the engine fingerprint.
     rank selection does with an order results leave open
     (`getTiePolicy()` on `RankRangeSelector` and `BestOfRankSelector`). Each
     is backed by the identifier of the plain-data form, which is unchanged.
-  - `Stage\RoundLabel` reads the label of a bracket round as typed data, a
+  - `Stage\RoundLabel` is the label of a bracket round as typed data, a
     `Stage\RoundLabelKind` and, for 'round of', 'winners round' and 'losers
-    round', a number: `RoundPairing::getRoundLabel()`,
-    `RoundLabel::ofRound()` for the `DTO\Round` of an event, and
-    `RoundLabel::fromString()`. `toString()` gives the engine's text back.
-    The engines write the labels they wrote.
-  - `DTO\MetadataKey` holds the metadata keys the library writes on a
-    schedule, a round and an event, as constants with the strings it has
-    always written.
+    round', a number. The engines build it from the round's place in the
+    bracket (`RoundLabel::ofBracketRound()`) and write its English text
+    (`toString()`), the text they wrote before; `RoundPairing::getRoundLabel()`
+    and `BracketRound::getRoundLabel()` give it. `RoundLabel::fromString()`
+    and `RoundLabel::ofRound()` (for the `DTO\Round` of an event) read stored
+    text back. A `RoundPairing` takes its label as a `RoundLabel` or as text,
+    and stores the text as before.
+  - `DTO\MetadataKey` holds the metadata keys whose meaning the stable
+    surface owns, those the round-robin scheduler writes on a schedule, as
+    constants with the strings it has always written.
+    `Stage\FormatMetadataKey`, experimental, holds the keys only the
+    experimental formats write: the rounds of the Swiss preset, the pots,
+    pot size, opponents per pot and seed of the pot draw, and the round
+    label, tie leg and bracket tie of the elimination engines.
 - **Every progression selector states its yield
   ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
   `ProgressionSelector::getYield()` returns a `Stage\SelectionYield`: a
