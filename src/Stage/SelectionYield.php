@@ -10,9 +10,11 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * How many participants a progression selector yields, as the selector
  * states it ahead of any outcome (ProgressionSelector::getYield()).
  *
- * A selector yields either a count of its own, a count for each pool, the
- * winners or the losers of the last round of the stage before, or a number
- * only the outcome gives. countFrom() turns the statement into a number for
+ * A selector yields either a count of its own, a count for each pool, a
+ * count for each pool and a count on top, the winners or the losers of the
+ * last round of the stage before, or a number only the outcome gives. A
+ * yield can also state the fewest pools the selection can be made from
+ * (getMinimumPools()). countFrom() turns the statement into a number for
  * a stage before of a given shape, which is what CompositionValidator
  * checks a chain with; an application that validates a composition of its
  * own reads the same statement.
@@ -23,7 +25,9 @@ final readonly class SelectionYield
 {
     private function __construct(
         private SelectionYieldKind $kind,
-        private ?int $count
+        private ?int $count,
+        private ?int $addedCount = null,
+        private int $minimumPools = 1
     ) {}
 
     /**
@@ -44,6 +48,24 @@ final readonly class SelectionYield
     public static function perPool(int $count): self
     {
         return new self(SelectionYieldKind::PerPool, self::counted($count));
+    }
+
+    /**
+     * The selector yields this many from each pool of the stage before and
+     * $added more, taken across the pools; and it cannot be made from
+     * fewer than $minimumPools pools (BracketQualifiersSelector: the top
+     * of every pool and the best few of the next rank, which come from as
+     * many pools and are kept apart from their pools in a bracket).
+     *
+     * @throws InvalidInputException When a count is below 0 or the minimum is below 1 (unchecked)
+     */
+    public static function perPoolPlus(int $perPool, int $added, int $minimumPools = 1): self
+    {
+        if ($minimumPools < 1) {
+            throw new InvalidInputException("A selection is made from at least 1 pool, {$minimumPools} given");
+        }
+
+        return new self(SelectionYieldKind::PerPoolPlusFixed, self::counted($perPool), self::counted($added), $minimumPools);
     }
 
     /**
@@ -81,11 +103,31 @@ final readonly class SelectionYield
 
     /**
      * The count the selector states: the whole yield for Fixed, the yield of
-     * one pool for PerPool, and null for every other kind.
+     * one pool for PerPool and PerPoolPlusFixed, and null for every other
+     * kind.
      */
     public function getCount(): ?int
     {
         return $this->count;
+    }
+
+    /**
+     * The count taken across the pools on top of the count of each pool,
+     * for PerPoolPlusFixed; null for every other kind.
+     */
+    public function getAddedCount(): ?int
+    {
+        return $this->addedCount;
+    }
+
+    /**
+     * The fewest pools of the stage before the selection can be made from:
+     * the selector refuses an outcome of fewer. 1 unless the yield states
+     * more, which only perPoolPlus() can.
+     */
+    public function getMinimumPools(): int
+    {
+        return $this->minimumPools;
     }
 
     /**
@@ -95,6 +137,9 @@ final readonly class SelectionYield
      * - Fixed: the count.
      * - PerPool: the count times the pools; null when the pools are not
      *   given.
+     * - PerPoolPlusFixed: the count times the pools, plus the added count;
+     *   null when the pools are not given, or are fewer than the minimum
+     *   (getMinimumPools()), from which the selection is not made.
      * - WinnersOfLastRound and LosersOfLastRound: after one knockout round
      *   of all the entrants, half of them, rounded up for the winners (the
      *   bye goes on) and down for the losers; after a whole bracket, whose
@@ -122,6 +167,9 @@ final readonly class SelectionYield
             SelectionYieldKind::PerPool => $sourcePools === null || $this->count === null
                 ? null
                 : $this->count * $sourcePools,
+            SelectionYieldKind::PerPoolPlusFixed => $sourcePools === null || $sourcePools < $this->minimumPools || $this->count === null
+                ? null
+                : $this->count * $sourcePools + (int) $this->addedCount,
             SelectionYieldKind::WinnersOfLastRound => $afterWholeBracket ? 1 : intdiv($sourceEntrants + 1, 2),
             SelectionYieldKind::LosersOfLastRound => $afterWholeBracket ? 1 : intdiv($sourceEntrants, 2),
             SelectionYieldKind::DependsOnOutcome => null,

@@ -38,6 +38,25 @@ West:
 - gavle "Gavle"
 - tartu "Tartu"
 
+== Violations of the hand-off to the quarterfinals ==
+(none)
+
+== The eight placed for the knockout ==
+- alta "Alta"
+- lahti "Lahti"
+- bergen "Bergen"
+- bodo "Bodo"
+- floro "Floro"
+- narva "Narva"
+- gavle "Gavle"
+- tartu "Tartu"
+
+== Quarterfinals ==
+- Alta v Tartu
+- Bodo v Floro
+- Lahti v Gavle
+- Bergen v Narva
+
 == With a west pool of three ==
 West table:
   1. bergen played=2 wins=1 draws=0 losses=1 value=3 for=3 against=1

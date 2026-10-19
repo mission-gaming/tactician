@@ -868,6 +868,18 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Hal, Ian\nHal, Ian\nGus, Hal\n"],
             [],
         ],
+        'the top two of three pools and the two best third-placed, placed for a bracket' => [
+            'docs/USAGE.md',
+            '$knockoutEntrants = $qualifiers->select($stage);',
+            ["Ada, Ben, Cy, Fay, Di, Eli, Gus, Hal\nAda v Hal\nFay v Di\nBen v Gus\nCy v Eli\n"],
+            [],
+        ],
+        'qualifiers of one pool reported by composition validation' => [
+            'docs/USAGE.md',
+            '$onePool = BracketQualifiersSelector::of(',
+            ["0\nStage 'knockout' declares 1 pool for the previous stage; its selection is made from at least 2.\n"],
+            [],
+        ],
         'a week in days keeps the time of day, a week in hours does not' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",

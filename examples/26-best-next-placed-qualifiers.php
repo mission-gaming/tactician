@@ -5,15 +5,21 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/support/Example.php';
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\BestOfRankSelector;
+use MissionGaming\Tactician\Stage\BracketQualifiersSelector;
+use MissionGaming\Tactician\Stage\CompositionValidator;
 use MissionGaming\Tactician\Stage\PoolComparison;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Stage\StageTransition;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 
 // A floorball cup in three pools. The top two of every pool go through, and
@@ -98,6 +104,23 @@ $stage = StageOutcome::combining($pools, $calculator, [...$north, ...$east, ...$
 $topTwo = RankRangeSelector::topPerGroup(2)->select($stage);
 $bestThirds = BestOfRankSelector::ofRank(3, 2)->select($stage);
 
+// The eight into a knockout: the two selections placed together so that no
+// two clubs of one pool meet in the first round, wherever the best thirds
+// come from. Composition validation checks the hand-off before any pool is
+// played: three pools, two from each and two best thirds, make eight
+$qualifiers = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 2));
+$violations = (new CompositionValidator())->validateChain(12, [
+    new StageTransition('quarterfinals', 8, $qualifiers, sourcePools: 3),
+]);
+$knockoutEntrants = $qualifiers->select($stage);
+$firstRound = array_map(
+    static fn(Event $event): string => implode(' v ', array_map(
+        static fn(Participant $participant): string => $participant->getLabel(),
+        $event->getParticipants()
+    )),
+    (new SingleEliminationEngine())->pairNextRound(StageState::start($knockoutEntrants))->getEvents()
+);
+
 // Another year, one club fewer: the west pool has three clubs, who each
 // play one event less than the clubs of the other pools. Each of the three
 // won once, and Molde are third on 3 points from 2 events
@@ -129,10 +152,13 @@ foreach (PoolComparison::cases() as $comparison) {
     $byMethod[$comparison->value] = $labels(BestOfRankSelector::ofRank(3, 2)->comparedBy($comparison)->select($unequal));
 }
 
-return Example::present(__FILE__, 'Best next-placed qualifiers', 'Three pools play a round robin each. The top two of every pool qualify, and the two best of the clubs placed third join them. With pools of unequal size the clubs have played different numbers of events, and who is best depends on the comparison the caller names.', [
+return Example::present(__FILE__, 'Best next-placed qualifiers', 'Three pools play a round robin each. The top two of every pool qualify, and the two best of the clubs placed third join them, placed for a knockout in which no two clubs of one pool meet in the first round. With pools of unequal size the clubs have played different numbers of events, and who is best depends on the comparison the caller names.', [
     'Pool tables' => array_map(static fn(StageOutcome $pool) => $pool->getStandings(), $pools),
     'Top two of every pool' => $topTwo,
     'The two best third-placed clubs, best first' => $bestThirds,
+    'Violations of the hand-off to the quarterfinals' => $violations,
+    'The eight placed for the knockout' => $knockoutEntrants,
+    'Quarterfinals' => $firstRound,
     'With a west pool of three' => [
         'West table' => $unequal->getPool('West')?->getStandings(),
         'No method chosen' => $refusal?->getReason()?->value,

@@ -116,10 +116,12 @@ and an accepted order is the order of the entrant list, as
   leaves it out with the other results of the two entrants.
 - The list a best-of-rank selection returns is ordered best first and is
   not placed for a bracket: appended to a per-group selection it can pair
-  two entrants of one pool in the first round. Placing them depends on
-  which pools the selected entrants come from, and validating it up front
-  needs the number of pools, which a `StageTransition` does not declare.
-  [`docs/ROADMAP.md`](../ROADMAP.md) lists it as a known limitation.
+  two entrants of one pool in the first round, because placing them depends
+  on which pools the selected entrants come from.
+  `BracketQualifiersSelector` places the two selections together and its
+  yield lets composition validation report, from the pools a
+  `StageTransition` declares, the one case no placement can keep apart
+  ([0014](0014-qualifiers-for-a-bracket-keep-their-tiers.md)).
 - `tests/Feature/BestOfRankSelectionTest.php` holds each method to an
   oracle that adds the records up itself and compares fractions by
   cross-multiplication, over generated pools.
