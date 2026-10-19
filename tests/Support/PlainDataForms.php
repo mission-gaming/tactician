@@ -605,10 +605,11 @@ final class PlainDataForms
             'scheduled schedule' => [
                 'class' => ScheduledSchedule::class,
                 'kind' => self::DATA,
-                'keys' => ['participants', 'events'],
+                'keys' => ['participants', 'events', 'entrants'],
                 'sample' => [
                     'participants' => $participants,
                     'events' => [['event' => $event, 'kickoff' => '2026-08-01T18:00:00Z', 'resource' => null]],
+                    'entrants' => ['c', 'a', 'b'],
                 ],
                 'read' => static fn(array $data, array $registry): object => ScheduledSchedule::fromArray(self::stringKeyed($data)),
                 'generate' => static function (Randomizer $random, array $field): object {

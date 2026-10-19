@@ -146,7 +146,7 @@ describe('TacticianException', function (): void {
         ],
         'Participant::fromArray: no id' => [
             fn() => Participant::fromArray([]),
-            'Participant data requires a non-empty string id and a string label',
+            'Participant data requires a non-empty string id, and a string label when it has one',
         ],
         'Schedule::fromArray: participants not an array' => [
             fn() => Schedule::fromArray(['participants' => 'nope']),

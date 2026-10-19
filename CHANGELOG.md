@@ -1980,6 +1980,46 @@ entry on the engine fingerprint.
   (`isProvenShortest()`). It tries the numbers one at a time, upwards.
   New example: `examples/29-rescheduling-with-least-churn.php`.
 
+- **A generation failure can be rendered without parsing text
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** Each
+  list of text in a `DiagnosticReport` has a sibling with the same findings
+  as typed data, by participant ID and constraint name:
+  `getMissingPairingDetails()` (`MissingPairing`: the two IDs and the leg),
+  `getConstraintRejections()` (`ConstraintRejection`: the constraint, the
+  two IDs, the rounds it rejects and the rounds probed),
+  `getBlockedPairings()` (`BlockedPairing`: the two IDs and the constraints
+  that block it everywhere, none where only their combination does) and
+  `getPairingsAtCapacity()` (`PairingAtCapacity`: the two IDs and the full
+  rounds it is allowed in). The text is unchanged.
+- **The byes of a schedule with kickoff times
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `ScheduledSchedule::getByesByRound()`, `getByeCounts()` and
+  `getEntrants()` give what the schedule assigned gives.
+  `TimelineAssigner::assign()` hands the scheduled schedule the entrant list
+  of the schedule (a second, optional constructor parameter, which refuses
+  an entrant list that holds one participant twice), and the plain
+  data writes it under a new optional key, `entrants` (the IDs in order),
+  only where it was given. A scheduled schedule built without one reads the
+  entrants from its events, as do arrays without the key. With the byes of
+  `Schedule` (the whole-schedule Swiss preset included), `RoundPairing` and
+  `StageState`, every schedule and pairing that can hold a bye has a typed
+  accessor for it.
+- **A round number that is never null
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `Event::getRoundNumber()` returns the round number as an `int`, and
+  `Event::hasRound()` says whether the event has a round. Every event a
+  scheduler or an engine produces has one, the events of a round-robin
+  schedule included; on an event built without a round `getRoundNumber()`
+  throws an `UnavailableValueException`. `getRound()` is unchanged.
+- **A participant's label is optional
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `new Participant('id')` is a participant without a label: `getLabel()`
+  gives its ID, and `hasLabel()` is false. Its plain data has no `label`
+  key, and `Participant::fromArray()` reads one without the key, or with
+  `null`, as a participant without a label. A participant with a label is
+  written as it always was. The refusal of participant data without a
+  valid ID now reads "Participant data requires a non-empty string id, and
+  a string label when it has one".
 - **Typed identifiers for configuration-driven applications
   ([#58](https://github.com/mission-gaming/tactician/issues/58)).** An
   application that maps its configuration to the library no longer matches
@@ -2217,6 +2257,30 @@ entry on the engine fingerprint.
     that fixes the role of a pairing whatever came before is solved for
     and not searched for, with a schedule in hand as without, as far as
     the 4,000 events go.
+  - **The 4,000 events hold under shuffled legs too** (#166). With a
+    schedule in hand the search of the roles of shuffled later legs has
+    what is left of them, as every other search for balanced roles has,
+    where it had its own bound of 20,000 rejected roles and was counted
+    only when it ended. The first rotated order of that search, which is
+    the layout whose balanced roles were put to the constraints before
+    round parity was tried, is not laid out again where it would end as it
+    did (mirrored and repeated legs, and `ShuffledLegStrategy` built from a
+    seed): what it spent counts against the 4,000, and the search goes on
+    from the second rotated order with the draws it has under
+    `BalancedRoleAssignment`, named. A limit of three in a row written as a
+    closure over two shuffled legs of 32 participants now falls back after
+    66,290 questions where it took 107,129 (round parity alone asks 25,451),
+    in 2.8 seconds where it took 4.6; what is left beyond round parity is
+    the search of the first layout's later legs, made before any schedule
+    is in hand. **Output change:** a schedule that the search with a
+    schedule in hand balanced only by running past the 4,000 is now the
+    schedule of round parity, marked `balanced_roles_rejected`. Of 18,130
+    configurations compared, 12 were, all of them shuffled legs drawn from
+    a `Randomizer` the strategy holds: four legs of 24 participants under a
+    closure that keeps the role totals within 3, and three legs of 32 and
+    two of 40 under a limit of two in a row (as a closure, as a class or
+    subclass of yours, or as the library's limit in a `ConstraintSet`
+    subclass). Every other schedule, mark and failure is what it was.
   - A `RoleBalanceConstraint` limit that the balanced roles need is lower:
     1 for a single leg of a field of even size and 2 for one of odd size,
     where round parity needs 3 and 4. Repeated legs of balanced roles are
@@ -2234,10 +2298,8 @@ entry on the engine fingerprint.
     and the schedule then fails as it did. Under a constraint of your own
     the round-parity roles are tried before the search, and with their
     schedule in hand what is still spent on balanced roles is held to 4,000
-    events put to the constraints (not so the search of the later legs of
-    a shuffled schedule, which keeps its own bound of 20,000 rejected
-    roles; the usage guide, "Balanced where possible", has what that
-    comes to); with none in hand, a schedule that
+    events put to the constraints, under every leg strategy; with none in
+    hand, a schedule that
     failed in 0.2.x fails after the search as well: a role pinned in every leg over
     two mirrored legs, which no schedule has, fails in 0.3, 0.6 and 1.4
     seconds with 8, 12 and 20 participants, where 0.2.x failed in 4, 18
@@ -3437,13 +3499,6 @@ entry on the engine fingerprint.
   After: the exception. Where a `MinimumRestRule` reported such a clash,
   the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
   because the round is refused before the rules are asked (#121, item 10).
-
-- The `Coverage` job of CI measures with PCOV where it used Xdebug. It
-  reports line coverage only, which PCOV measures, and the suite had grown
-  until the job took 25 to 40 minutes under Xdebug. The `Mutation testing`
-  workflow still uses Xdebug, and `composer test-coverage` works with either
-  driver as before. Nothing a consumer installs changes.
-
 - **Breaking for a progression selector of an application's:
   `ProgressionSelector` has a new method, `getYield()`
   ([#58](https://github.com/mission-gaming/tactician/issues/58)).** The
@@ -3453,6 +3508,21 @@ entry on the engine fingerprint.
   the number depends on, `SelectionYield::dependsOnOutcome()` where nothing
   can be said. `getSelectionSize()` stays, and is the count of a fixed
   yield.
+
+- The `Coverage` job of CI measures with PCOV where it used Xdebug. It
+  reports line coverage only, which PCOV measures, and the suite had grown
+  until the job took 25 to 40 minutes under Xdebug. The `Mutation testing`
+  workflow still uses Xdebug, and `composer test-coverage` works with either
+  driver as before. Nothing a consumer installs changes.
+
+- `ScheduledSchedule::toArray()` of a schedule from
+  `TimelineAssigner::assign()` has the key `entrants`, and lists after the
+  participants of its events any entrant that plays in no event
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)). The form
+  stays version 1: the key is optional and 0.3.0 defines what version 1
+  holds (ADR 0005). A participant without a label is written without the
+  `label` key, which 0.2.x requires; a release of 0.2.x refuses such a
+  participant, loudly.
 
 ### Deprecated
 

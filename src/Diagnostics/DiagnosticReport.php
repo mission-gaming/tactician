@@ -14,7 +14,20 @@ namespace MissionGaming\Tactician\Diagnostics;
  * analysis asks whether each missing pairing could join the schedule that
  * was generated. It does not prove that no schedule exists.
  *
- * The lists hold lines of text for people. Their wording is not stable.
+ * The lists of strings hold lines of text for people, and their wording is
+ * not stable. Each has a sibling that holds the same findings as typed
+ * data, by participant ID and constraint name, so that an application can
+ * render a failure in its own words without parsing the text:
+ *
+ * - getMissingPairings(): getMissingPairingDetails(), MissingPairing;
+ * - getConstraintViolations(): getConstraintRejections(), ConstraintRejection;
+ * - getImpossiblePairings(): getBlockedPairings(), BlockedPairing;
+ * - the suggestions about pairings allowed only in full rounds:
+ *   getPairingsAtCapacity(), PairingAtCapacity.
+ *
+ * A report from the scheduler holds the same findings in both forms, in the
+ * same order. A report built by hand holds what it was given: the two forms
+ * are not checked against each other.
  *
  * @experimental
  */
@@ -33,6 +46,12 @@ readonly class DiagnosticReport
      * @param array<string> $impossiblePairings Pairings that cannot be satisfied
      * @param array<string> $suggestions Actionable suggestions for resolution
      * @param array<string, mixed> $analysisContext Additional analysis context
+     * @param list<MissingPairing> $missingPairingDetails The missing pairings as typed data
+     * @param list<ConstraintRejection> $constraintRejections What each constraint rejects, as
+     *                                                        typed data
+     * @param list<BlockedPairing> $blockedPairings The impossible pairings as typed data
+     * @param list<PairingAtCapacity> $pairingsAtCapacity The pairings allowed only in full
+     *                                                    rounds, as typed data
      */
     public function __construct(
         private int $participantCount,
@@ -43,7 +62,11 @@ readonly class DiagnosticReport
         private array $constraintViolations = [],
         private array $impossiblePairings = [],
         private array $suggestions = [],
-        private array $analysisContext = []
+        private array $analysisContext = [],
+        private array $missingPairingDetails = [],
+        private array $constraintRejections = [],
+        private array $blockedPairings = [],
+        private array $pairingsAtCapacity = []
     ) {}
 
     /**
@@ -93,6 +116,59 @@ readonly class DiagnosticReport
     public function getMissingPairings(): array
     {
         return $this->missingPairings;
+    }
+
+    /**
+     * The pairings without a meeting, one per pairing and leg, by
+     * participant ID: the findings of getMissingPairings(), in the same
+     * order, as typed data. Empty for a plan that does not state how often
+     * each pair meets (Swiss, elimination).
+     *
+     * @return list<MissingPairing>
+     */
+    public function getMissingPairingDetails(): array
+    {
+        return $this->missingPairingDetails;
+    }
+
+    /**
+     * What each constraint rejects, one per constraint and missing pairing:
+     * the findings of getConstraintViolations() as typed data. In the order
+     * the constraints were first charged, and within a constraint in the
+     * order of the missing pairings. A constraint is charged with a round
+     * when it rejects the pairing there in both role orders.
+     *
+     * @return list<ConstraintRejection>
+     */
+    public function getConstraintRejections(): array
+    {
+        return $this->constraintRejections;
+    }
+
+    /**
+     * The missing pairings that the constraints reject in every round and
+     * both role orders, with the constraints that reject each everywhere:
+     * the findings of getImpossiblePairings(), in the same order, as typed
+     * data.
+     *
+     * @return list<BlockedPairing>
+     */
+    public function getBlockedPairings(): array
+    {
+        return $this->blockedPairings;
+    }
+
+    /**
+     * The missing pairings that the constraints allow only in rounds the
+     * generated schedule has already filled, with those rounds: the
+     * findings behind the suggestions that say so, in the same order, as
+     * typed data.
+     *
+     * @return list<PairingAtCapacity>
+     */
+    public function getPairingsAtCapacity(): array
+    {
+        return $this->pairingsAtCapacity;
     }
 
     /**

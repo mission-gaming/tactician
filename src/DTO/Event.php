@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
@@ -91,10 +92,46 @@ readonly class Event
 
     /**
      * The round the event is played in, or null when it has none.
+     *
+     * Every event a scheduler or an engine of the library produces has a
+     * round; getRoundNumber() reads it without the null.
      */
     public function getRound(): ?Round
     {
         return $this->round;
+    }
+
+    /**
+     * Whether the event has a round. True for every event a scheduler or an
+     * engine of the library produces; false only for one built without a
+     * round.
+     */
+    public function hasRound(): bool
+    {
+        return $this->round !== null;
+    }
+
+    /**
+     * The 1-based number of the round the event is played in.
+     *
+     * The events of a round-robin schedule, and of every other schedule and
+     * round pairing the library produces, always have a round, so this is
+     * the round number with no null to handle. An event built without a
+     * round has none to give: ask hasRound() first where such an event can
+     * occur.
+     *
+     * @throws UnavailableValueException When the event has no round (unchecked: a mistake in
+     *                                   the calling code, see hasRound())
+     */
+    public function getRoundNumber(): int
+    {
+        if ($this->round === null) {
+            throw new UnavailableValueException(
+                'The event has no round, so it has no round number: ask hasRound() first'
+            );
+        }
+
+        return $this->round->getNumber();
     }
 
     /**

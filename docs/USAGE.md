@@ -36,10 +36,11 @@ anything else that competes.
 
 | Term | Meaning |
 |------|---------|
-| **Participant** | An entity that competes. Identified by a unique string ID, with a display label, optional seed, and metadata. The ID is any string and is compared exactly: see [Participant IDs](#participant-ids). |
+| **Participant** | An entity that competes. Identified by a unique string ID, with an optional display label (without one, it is named by its ID), optional seed, and metadata. The ID is any string and is compared exactly: see [Participant IDs](#participant-ids). |
 | **Event** | A single match/fixture between participants (usually two). Sports platforms often call this a fixture. |
 | **Pairing** | The unordered combination of participants in an event — "Alice vs Bob" regardless of who is home. |
 | **Round** | A set of events played at the same stage of the tournament. Round numbers are 1-based and continuous across legs (a two-leg, 4-participant round robin has rounds 1–6). |
+| **Round number** | The 1-based number of the round an event is in (`Event::getRoundNumber()`). Every event a scheduler or an engine produces has one; only an event built by hand without a round has none (`Event::hasRound()`). |
 | **Leg** | One complete cycle of pairings. The leg count is *the number of times each participant meets each other participant*: a home-and-away league is 2 legs. Swiss and elimination formats have no legs concept. |
 | **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator proposes roles that alternate with round parity, which bounds how far a participant's home and away counts can drift apart and does not make them equal. The balanced **role assignment** does, as far as the number of events allows, and the default gives its roles wherever it finds a schedule with them. |
 | **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
@@ -131,6 +132,7 @@ anything else that competes.
 | **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
 | **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
 | **Configuration error reason** | The kind of mistake behind an `InvalidConfigurationException`, as a case of the `InvalidConfigurationReason` enum (`getReason()`). It says what was wrong, not which component found it, and its backing string is a stable identifier. Code branches on the reason and never on the message text. See [Configuration Errors](#configuration-errors). |
+| **Failure analysis** | What the round-robin scheduler finds when it cannot complete a schedule under constraints (`DiagnosticReport`, from `IncompleteScheduleException::getAnalysis()`): the missing pairings, what each constraint rejects, the **blocked pairings** that no round of the generated schedule accepts, and the pairings allowed only in rounds that are already full (**at capacity**). Each finding is there as a line of text and as typed data by participant ID. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 | **Algorithm identifier** | The stable string by which a stage plan names its algorithm (`StagePlan::getAlgorithm()`): `round-robin`, `swiss`, `pot-draw`, `single-elimination`, `double-elimination`. The cases of `Stage\Algorithm` are backed by them, and a generated schedule records its one under the `algorithm` key of its metadata. |
 | **Metadata key** | A key of the free-form metadata of a schedule, round or event that the library itself writes (`algorithm`, `byes`, `label`, `tie_leg`...), held as a constant that says which object carries it and when. `DTO\MetadataKey` holds the keys whose meaning the stable surface owns, those the round-robin scheduler writes, and their values do not change between releases; `Stage\FormatMetadataKey` holds the keys only the experimental formats write (the Swiss preset's `rounds`, the pot draw's, the round label, `tie_leg`, `bracket_tie`), which change with those formats. |
@@ -222,8 +224,13 @@ The algorithm identifiers (`round-robin`, `swiss`, `pot-draw`,
 ```php
 use MissionGaming\Tactician\DTO\Participant;
 
-// Basic participant (ID and label are required)
+// Basic participant: an ID and a label
 $participant = new Participant('player1', 'John Doe');
+
+// The label may be left out: the participant is then named by its ID
+$unnamed = new Participant('player9');
+echo $unnamed->getLabel() . "\n"; // player9
+var_dump($unnamed->hasLabel()); // bool(false)
 
 // Participant with seeding
 $seededPlayer = new Participant('player2', 'Jane Smith', 1); // Seed 1 (top seed)
@@ -247,6 +254,9 @@ echo $detailedPlayer->getLabel() . "\n";     // 'Team Alpha'
 echo $detailedPlayer->getSeed() . "\n";      // 2
 echo $detailedPlayer->getMetadataValue('region', 'Unknown') . "\n"; // 'Europe'
 ```
+
+A participant without a label is written to plain data without the `label`
+key and read back without one; one with a label has the form it always had.
 
 ### Participant IDs
 
@@ -320,7 +330,7 @@ $event = new Event(
 
 // Access event properties
 $participants = $event->getParticipants();
-$roundNumber = $event->getRound()->getNumber();
+$roundNumber = $event->getRoundNumber(); // an int: the event has a round
 $startTime = $event->getMetadataValue('start_time');
 
 // Check if a participant is in the event
@@ -328,6 +338,13 @@ if ($event->hasParticipant($participant)) {
     echo "Participant is in this event\n";
 }
 ```
+
+`getRound()` returns a nullable `Round`, because an event can be built
+without one. Every event a scheduler or an engine of the library produces
+has a round, the events of a round-robin schedule included, so
+`getRoundNumber()` gives the number as an `int` with no null to handle. On
+an event built without a round it throws an `UnavailableValueException`;
+`hasRound()` says beforehand which kind of event it is.
 
 ## Constraint System
 
@@ -1183,7 +1200,9 @@ the order depends on what the search of roles can know about them:
   proposes are tried before that search:
 
   1. The balanced roles as given, in the first layout. If the constraints
-     accept them, that is the schedule.
+     accept them, that is the schedule. (The roles of shuffled later legs
+     are searched here as in every layout, to their own bound of 20,000
+     rejected roles: no schedule is in hand yet.)
   2. Everything `RoundParityRoleAssignment` does. Its schedule, or its
      failure, is kept.
   3. Everything `BalancedRoleAssignment` does, from the first layout again:
@@ -1201,15 +1220,22 @@ the order depends on what the search of roles can know about them:
        which earlier event to change.
 
      With no schedule in hand all of it has the bounds it always has. With
-     one in hand it is held to 4,000 events put to the constraints (the
-     count is checked before each rotated order, so it can be passed by
-     the events of one layout), and nothing else about it changes: a
+     one in hand it is held to 4,000 events put to the constraints, under
+     every leg strategy: the search of the roles of shuffled later legs
+     has what is left of them, as the searches of first-leg roles have
+     (the count is checked before each rotated order as well, so it can
+     be passed by the events of one layout's first leg, and of its later
+     legs where their roles are a rule). Nothing else about it changes: a
      schedule it finds within them is the one `BalancedRoleAssignment`
-     gives. Under `ShuffledLegStrategy` the count does not stop the search
-     of the later legs' roles in the rotated order under way, which has
-     its own bound of 20,000 rejected roles
-     ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)):
-     the count is looked at again when that search has ended. With
+     gives. Its first rotated order is the layout of step 1, which is not
+     laid out again where it would end as it did: under mirrored and
+     repeated legs, and under a `ShuffledLegStrategy` built from a seed,
+     whose draws for it are kept. The events step 1 put to the
+     constraints count against the 4,000 then, and step 3 begins at the
+     second rotated order, so where step 1 spent more than 4,000 it asks
+     nothing more. (Under a `ShuffledLegStrategy` that holds a randomizer,
+     or a leg strategy of your own that draws, the layout is laid out
+     again, within the 4,000.) With
      `backtracking: true`, a backtracking
      search for a balanced first leg is made only where the schedule in
      hand came from a backtracking search itself (where a rotated order
@@ -1238,11 +1264,16 @@ finds balanced roles for those fields; or name `BalancedRoleAssignment` and
 the search runs to its bounds for the closure too, and fails where it
 finds none (it found balanced roles for 6, 8 and 10 participants, and
 stopped at a bound, after one to thirteen seconds, from 12 up).
-Shuffled legs can cost far more than the figures above, since the count
-does not stop the search of a layout's later legs: a limit of three in a
-row written as a closure, over two shuffled legs of 32 participants, fell
-back after 81,662 more questions than round parity asks, in 2.2 seconds
-for 0.9 (one seed).
+Under shuffled legs the 4,000 hold too. What a fall-back there can cost
+beyond them is step 1: the roles of the first layout's later legs are
+searched before any schedule is in hand, to their own bound of 20,000
+rejected roles, as `BalancedRoleAssignment` searches them, and that
+layout is then not searched again. A limit of three in a row written as a
+closure, over two shuffled legs of 32 participants (strategy seed 1),
+falls back after 40,839 more questions than round parity asks, in 2.8
+seconds for 0.9; the library's `ConsecutiveRoleConstraint` in a subclass
+of `ConstraintSet`, four shuffled legs of 32 (seed 7), in 7.3 seconds
+for 2.6.
 
 The roles of a fall-back are those of round parity, which
 [Legs after the first](#legs-after-the-first) and the table of
@@ -2428,10 +2459,13 @@ refuses a bye (`IncompatibleOptions`) and `calculateWith()` is the call.
 **Which byes a schedule has** is read from the schedule: an entrant has a
 bye in a round when no event of that round names it. `getByesByRound()`
 lists them by round number, as participants, and `getByeCounts()` adds them
-up, for a schedule a generator returned, one read back from storage and one
-put together by hand alike. `RoundPairing::getByes()` has the byes of a
-round an engine paired, and `StageState::getByesByRound()` those of every
-round recorded.
+up, for a schedule a generator returned (the whole-schedule Swiss preset
+included), one read back from storage and one put together by hand alike.
+A schedule with kickoff times (`ScheduledSchedule`, from
+`TimelineAssigner::assign()`) has the same two methods and gives the same
+byes, because the assigner hands it the entrant list of the schedule.
+`RoundPairing::getByes()` has the byes of a round an engine paired, and
+`StageState::getByesByRound()` those of every round recorded.
 
 ```php
 $oddField = (new RoundRobinScheduler())->schedule($trio);
@@ -7488,6 +7522,37 @@ try {
     $analysis?->getConstraintViolations(); // per-constraint attribution
     $analysis?->getSuggestions();          // includes structural-fullness notes
 }
+```
+
+The lists above are lines of text for a person, and their wording is not
+stable. Each has a sibling that holds the same findings as typed data, by
+participant ID and constraint name, so that an application renders a
+failure in its own words, or its own language, without parsing text:
+
+| Text | Typed data | Holds |
+|---|---|---|
+| `getMissingPairings()` | `getMissingPairingDetails()` | `MissingPairing`: the two participant IDs and the leg |
+| `getConstraintViolations()` | `getConstraintRejections()` | `ConstraintRejection`: the constraint, the two IDs, the rounds it rejects and the rounds probed |
+| `getImpossiblePairings()` | `getBlockedPairings()` | `BlockedPairing`: the two IDs and the constraints that block it everywhere (none: a combination does) |
+| the structural lines of `getSuggestions()` | `getPairingsAtCapacity()` | `PairingAtCapacity`: the two IDs and the full rounds it is allowed in |
+
+```php
+$byId = [];
+foreach ($participants as $entrant) {
+    $byId[$entrant->getId()] = $entrant;
+}
+
+try {
+    $scheduler->schedule($participants);
+} catch (IncompleteScheduleException $e) {
+    foreach ($e->getAnalysis()?->getBlockedPairings() ?? [] as $blocked) {
+        $who = $byId[$blocked->firstParticipantId]->getLabel() . ' and ' . $byId[$blocked->secondParticipantId]->getLabel();
+        echo $blocked->isBlockedByCombination()
+            ? "{$who} cannot meet under these rules together\n"
+            : "{$who} cannot meet: " . implode(', ', $blocked->blockingConstraints) . "\n";
+    }
+}
+// Team 1 and Team 2 cannot meet: Derby Ban
 ```
 
 Three findings, three vocabularies: **blocked pairings** no round will

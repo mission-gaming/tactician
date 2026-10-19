@@ -390,14 +390,22 @@ Where it cannot:
 3. Everything `BalancedRoleAssignment` does, from the first layout again.
    With nothing in hand it has its usual bounds. With a schedule in hand:
    - it is held to 4,000 events put to the constraints, the rotated
-     orders, the passes that fix seatings and the searches that go back
-     one event at a time together. The count is looked at before a
-     rotated order and not within one, so one layout can pass it: by its
-     own events, and under shuffled legs by the whole search of its later
-     legs' roles, which the count does not stop ("What it costs, and what
-     is short");
+     orders, the passes that fix seatings, the searches that go back
+     one event at a time and the search of the roles of shuffled later
+     legs together. The count is looked at before a rotated order, so one
+     layout can pass it by the events of its first leg, and of its later
+     legs where their roles are a rule; a search of roles has what is
+     left of it as its limit, and passes it by nothing;
    - a backtracking search is made only where the schedule in hand came
-     from one, with what is left of the 4,000 as its step budget.
+     from one, with what is left of the 4,000 as its step budget;
+   - its first rotated order is the layout of step 1, and is not laid out
+     again where it would end as it did: where the leg strategy draws
+     nothing, or is a `ShuffledLegStrategy` built from a seed, whose draws
+     for that layout are kept while step 2 draws from a clone. What step
+     1 put to the constraints counts against the 4,000, and step 3 begins
+     at the second rotated order with the shuffle and the draws that order
+     has under the strict role assignment. Where step 1 spent more than
+     the 4,000, step 3 asks nothing.
 
    Nothing else differs, so a schedule found within the 4,000 is the one
    the strict role assignment finds.
@@ -440,7 +448,13 @@ the randomizer moves on by what a call drew and no further. A leg strategy
 that draws is asked for its plan again, which is where a
 `ShuffledLegStrategy` built from a seed starts its draws again; one that
 holds a randomizer of its own draws on, and its fall-back is a schedule of
-round parity for other draws.
+round parity for other draws. Step 3 under constraints of the caller's
+starts where step 1's first layout left off, not where the call starts,
+when it goes on from that layout: the round-parity run between them is
+then given a clone of a seeded `ShuffledLegStrategy`, which draws from the
+seed, and the strategy itself keeps the draws of the first layout. The
+scheduler clones nothing else: a strategy that holds a randomizer shares
+it with its clone, and a class of the caller's may not be cloned at all.
 
 A failure of a balanced run never reaches the caller, so none is analysed,
 and a rotated order is left at the first event the constraints reject
@@ -611,25 +625,48 @@ instead of being generated to its end.
   sweep that are balanced for it, and it is paid by every league whose
   limit is written as a closure and is out of reach: such a league gets
   the schedule 0.2.x gave it, later than 0.2.x gave it.
-- **Under shuffled legs the count does not hold the cost.** The roles of
-  the later legs are searched inside a rotated order
-  (`generateLaterLegsWithRoleSearch()`), with a bound of their own of
-  20,000 rejected roles, and the count is looked at before a rotated order
-  and not within one. So one such search runs to its own end with a
-  schedule in hand, and another before round parity is tried, for the
-  balanced roles of the first layout. Measured in a comparison of 6,616
-  configurations made for the review of this change (one seed for each
-  field): a limit of three in a row written as a closure, over two
-  shuffled legs of 32 participants, falls back after 144,574 questions
-  where round parity asks 62,912, in 2.2 seconds for 0.9; the one search
-  with the schedule in hand put 40,333 events to the closure, and the
-  search before round parity as many. The most that was seen is 82,044
-  questions more than round parity asks, with 40 participants. The search
-  with a schedule in hand was the same before the count stood alone
-  (81,664 and 82,046 questions more), so this is not what that change
-  cost; it is what the count has never held. The first rotated order of
-  that search is the layout whose balanced roles were already searched
-  before round parity, to the same end.
+- **Under shuffled legs the count holds the search with a schedule in
+  hand; step 1 is not held by it.** The roles of the later legs are
+  searched inside a rotated order (`generateLaterLegsWithRoleSearch()`).
+  Until #166 that search had only its own bound of 20,000 rejected roles
+  with a schedule in hand too, and the count was looked at again only
+  when it had ended; and the first rotated order of step 3, the layout of
+  step 1, was searched a second time to the same end. Measured then: a
+  limit of three in a row written as a closure, over two shuffled legs
+  of 32 participants, fell back after 144,574 questions where round
+  parity asks 62,912 (one search of 40,333 events with the schedule in
+  hand, and as many before round parity). Now the search has what is left
+  of the 4,000 as its attempt limit, and the layout of step 1 is not laid
+  out again where its draws are kept; where step 1 spent more than the
+  4,000, step 3 asks nothing. What is left is step 1, which has no
+  schedule in hand and searches the first layout's later legs to their
+  own bound, as `BalancedRoleAssignment` does in its first layout. The
+  same limit with strategy seed 1: 107,129 questions before the change,
+  66,290 after, where round parity asks 25,451 (4.6 seconds, then 2.8,
+  for 0.9). The library's `ConsecutiveRoleConstraint::homeAway(2)` in a
+  `ConstraintSet` subclass, four shuffled legs of 32 (seed 7): 12.0
+  seconds, then 7.3, for 2.6. Of 17,290 configurations compared before and
+  after (fields of 3 to 24, one to four legs, mirrored, repeated and
+  shuffled legs from a seed and from a randomizer, with and without a
+  scheduler randomizer, backtracking in fields up to 7, 38 constraint
+  sets, 33 of them holding something not the library's own: closures, classes
+  and subclasses of the caller's and `ConstraintSet` subclasses), and 840
+  of 24 to 40 participants over two to four legs under 14 of those sets,
+  12 changed, and only so: a schedule balanced before by a search with
+  the schedule in hand that put 18,518 to 27,759 events to the
+  constraints is now the schedule of round parity, marked
+  `balanced_roles_rejected` (four shuffled legs of 24 under a closure that
+  keeps role totals within 3; three shuffled legs of 32 and two of 40
+  under a limit of two in a row, as a closure, a class or subclass of the
+  caller's, or the library's limit in a `ConstraintSet` subclass). All 12
+  draw their shuffled legs from a randomizer the strategy holds. No other
+  schedule, mark or failure message changed, nothing failed that
+  completed, and no configuration asked a constraint more questions. Of
+  the configurations of the first set that repeat from call to call (no
+  strategy that holds a randomizer), all 9,224 unmarked schedules are
+  those of `BalancedRoleAssignment` named, all 519 marked ones those of
+  `RoundParityRoleAssignment` named, and all 3,538 failures compared carry
+  its message.
 - Under the library's own constraints a fall-back, or a failure, comes
   after the whole search for balanced roles: one allowance of 20,000
   rejected roles and 200,000 events put to the constraints for all the

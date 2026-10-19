@@ -36,9 +36,9 @@ describe('a participant ID', function (): void {
         }
     })->with(AwkwardIds::dataset());
 
-    it('is refused from plain data with the message it always had', function (): void {
+    it('is refused from plain data with a message that names the ID', function (): void {
         expect(fn(): Participant => Participant::fromArray(['id' => '', 'label' => 'Nobody']))
-            ->toThrow(InvalidInputException::class, 'Participant data requires a non-empty string id and a string label');
+            ->toThrow(InvalidInputException::class, 'Participant data requires a non-empty string id, and a string label when it has one');
     });
 });
 
