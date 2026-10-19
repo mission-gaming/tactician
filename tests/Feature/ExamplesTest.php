@@ -1159,7 +1159,8 @@ $demonstrations = [
             ]);
     },
 
-    // The two best of the entrants placed third are the two with the best records among them, best first;
+    // The two best of the entrants placed third are the two with the best records among them, best first,
+    // and placed with the top two for a knockout no two clubs of one pool meet in its first round;
     // with a pool of three nothing is compared until a method is named, and each method selects another pair
     '26-best-next-placed-qualifiers' => function (array $results): void {
         $tables = exampleArray($results, 'Pool tables');
@@ -1192,6 +1193,28 @@ $demonstrations = [
         expect($ids($bestThirds))->toBe(['gavle', 'tartu'])
             ->and($bestThirds)->toHaveCount(2)
             ->and($qualified)->toBe($higher);
+
+        // Placed for the knockout: the pool winners, the runners-up, then the
+        // best thirds best first, and no first-round tie of two clubs of one pool
+        $poolOf = [];
+        foreach ($tables as $label => $table) {
+            foreach ($table->getEntries() as $entry) {
+                $poolOf[$entry->getParticipant()->getLabel()] = $label;
+            }
+        }
+        $placed = $ids(exampleArray($results, 'The eight placed for the knockout'));
+        $winners = array_slice($placed, 0, 3);
+        sort($winners);
+        $quarterfinals = exampleArray($results, 'Quarterfinals');
+        expect($results['Violations of the hand-off to the quarterfinals'])->toBe([])
+            ->and($winners)->toBe(['alta', 'bergen', 'lahti'])
+            ->and(array_slice($placed, 6))->toBe(['gavle', 'tartu'])
+            ->and($quarterfinals)->toHaveCount(4);
+        foreach ($quarterfinals as $tie) {
+            assert(is_string($tie));
+            [$first, $second] = explode(' v ', $tie);
+            expect($poolOf[$first])->not->toBe($poolOf[$second], $tie);
+        }
 
         // The pool of three: its third has 3 points from 2 events
         $west = exampleResult($unequal, 'West table', Standings::class);
