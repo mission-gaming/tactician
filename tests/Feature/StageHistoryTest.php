@@ -14,6 +14,8 @@ use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinEngine;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
@@ -86,6 +88,8 @@ function historyEngines(): array
         'single elimination with a third-place tie' => new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)),
         'double elimination' => new DoubleEliminationEngine(),
         'double elimination over two legs' => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+        'round robin' => new RoundRobinEngine(),
+        'round robin over two legs' => new RoundRobinEngine(new RoundRobinOptions(legs: 2)),
     ];
 }
 

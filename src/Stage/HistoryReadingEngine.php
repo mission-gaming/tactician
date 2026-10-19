@@ -11,7 +11,7 @@ use MissionGaming\Tactician\Standings\Standings;
  * anything being paired and without an exception for a round that is still
  * being played.
  *
- * The three engines of the library implement it. It is separate from
+ * The engines of the library implement it. It is separate from
  * StageEngineInterface so that adding it broke no engine written against
  * that interface; check for it with instanceof where the engine is held as
  * a StageEngineInterface.

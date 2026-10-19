@@ -272,7 +272,8 @@ The round is recorded when it is paired, before any result exists, so that
 a withdrawal or an adjustment made while it is played is recorded after it
 and the round is read as it was paired. Single and double elimination
 (`SingleEliminationEngine`, `DoubleEliminationEngine`) drive through the
-same loop, and group stages
+same loop, and so does a league held between rounds (`RoundRobinEngine`,
+whose rounds are the round-robin schedule's), and group stages
 compose from pools and progression selectors (`PoolDistributor`,
 `RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`) — see the
 [usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
@@ -336,10 +337,12 @@ breaking changes are expected. Namespaces are relative to
 **Experimental** (still being designed; expected to change in a minor release
 before `1.0.0`):
 
-- The Swiss and elimination engines: `Scheduling\SwissPairingEngine`,
+- The stage engines: `Scheduling\SwissPairingEngine`,
   `Scheduling\SwissScheduler`, `Scheduling\SwissOptions`,
   `Scheduling\SingleEliminationEngine`, `Scheduling\DoubleEliminationEngine`,
-  and `Scheduling\EliminationOptions`
+  `Scheduling\EliminationOptions`, and `Scheduling\RoundRobinEngine` (the
+  round-robin scheduler and its options are stable; the engine that holds a
+  league as a stage state is not)
 - The pot draw: `Scheduling\PotDrawScheduler`, `Scheduling\PotDrawOptions`,
   and `Stage\PotDrawPlan`
 - `Stage`

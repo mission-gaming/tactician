@@ -300,6 +300,24 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ],
             [],
         ],
+        'a league paired round by round, as the scheduler has it' => [
+            'docs/USAGE.md',
+            '$published = (new RoundRobinScheduler())',
+            ["bool(true)\nbool(false)\n2\nDunmore v Ashford\nDunmore\n"],
+            [],
+        ],
+        'a league that plays on while a fixture is postponed' => [
+            'docs/USAGE.md',
+            'event awaits a result',
+            ["1 event awaits a result\nbool(true)\nbool(true)\n"],
+            [],
+        ],
+        'a withdrawal from a league, and the award of its fixture' => [
+            'docs/USAGE.md',
+            "new Award('walkover', 'Dunmore withdrew')",
+            ["1 uncontested\n0 uncontested\n"],
+            [],
+        ],
         'a stored stage state with its rounds reversed' => [
             'docs/USAGE.md',
             "\$stored['rounds'] = array_reverse(\$stored['rounds']);",

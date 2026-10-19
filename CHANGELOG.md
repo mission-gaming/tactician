@@ -885,6 +885,73 @@ entry on the engine fingerprint.
 
 ### Added
 
+- **A round-robin engine: a league held as a stage state
+  ([#57](https://github.com/mission-gaming/tactician/issues/57)).**
+  `Scheduling\RoundRobinEngine` (new, experimental) implements
+  `StageEngineInterface`, `HistoryReadingEngine` and `FingerprintedEngine`,
+  so an application runs a league round by round as it runs a Swiss stage or
+  a bracket: it pairs the next round from the state, records rounds as they
+  are paired and results as they come, withdrawals, adjustments and awarded
+  results, reads the table and the readiness at any point, rebuilds the
+  state from its own rows (`StageState::fromHistory()`), and gets an outcome
+  for the next stage. It is the state-driven view of the schedule
+  `RoundRobinScheduler` generates, which stays the generator of the whole
+  schedule:
+  - **Round N is the scheduler's round N** for the state's entrant list
+    (`StageState::getEntrants()`) and the engine's options
+    (`RoundRobinOptions`), constraints and seed: the same events, roles,
+    metadata and round, and the participant who sits a round out in a field
+    of odd size among the byes. Nothing a round robin pairs depends on
+    results, so the schedule is generated again on every call.
+  - **The configuration is the engine's, the state holds facts.**
+    `new RoundRobinEngine(?RoundRobinOptions $options, ?ConstraintSet
+    $constraints, ?int $seed, StandingsCalculator $standingsCalculator)`.
+    The seed is an integer, from which a `Randomizer` on the
+    `Xoshiro256StarStar` engine is made for every call, so that the same
+    round is paired twice; a `ShuffledLegStrategy` that holds a randomizer
+    is refused (`IncompatibleOptions`). The fingerprint is
+    `tactician:v2:round-robin` with the options and the seed that are not
+    at their default (`legs`, `leg-strategy`, `leg-strategy-seed`,
+    `role-assignment`, `backtracking`, `seed`); the constraints and the
+    standings calculator are not part of it.
+  - **It waits for results**, as every engine does (rule 6 of the issue):
+    `pairNextRound()` refuses with an `UnresolvedRoundException` while a
+    recorded event awaits one, `getReadiness()` says the same without
+    throwing, and `pairNextRoundOnIncompleteResults()` pairs on for a league
+    with a postponed fixture and marks the round. The stage is complete when
+    every round of the schedule is recorded and nothing awaits a result; a
+    further round is refused with `PlannedRoundsPlayed`.
+  - **The table** is the standings calculator's table of the recorded
+    results, byes and adjustments (`calculateWith()`), entries that results
+    do not separate in the order of the entrant list. A round sat out is a
+    bye and is worth what the ranking strategy says a bye is worth: a win
+    under the default `WinDrawLossRanking`, so a league that gives nothing
+    for it uses `withByeValue(0.0)`.
+  - **A withdrawal draws nothing again and decides nothing.** The entrant
+    keeps its place, its played results stand, and its fixtures are still
+    paired: an event of it without a result awaits none
+    (`RecordedRound::getUncontestedEvents()`) and counts for nobody. The
+    library does not award it and does not take back what was played; an
+    application whose rule awards the event records an awarded result for
+    it, and one whose rule voids the results leaves them out of the history.
+  - **Recorded rounds are facts**: a round recorded otherwise than the
+    schedule has it is read as recorded and reported as manual, with the
+    schedule's round as its derivation (roles, event order, byes and the
+    events of entrants who had withdrawn before the round are not
+    compared). A round drawn by hand moves no later fixture. A state that
+    names a participant outside its entrant list (0.2.x data with a
+    withdrawal, which kept no entrant list) is refused with
+    `RecordedRoundMismatch`, because the league could not be drawn again.
+  - The usage guide has a section of its own, "Leagues Run Round by Round",
+    and a new example, `examples/31-league-from-application-rows.php`, runs a
+    league from fixture rows with a postponed fixture, a withdrawal and an
+    awarded result. `tests/Feature/RoundRobinEngineTest.php` holds every
+    round to the scheduler's over seven configurations and the table to the
+    calculator's and to one worked out by hand, and the engine is among the
+    engines `tests/Feature/StageHistoryTest.php` sweeps.
+  - `InvalidConfigurationReason::PlannedRoundsPlayed` and
+    `RecordedRoundMismatch` name the round-robin case in their docblocks;
+    no reason is new.
 - **The structured bracket view: `getBracket()`
   ([#57](https://github.com/mission-gaming/tactician/issues/57),
   [#93](https://github.com/mission-gaming/tactician/issues/93)).** Both
@@ -1547,8 +1614,9 @@ entry on the engine fingerprint.
     under "Stages Resolved from Your Own Rows".
 
   Not in this release yet, and tracked by the same issue: replayable seeded
-  Swiss (each round's draw from the seed and the round number), the
-  structured bracket view, and a round-robin engine over the same state.
+  Swiss (each round's draw from the seed and the round number). The
+  structured bracket view and the round-robin engine are entries of their
+  own in this section.
 - **Awarded results.** A `Result` can say that its event was not played and
   that the application gave it this outcome: `new Result($event, $winner,
   $scores, award: new Award('label', 'reason'))`. `DTO\Award` (new) is the

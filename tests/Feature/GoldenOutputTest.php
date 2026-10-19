@@ -249,6 +249,7 @@ describe('Golden output', function (): void {
             'examples/28-ties-settled-by-decision.txt',
             'examples/29-rescheduling-with-least-churn.txt',
             'examples/30-drawing-a-bracket.txt',
+            'examples/31-league-from-application-rows.txt',
         ]);
     });
 
