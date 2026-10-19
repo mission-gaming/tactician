@@ -1200,7 +1200,9 @@ the order depends on what the search of roles can know about them:
   proposes are tried before that search:
 
   1. The balanced roles as given, in the first layout. If the constraints
-     accept them, that is the schedule.
+     accept them, that is the schedule. (The roles of shuffled later legs
+     are searched here as in every layout, to their own bound of 20,000
+     rejected roles: no schedule is in hand yet.)
   2. Everything `RoundParityRoleAssignment` does. Its schedule, or its
      failure, is kept.
   3. Everything `BalancedRoleAssignment` does, from the first layout again:
@@ -1218,15 +1220,22 @@ the order depends on what the search of roles can know about them:
        which earlier event to change.
 
      With no schedule in hand all of it has the bounds it always has. With
-     one in hand it is held to 4,000 events put to the constraints (the
-     count is checked before each rotated order, so it can be passed by
-     the events of one layout), and nothing else about it changes: a
+     one in hand it is held to 4,000 events put to the constraints, under
+     every leg strategy: the search of the roles of shuffled later legs
+     has what is left of them, as the searches of first-leg roles have
+     (the count is checked before each rotated order as well, so it can
+     be passed by the events of one layout's first leg, and of its later
+     legs where their roles are a rule). Nothing else about it changes: a
      schedule it finds within them is the one `BalancedRoleAssignment`
-     gives. Under `ShuffledLegStrategy` the count does not stop the search
-     of the later legs' roles in the rotated order under way, which has
-     its own bound of 20,000 rejected roles
-     ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)):
-     the count is looked at again when that search has ended. With
+     gives. Its first rotated order is the layout of step 1, which is not
+     laid out again where it would end as it did: under mirrored and
+     repeated legs, and under a `ShuffledLegStrategy` built from a seed,
+     whose draws for it are kept. The events step 1 put to the
+     constraints count against the 4,000 then, and step 3 begins at the
+     second rotated order, so where step 1 spent more than 4,000 it asks
+     nothing more. (Under a `ShuffledLegStrategy` that holds a randomizer,
+     or a leg strategy of your own that draws, the layout is laid out
+     again, within the 4,000.) With
      `backtracking: true`, a backtracking
      search for a balanced first leg is made only where the schedule in
      hand came from a backtracking search itself (where a rotated order
@@ -1255,11 +1264,16 @@ finds balanced roles for those fields; or name `BalancedRoleAssignment` and
 the search runs to its bounds for the closure too, and fails where it
 finds none (it found balanced roles for 6, 8 and 10 participants, and
 stopped at a bound, after one to thirteen seconds, from 12 up).
-Shuffled legs can cost far more than the figures above, since the count
-does not stop the search of a layout's later legs: a limit of three in a
-row written as a closure, over two shuffled legs of 32 participants, fell
-back after 81,662 more questions than round parity asks, in 2.2 seconds
-for 0.9 (one seed).
+Under shuffled legs the 4,000 hold too. What a fall-back there can cost
+beyond them is step 1: the roles of the first layout's later legs are
+searched before any schedule is in hand, to their own bound of 20,000
+rejected roles, as `BalancedRoleAssignment` searches them, and that
+layout is then not searched again. A limit of three in a row written as a
+closure, over two shuffled legs of 32 participants (strategy seed 1),
+falls back after 40,839 more questions than round parity asks, in 2.8
+seconds for 0.9; the library's `ConsecutiveRoleConstraint` in a subclass
+of `ConstraintSet`, four shuffled legs of 32 (seed 7), in 7.3 seconds
+for 2.6.
 
 The roles of a fall-back are those of round parity, which
 [Legs after the first](#legs-after-the-first) and the table of

@@ -75,9 +75,11 @@ enum RoleFallback: string
      * `BalancedRoleAssignment` has, held to 4,000 events put to the
      * constraints, a backtracking search included: the balanced roles as
      * given in the rotated participant orders, in each of those layouts
-     * the balanced roles around every seating the constraints fixed, and
-     * the search that goes back one event at a time, which is what a
-     * constraint of unknown reach needs. This case says that the 4,000
+     * the balanced roles around every seating the constraints fixed, the
+     * search of the roles of later legs whose leg strategy states them as
+     * a preference (`ShuffledLegStrategy`), and the search that goes back
+     * one event at a time, which is what a constraint of unknown reach
+     * needs. This case says that the 4,000
      * events were spent before the search had an answer, or, with
      * `RoundRobinOptions(backtracking: true)`, that no backtracking search
      * was made for balanced roles: one is made only where the schedule in

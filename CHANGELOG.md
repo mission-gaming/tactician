@@ -2166,6 +2166,30 @@ entry on the engine fingerprint.
     that fixes the role of a pairing whatever came before is solved for
     and not searched for, with a schedule in hand as without, as far as
     the 4,000 events go.
+  - **The 4,000 events hold under shuffled legs too** (#166). With a
+    schedule in hand the search of the roles of shuffled later legs has
+    what is left of them, as every other search for balanced roles has,
+    where it had its own bound of 20,000 rejected roles and was counted
+    only when it ended. The first rotated order of that search, which is
+    the layout whose balanced roles were put to the constraints before
+    round parity was tried, is not laid out again where it would end as it
+    did (mirrored and repeated legs, and `ShuffledLegStrategy` built from a
+    seed): what it spent counts against the 4,000, and the search goes on
+    from the second rotated order with the draws it has under
+    `BalancedRoleAssignment`, named. A limit of three in a row written as a
+    closure over two shuffled legs of 32 participants now falls back after
+    66,290 questions where it took 107,129 (round parity alone asks 25,451),
+    in 2.8 seconds where it took 4.6; what is left beyond round parity is
+    the search of the first layout's later legs, made before any schedule
+    is in hand. **Output change:** a schedule that the search with a
+    schedule in hand balanced only by running past the 4,000 is now the
+    schedule of round parity, marked `balanced_roles_rejected`. Of 18,130
+    configurations compared, 12 were, all of them shuffled legs drawn from
+    a `Randomizer` the strategy holds: four legs of 24 participants under a
+    closure that keeps the role totals within 3, and three legs of 32 and
+    two of 40 under a limit of two in a row (as a closure, as a class or
+    subclass of yours, or as the library's limit in a `ConstraintSet`
+    subclass). Every other schedule, mark and failure is what it was.
   - A `RoleBalanceConstraint` limit that the balanced roles need is lower:
     1 for a single leg of a field of even size and 2 for one of odd size,
     where round parity needs 3 and 4. Repeated legs of balanced roles are
@@ -2183,10 +2207,8 @@ entry on the engine fingerprint.
     and the schedule then fails as it did. Under a constraint of your own
     the round-parity roles are tried before the search, and with their
     schedule in hand what is still spent on balanced roles is held to 4,000
-    events put to the constraints (not so the search of the later legs of
-    a shuffled schedule, which keeps its own bound of 20,000 rejected
-    roles; the usage guide, "Balanced where possible", has what that
-    comes to); with none in hand, a schedule that
+    events put to the constraints, under every leg strategy; with none in
+    hand, a schedule that
     failed in 0.2.x fails after the search as well: a role pinned in every leg over
     two mirrored legs, which no schedule has, fails in 0.3, 0.6 and 1.4
     seconds with 8, 12 and 20 participants, where 0.2.x failed in 4, 18

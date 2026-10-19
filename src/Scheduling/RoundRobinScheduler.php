@@ -20,6 +20,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
+use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentContext;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
@@ -147,18 +148,21 @@ class RoundRobinScheduler implements SchedulerInterface
      * once a schedule with the generator's roles is in hand, where the
      * constraints are not ones the search reasons about exactly
      * (ConstraintPurity::readsOwnEventsOnly()). It is checked before every
-     * rotated order, so the last one tried can pass it by the events of one
-     * layout. Under a leg strategy whose roles are preferences it can pass
-     * it by far more: the search of that layout's later legs
-     * (generateLaterLegsWithRoleSearch()) is counted when it ends and is
-     * not stopped by this count, only by its own
-     * LegRoleSearch::REJECTION_LIMIT. A backtracking search has what is
-     * left of the count as its step budget, and is made only where the
-     * schedule in hand came from a backtracking search itself. Nothing
-     * else is left out for it: within
-     * the bound the search is the one BalancedRoleAssignment has when it is
-     * named, so a schedule it finds is that one's. A search this stops is
-     * reported as RoleFallback::BalancedRolesRejected.
+     * rotated order, so the last one tried can pass it by the events of
+     * its first leg, and of later legs whose roles are a rule. The search
+     * of the later legs whose roles are preferences
+     * (generateLaterLegsWithRoleSearch()) has what is left of it as its
+     * attempt limit, as the searches of first-leg roles have, and so does
+     * not pass it. A backtracking search has what is left of the count as
+     * its step budget, and is made only where the schedule in hand came
+     * from a backtracking search itself. Nothing else is left out for it:
+     * within the bound the search is the one BalancedRoleAssignment has
+     * when it is named, so a schedule it finds is that one's. A search
+     * this stops is reported as RoleFallback::BalancedRolesRejected.
+     *
+     * The events the balanced roles as given put to the constraints in
+     * the first layout, before the schedule was in hand, count against it
+     * where that layout is not laid out again (generateBalancedWherePossible()).
      *
      * A count and not a time: what it costs grows with the field, since a
      * constraint that reads a participant's events reads more of them.
@@ -209,6 +213,21 @@ class RoundRobinScheduler implements SchedulerInterface
      * part of it from running.
      */
     private bool $searchWasCutShort = false;
+
+    /**
+     * The first rotated order of the balanced roles as step 1 of the
+     * default left it, under constraints the search of roles does not
+     * reason about exactly (generateBalancedWherePossible()): its failure,
+     * the events it put to the constraints, the cursor of the shuffles
+     * after it, and whether a constraint that reads no position rejected
+     * its first rejected event. Set for step 3, whose first rotated order
+     * is that layout, and taken by the rotated orders of step 3
+     * (generateScheduleWithRetries()), which then begin at the second.
+     * Null otherwise.
+     *
+     * @var array{failure: IncompleteScheduleException, spent: int, drawCursor: int, withoutRoles: bool}|null
+     */
+    private ?array $firstLayoutAlreadyTried = null;
 
     /**
      * Whether the generation under way began a backtracking search.
@@ -473,7 +492,16 @@ class RoundRobinScheduler implements SchedulerInterface
         $this->searchStoppedAtABound = false;
 
         try {
-            return $this->generateScheduleWithRetries($participants, $strategy, $plan, $roleAssignment, $rolesArePreferences, $rule instanceof ConstraintInterface);
+            return $this->generateScheduleWithRetries(
+                $participants,
+                $strategy,
+                $plan,
+                $roleAssignment,
+                $rolesArePreferences,
+                $rule instanceof ConstraintInterface,
+                self::MAX_GENERATION_ATTEMPTS,
+                $this->firstLayoutAlreadyTried['failure'] ?? null
+            );
         } catch (IncompleteScheduleException $greedyFailure) {
             // The roles the role assignment gave were rejected in every
             // layout. Where it states a rule, other roles within that rule
@@ -555,10 +583,20 @@ class RoundRobinScheduler implements SchedulerInterface
      * 3. Everything BalancedRoleAssignment does when it is named, from the
      *    first layout again. With no schedule in hand it has the bounds it
      *    always has. With one in hand it is held to 4,000 events put to the
-     *    constraints (ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND), of
+     *    constraints (ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND), the
+     *    search of later legs whose roles are preferences included, of
      *    which a backtracking search has what is left as its step budget,
      *    and is made only where the schedule in hand came from a
-     *    backtracking search too. Nothing else is left out, so what the
+     *    backtracking search too. The first layout is the one of step 1,
+     *    and it is not laid out again where it would end as it did there:
+     *    under a leg strategy that draws nothing, or a ShuffledLegStrategy
+     *    built from a seed, whose draws for that layout are kept while
+     *    step 2 draws from a clone. Its failure and the events it put to
+     *    the constraints then stand for it, and step 3 begins at the second
+     *    rotated order, with the shuffle and the draws that order has under
+     *    BalancedRoleAssignment, named. Where the first layout spent more
+     *    than the 4,000, step 3 therefore asks nothing. Nothing else is
+     *    left out, so what the
      *    search does within the bound is what it does under
      *    BalancedRoleAssignment: a rule that fixes roles is solved, and a
      *    limit on what a participant did before is searched for one event
@@ -576,7 +614,10 @@ class RoundRobinScheduler implements SchedulerInterface
      * are those the call drew first (shuffled()), and a leg strategy that
      * draws is asked for its plan again, which starts the draws of a seed
      * again. One that holds a randomizer of its own cannot be started
-     * again, and draws on.
+     * again, and draws on; nor can a class of the caller's be cloned, so
+     * under either the first layout is laid out again in step 3. Step 3,
+     * where it goes on from the first layout of step 1, goes on from where
+     * that layout left the shuffles and the draws.
      *
      * @param array<Participant> $participants
      * @return array{array<Event>, RoleFallback|null} The events, and why their roles are not balanced
@@ -606,7 +647,7 @@ class RoundRobinScheduler implements SchedulerInterface
                 $this->failureIsNeverShown = false;
             }
 
-            $this->startOver($participants, $options, $contribution);
+            $this->startOver($participants, $options->legs, $strategy, $contribution);
             // A rotated order in which a constraint that reads no position
             // rejected the first event to be rejected fails with any roles:
             // the round-parity run has the same layouts, and is spared them.
@@ -629,32 +670,66 @@ class RoundRobinScheduler implements SchedulerInterface
             }
         }
 
+        // Whether the draws of the leg strategy in the first layout can be
+        // kept for step 3 while step 2 draws from the start: a strategy
+        // that draws nothing, or a ShuffledLegStrategy built from a seed,
+        // whose clone draws from the seed again (one that holds a
+        // randomizer shares it with its clone, and a class of the caller's
+        // is not cloned)
+        $firstLayoutCanBeKept = !$contribution->requiresRandomization
+            || ($strategy instanceof ShuffledLegStrategy && $strategy::class === ShuffledLegStrategy::class && $strategy->seed !== null);
+        $firstLayout = null;
         $this->failureIsNeverShown = true;
+        $this->attemptsSpent = 0;
         try {
             return [$this->generateScheduleWithRetries($participants, $strategy, $plan, $balanced, $rolesArePreferences, true, 1), null];
-        } catch (IncompleteScheduleException) {
+        } catch (IncompleteScheduleException $exception) {
             // The roles the generator proposes are tried next
+            if ($firstLayoutCanBeKept) {
+                $firstLayout = [
+                    'failure' => $exception,
+                    'spent' => $this->attemptsSpent,
+                    'drawCursor' => $this->drawCursor,
+                    'withoutRoles' => isset($this->rotationsWithoutRoles[0]),
+                ];
+            }
         } finally {
             $this->failureIsNeverShown = false;
         }
 
-        $this->startOver($participants, $options, $contribution);
+        // Step 2 draws what RoundParityRoleAssignment, named, draws. Where
+        // the first layout is kept for step 3, a strategy that draws is
+        // left where that layout left it, and step 2 draws from a clone
+        $roundParityStrategy = $firstLayout !== null && $contribution->requiresRandomization ? clone $strategy : $strategy;
+        $this->startOver($participants, $options->legs, $roundParityStrategy, $contribution);
         $inHand = null;
         $byesInHand = [];
         $roundParityFailure = null;
         $this->aBacktrackingSearchRan = false;
         try {
-            $inHand = $this->generateWithRoleAssignment($participants, $strategy, $plan, $roundParity, $rolesArePreferences, $options->backtracking);
+            $inHand = $this->generateWithRoleAssignment($participants, $roundParityStrategy, $plan, $roundParity, $rolesArePreferences, $options->backtracking);
             $byesInHand = $this->roundByes;
         } catch (IncompleteScheduleException $exception) {
             $roundParityFailure = $exception;
         }
         $this->scheduleInHandWasSearchedFor = $this->aBacktrackingSearchRan;
 
-        $this->startOver($participants, $options, $contribution);
         $this->failureIsNeverShown = true;
         $this->attemptsAllowed = $inHand === null ? null : self::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND;
-        $this->attemptsSpent = 0;
+        if ($firstLayout === null) {
+            $this->startOver($participants, $options->legs, $strategy, $contribution);
+            $this->attemptsSpent = 0;
+        } else {
+            // The first rotated order of step 3 is the layout step 1 laid
+            // out, and would end as it did: it is not laid out again. What
+            // it put to the constraints counts against the allowance, as it
+            // would if it were, and step 3 goes on from the second rotated
+            // order with the shuffles and the draws that order has under
+            // BalancedRoleAssignment, named.
+            $this->drawCursor = $firstLayout['drawCursor'];
+            $this->attemptsSpent = $firstLayout['spent'];
+            $this->firstLayoutAlreadyTried = $firstLayout;
+        }
         try {
             return [$this->generateWithRoleAssignment($participants, $strategy, $plan, $balanced, $rolesArePreferences, $options->backtracking), null];
         } catch (IncompleteScheduleException) {
@@ -666,6 +741,7 @@ class RoundRobinScheduler implements SchedulerInterface
         } finally {
             $this->failureIsNeverShown = false;
             $this->attemptsAllowed = null;
+            $this->firstLayoutAlreadyTried = null;
         }
 
         if ($roundParityFailure instanceof IncompleteScheduleException) {
@@ -694,14 +770,15 @@ class RoundRobinScheduler implements SchedulerInterface
      * there). The plan of the call stands.
      *
      * @param array<Participant> $participants
+     * @param LegStrategyInterface $strategy The leg strategy of the run: the one of the options, or a clone of it
      * @throws InvalidConfigurationException When the leg strategy now reports the configuration unsatisfiable
      */
-    private function startOver(array $participants, RoundRobinOptions $options, LegPlanContribution $contribution): void
+    private function startOver(array $participants, int $legs, LegStrategyInterface $strategy, LegPlanContribution $contribution): void
     {
         $this->drawCursor = 0;
 
         if ($contribution->requiresRandomization) {
-            $this->legContribution($participants, $options->legs, $options->strategy);
+            $this->legContribution($participants, $legs, $strategy);
         }
     }
 
@@ -720,6 +797,7 @@ class RoundRobinScheduler implements SchedulerInterface
         $this->scheduleInHandWasSearchedFor = false;
         $this->rotationsThatFailWhateverTheRoles = [];
         $this->rotatedOrdersAreAnalysedOnce = false;
+        $this->firstLayoutAlreadyTried = null;
     }
 
     /**
@@ -892,6 +970,10 @@ class RoundRobinScheduler implements SchedulerInterface
      *
      * @param array<Participant> $participants
      * @param bool $aRoleSearchFollows Whether a failure here is followed by a search of first-leg roles
+     * @param IncompleteScheduleException|null $failureOfTheFirstOrder The failure of the first rotated order where it
+     *                                                                 was laid out before, to the same end
+     *                                                                 ($firstLayoutAlreadyTried): the rotated orders
+     *                                                                 then begin at the second
      * @return array<Event>
      * @throws IncompleteScheduleException When no ordering produces a complete schedule
      * @throws InvalidConfigurationException When the role assignment changes more than roles
@@ -903,7 +985,8 @@ class RoundRobinScheduler implements SchedulerInterface
         RoleAssignmentInterface $roleAssignment,
         bool $rolesArePreferences,
         bool $aRoleSearchFollows,
-        int $attemptLimit = self::MAX_GENERATION_ATTEMPTS
+        int $attemptLimit = self::MAX_GENERATION_ATTEMPTS,
+        ?IncompleteScheduleException $failureOfTheFirstOrder = null
     ): array {
         $participants = array_values($participants);
         $maxAttempts = $this->constraints === null
@@ -916,8 +999,20 @@ class RoundRobinScheduler implements SchedulerInterface
         $this->aRoleSearchFollows = $aRoleSearchFollows;
         $this->rotationsWithoutRoles = [];
         $lastFailure = null;
+        $firstAttempt = 0;
 
-        for ($attempt = 0; $attempt < $maxAttempts; ++$attempt) {
+        if ($failureOfTheFirstOrder instanceof IncompleteScheduleException) {
+            // The first rotated order was laid out before, to the same
+            // end: its failure stands for it here
+            $lastFailure = $failureOfTheFirstOrder;
+            if ($this->firstLayoutAlreadyTried['withoutRoles'] ?? false) {
+                $this->rotationsWithoutRoles[0] = true;
+            }
+            $firstAttempt = 1;
+        }
+        $this->firstLayoutAlreadyTried = null;
+
+        for ($attempt = $firstAttempt; $attempt < $maxAttempts; ++$attempt) {
             if (
                 $lastFailure instanceof IncompleteScheduleException
                 && $this->attemptsAllowed !== null
@@ -970,7 +1065,8 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         // Not reached: there is at least one attempt, and the last one
-        // returns or rethrows
+        // returns or rethrows (where the first rotated order is taken as
+        // tried there are two or more: constraints and two participants)
         throw new InvariantViolationException('Schedule generation loop must return or throw');
     }
 
@@ -2231,13 +2327,23 @@ class RoundRobinScheduler implements SchedulerInterface
         $events = $search->search(
             new SchedulingContext($participants, $plan, $legOneEvents, 2),
             $slots,
-            PHP_INT_MAX,
+            // With a schedule in hand the search has what is left of the
+            // events that may still be put to the constraints, as every
+            // other search for balanced roles has
+            $this->attemptsAllowed === null ? PHP_INT_MAX : max(0, $this->attemptsAllowed - $this->attemptsSpent),
             LegRoleSearch::REJECTION_LIMIT
         );
         $this->attemptsSpent += $search->attempts();
 
         if ($events !== null) {
             return $events;
+        }
+
+        if ($this->attemptsAllowed !== null && $search->wasStoppedByABound()) {
+            // Within what is left of the allowance, which is far below the
+            // rejection limit, a bound that stops the search is the
+            // allowance
+            $this->searchWasCutShort = true;
         }
 
         foreach ($search->furthestRejections() as [$rejected, $rejectedContext]) {
