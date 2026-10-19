@@ -128,9 +128,9 @@ describe('a pre-drawn Swiss schedule', function (): void {
     });
 
     // The round counts at which a single draw fails for roughly one seed
-    // in ten to one in four (the first draw of 30 of these 200 seeds at 6
-    // participants and 4 rounds, of 23 at 8 and 6, of 30 at 10 and 9, of
-    // 44 at 12 and 11; none needs more than four draws), and the largest
+    // in eight to one in four (the first draw of 32 of these 200 seeds at
+    // 6 participants and 4 rounds, of 27 at 8 and 6, of 54 at 10 and 9, of
+    // 58 at 12 and 11; none needs more than five draws), and the largest
     // count of a field of odd size: 200 seeds each.
     it('is generated for every seed at the round counts where a single draw can fail', function (int $size, int $rounds): void {
         $problems = [];
@@ -189,7 +189,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
     // scheduler builds when every draw has reached a round with no pairing.
     // The test above reaches it without a source of draws. With one, no
     // input is known to get that far (a seeded draw goes through within
-    // four draws of the twenty), so the method is also called here
+    // five draws of the twenty), so the method is also called here
     // directly, by reflection, and held to the same rules as a drawn
     // schedule.
     it('can always be built by rotation, with or without a source of draws', function (): void {
@@ -239,12 +239,25 @@ describe('a pre-drawn Swiss schedule', function (): void {
             ->and(preDrawnLines($scheduler->schedule(preDrawnField($size), new SwissOptions($rounds, 2027))))->not->toBe($first);
     })->with([[8, 3], [8, 7], [9, 5], [16, 8], [12, 11]]);
 
-    it('draws from a seed what a new randomizer on the Xoshiro256StarStar engine draws', function (): void {
+    // Each round of a seeded schedule is drawn from the seed and the round
+    // number (SwissPairingEngine): round 1 from a new randomizer on the
+    // Xoshiro256StarStar engine seeded with it, which is what a scheduler
+    // handed that randomizer draws for its first round too. Later rounds
+    // come from other parts of the sequence, so the two schedules part
+    // there (tests/Feature/SwissSeededRoundsTest.php pins the rest).
+    it('draws the first round from a seed as a new randomizer on the Xoshiro256StarStar engine draws it', function (): void {
         $seeded = (new SwissScheduler())->schedule(preDrawnField(10), new SwissOptions(4, 99));
         $handed = (new SwissScheduler(null, new Randomizer(new Xoshiro256StarStar(99))))
             ->schedule(preDrawnField(10), new SwissOptions(4));
 
-        expect(preDrawnLines($seeded))->toBe(preDrawnLines($handed));
+        $firstRound = static fn(array $lines): array => array_values(array_filter(
+            $lines,
+            static fn(string $line): bool => str_starts_with($line, '1: ')
+        ));
+
+        expect($firstRound(preDrawnLines($seeded)))->toHaveCount(5)
+            ->and($firstRound(preDrawnLines($seeded)))->toBe($firstRound(preDrawnLines($handed)))
+            ->and(preDrawnLines($seeded))->not->toBe(preDrawnLines($handed));
     });
 
     it('continues the sequence of a randomizer it holds, so two calls give two schedules', function (): void {

@@ -338,6 +338,12 @@ final class GoldenCases
                 $sections["n={$size} rounds={$rounds} " . self::seedLabel($seed)]
                     = GoldenText::schedule($schedule);
             }
+            // The seed option: round n drawn from Xoshiro256StarStar seeded
+            // with it and advanced by n - 1 jumps (SwissPairingEngine)
+            foreach (self::SEEDS as $seed) {
+                $schedule = (new SwissScheduler())->schedule(self::field($size), new SwissOptions($rounds, $seed));
+                $sections["n={$size} rounds={$rounds} seed option {$seed}"] = GoldenText::schedule($schedule);
+            }
         }
 
         return GoldenText::document([
@@ -345,7 +351,8 @@ final class GoldenCases
             'Participants are "1".."n" in list order. `meta:` is the schedule',
             'metadata; `R<round>: a-b c-d` lists the round\'s events in generated',
             'order, first-named participant first; `byes:` names who sits out each',
-            'round of an odd field.',
+            'round of an odd field. A section titled `seed option <s>` is drawn',
+            'from SwissOptions(seed: s): each round from the seed and its number.',
             ...self::EXPLANATION,
         ], $sections);
     }

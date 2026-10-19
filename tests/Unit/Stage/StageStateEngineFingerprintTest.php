@@ -236,6 +236,8 @@ function fingerprintConstructorParameters(string $class): array
 
 /**
  * A Swiss engine that pairs by the chess scale.
+ *
+ * @throws InvalidConfigurationException Not thrown: the engine has no seed
  */
 function fingerprintSwissOnTheChessScale(int $plannedRounds): SwissPairingEngine
 {
@@ -496,6 +498,20 @@ describe('engine fingerprints', function (): void {
             fn() => new SwissPairingEngine(resultsFree: false),
             'tactician:v2:swiss',
         ],
+        // Added with the seed; the rows above are as they were. An engine
+        // without one has the stamp it always had, with a randomizer or
+        // without.
+        'Swiss with a seed' => [fn() => new SwissPairingEngine(seed: 2026), 'tactician:v2:swiss;seed=2026'],
+        'Swiss with a negative seed' => [fn() => new SwissPairingEngine(seed: -7), 'tactician:v2:swiss;seed=-7'],
+        'Swiss with the seed 0' => [fn() => new SwissPairingEngine(seed: 0), 'tactician:v2:swiss;seed=0'],
+        'Swiss in results-free mode with a seed' => [
+            fn() => new SwissPairingEngine(resultsFree: true, seed: 2026),
+            'tactician:v2:swiss;results-free=yes;seed=2026',
+        ],
+        'Swiss with the seed stated as none' => [
+            fn() => new SwissPairingEngine(seed: null),
+            'tactician:v2:swiss',
+        ],
         'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v1:double-elimination'],
         'two-legged double elimination' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
@@ -534,6 +550,7 @@ describe('engine fingerprints', function (): void {
             'plannedRounds',        // out: when the stage ends
             'randomizer',           // out: cannot be described
             'resultsFree',          // in when on: rounds are recorded without results on purpose
+            'seed',                 // in when given: every round is drawn from it
         ])->and($constructor(SingleEliminationEngine::class))->toBe([
             'options',              // in, see EliminationOptions below
             'standingsCalculator',  // in when re-seeding, otherwise out
@@ -815,6 +832,16 @@ describe('engine fingerprints', function (): void {
             fn() => new readonly class extends SwissPairingEngine {},
             fn() => new SwissPairingEngine(),
             'subclass: recorded yes, this engine the default',
+        ],
+        'one seed read with another' => [
+            fn() => new SwissPairingEngine(plannedRounds: 3, seed: 1),
+            fn() => new SwissPairingEngine(plannedRounds: 3, seed: 2),
+            'seed: recorded 1, this engine 2',
+        ],
+        'a seeded stage read by an engine without a seed' => [
+            fn() => new SwissPairingEngine(plannedRounds: 3, seed: 1),
+            fn() => new SwissPairingEngine(plannedRounds: 3),
+            'seed: recorded 1, this engine the default',
         ],
     ]);
 

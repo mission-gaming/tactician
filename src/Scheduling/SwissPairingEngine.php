@@ -32,6 +32,7 @@ use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
+use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 
 /**
@@ -100,10 +101,23 @@ use Random\Randomizer;
  * an engine in the other: a stage with no results yet is never mistaken
  * for one that is to have none.
  *
- * Without a Randomizer the engine draws nothing: the same state gives the
- * same pairing. With one, each call to pairNextRound() draws from it, so
- * pairing the same state twice gives two different rounds unless the
- * randomizer is seeded the same before each call.
+ * Without a source of draws the engine draws nothing: the same state gives
+ * the same pairing. There are two sources, and an engine has at most one:
+ *
+ * - A seed (the seed constructor argument). The draws of round n come from
+ *   a Randomizer of their own, built for that round from the seed and the
+ *   number n alone (see randomizerForRound()), so a round depends on the
+ *   seed, its number and the state it is paired from, and on nothing drawn
+ *   for an earlier round. The same state gives the same round on every
+ *   call, on one engine or on many; a state rebuilt from the rows of an
+ *   application (StageState::fromHistory()) pairs its next round as the
+ *   state built round by round does; and the engine can say for every
+ *   recorded round what it would have paired there (getRecordedRounds()).
+ *   The seed is part of the fingerprint.
+ * - A Randomizer. Each call to pairNextRound() draws from it, so pairing
+ *   the same state twice gives two different rounds unless the randomizer
+ *   is seeded the same before each call, and a recorded round has no
+ *   derivation: what was drawn for it is not part of the state.
  *
  * Constraints that reason about the tournament length (e.g.
  * SeedProtectionConstraint) need to know the planned number of rounds;
@@ -128,18 +142,59 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * @param bool $resultsFree Whether the stage is paired without results on purpose (see the
      *                          class docblock): no recorded event then awaits a result, and a
      *                          round is paired whatever the earlier rounds have of them
+     * @param int|null $seed Shuffles pairing order within equal-ranking groups as the randomizer
+     *                       does, with the draws of each round derived from the seed and the
+     *                       round number (see the class docblock). Any integer; null for none
      * @throws InvalidInputException When the planned rounds are below 1
+     * @throws InvalidConfigurationException When both a seed and a randomizer are given (reason
+     *                                       `IncompatibleOptions`)
      */
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private StandingsCalculator $standingsCalculator = new StandingsCalculator(),
         private ?int $plannedRounds = null,
         private ?Randomizer $randomizer = null,
-        private bool $resultsFree = false
+        private bool $resultsFree = false,
+        private ?int $seed = null
     ) {
         if ($plannedRounds !== null && $plannedRounds < 1) {
             throw new InvalidInputException('Planned rounds must be at least 1');
         }
+
+        if ($seed !== null && $randomizer !== null) {
+            throw new InvalidConfigurationException(
+                'A Swiss engine draws from a seed or from a randomizer, not both',
+                ['seed' => $seed],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+    }
+
+    /**
+     * The source of the draws of one round: for a seeded engine a new
+     * Randomizer of that round, otherwise the randomizer the engine holds,
+     * or null when it has none.
+     *
+     * The Randomizer of round n of a seeded engine is on a
+     * Xoshiro256StarStar engine seeded with the seed and advanced by n - 1
+     * jumps (Xoshiro256StarStar::jump(), 2^128 draws each). Round 1 draws
+     * what a new Randomizer on that engine seeded with the seed draws, and
+     * each later round draws from a part of the same sequence that no other
+     * round reaches. The engine and the jumps are part of the output for a
+     * seed.
+     */
+    private function randomizerForRound(int $roundNumber): ?Randomizer
+    {
+        if ($this->seed === null) {
+            return $this->randomizer;
+        }
+
+        $engine = new Xoshiro256StarStar($this->seed);
+        for ($jump = 1; $jump < $roundNumber; ++$jump) {
+            $engine->jump();
+        }
+
+        return new Randomizer($engine);
     }
 
     /**
@@ -162,16 +217,19 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *   is read from it, and two subclasses are not told apart;
      * - results-free mode, when it is on (default: off). An engine that
      *   waits for results has the fingerprint it had before the mode
-     *   existed.
+     *   existed;
+     * - the seed, when there is one (default: none). Every round is drawn
+     *   from it, so two seeds pair the same state differently.
      *
      * Not part of it:
      *
      * - the planned rounds. They say when the stage ends. No round is
      *   paired or read differently for them, so a stage extended or cut
      *   short by a round keeps its stamp;
-     * - the constraints and the randomizer. They do change pairings, and
-     *   the engine cannot describe them: a closure and a seed have no name.
-     *   Keeping them the same between rounds is the caller's to do.
+     * - the constraints and a Randomizer. They do change pairings, and the
+     *   engine cannot describe them: a closure and the state of a
+     *   Randomizer have no name. Keeping them the same between rounds is
+     *   the caller's to do.
      *
      * A subclass does not inherit this engine's fingerprint, because it may
      * pair differently: its fingerprint says that it is a subclass, without
@@ -188,6 +246,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         return EngineFingerprint::of('swiss', 2)
             ->withStandingsRules($this->standingsCalculator)
             ->with('results-free', $this->resultsFree, false)
+            ->with('seed', $this->seed ?? 'none', 'none')
             ->with('subclass', static::class !== self::class, false)
             ->toString();
     }
@@ -360,8 +419,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * made while it is played.
      *
      * An engine that holds a Randomizer has no derivation to give: what it
-     * drew when the round was paired is not part of the state. Neither has
-     * an engine whose search
+     * drew when the round was paired is not part of the state. A seeded
+     * engine has one, because it draws for a round from the seed and the
+     * round number alone. Neither has an engine whose search
      * finds no pairing for the round, or a state whose earlier rounds
      * StageState::fromHistory() would refuse.
      *
@@ -580,7 +640,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $this->table($state)->getEntries(),
             fn($entry) => isset($activeIds[$entry->getParticipant()->getId()])
         ));
-        $orderedParticipants = $this->orderForPairing($activeEntries, $participants);
+        $orderedParticipants = $this->orderForPairing($activeEntries, $participants, $this->randomizerForRound($roundNumber));
 
         // Repeat avoidance and home balancing read the recorded pairings,
         // not the results, so rounds recorded without results still count.
@@ -795,15 +855,16 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     /**
      * Order participants for pairing: the order of the table (see
      * table(): byes credited with the value the ranking strategy gives
-     * them, and level entries in list order) and - when a randomizer is
-     * configured - shuffled within each score group (see
+     * them, and level entries in list order) and - when
+     * the engine has a source of draws - shuffled within each score group (see
      * groupLevelRankings() for what level means).
      *
      * @param array<StandingEntry> $entries The entries of the active participants, in table order
      * @param array<Participant> $entrants The participant list, for the order of level entries
+     * @param Randomizer|null $randomizer The source of the draws of the round, if any
      * @return array<Participant>
      */
-    private function orderForPairing(array $entries, array $entrants): array
+    private function orderForPairing(array $entries, array $entrants, ?Randomizer $randomizer): array
     {
         $entries = array_values($entries);
         $positions = [];
@@ -859,8 +920,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
                 });
             }
 
-            if ($this->randomizer !== null) {
-                $group = $this->randomizer->shuffleArray($group);
+            if ($randomizer !== null) {
+                $group = $randomizer->shuffleArray($group);
             }
 
             foreach ($group as $entry) {
