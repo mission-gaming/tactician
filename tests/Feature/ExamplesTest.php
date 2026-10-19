@@ -1438,6 +1438,56 @@ $demonstrations = [
             ['to be re-seeded', 'to be re-seeded', 'waiting'],
         ]);
     },
+    '31-league-from-application-rows' => function (array $results): void {
+        $pairs = static function (array $events): array {
+            $pairs = [];
+            foreach ($events as $event) {
+                Assert::assertInstanceOf(Event::class, $event);
+                $pairs[] = examplePair($event);
+            }
+            sort($pairs);
+
+            return $pairs;
+        };
+
+        // Week 1 is the scheduler's round 1 for the five players in their order, and the one it leaves out rests
+        $players = array_map(
+            static fn(array $player): Participant => new Participant($player[0], $player[1]),
+            [['mira', 'Mira'], ['tomas', 'Tomas'], ['ines', 'Ines'], ['kofi', 'Kofi'], ['lena', 'Lena']]
+        );
+        $published = (new RoundRobinScheduler())->schedule($players);
+        expect($pairs(exampleArray($results, 'Week 1')))->toBe($pairs($published->getEventsByRound()[1]))
+            ->and($results['Resting in week 1'])->toBe(implode(', ', array_map(
+                static fn(Participant $bye): string => $bye->getLabel(),
+                $published->getByesByRound()[1]
+            )))
+            ->and($results['Every week as the scheduler publishes it'])->toBeTrue();
+
+        // A postponed game holds the next week back until the club pairs on in so many words
+        expect($results['Week 3, one game postponed'])->toBe(['The next week can be paired' => false, 'Waiting for week' => 3])
+            ->and(exampleArray($results, 'The game it waits for'))->toHaveCount(1)
+            ->and($results['Week 4 paired while a game was postponed'])->toBeTrue();
+
+        // Lena's game of week 5 is still in the draw and awaits nothing; the other game of the week is awaited
+        $notPlayed = exampleArray($results, 'Week 5, after Lena withdraws: not to be played');
+        $stillToPlay = exampleArray($results, 'Week 5: the games still to play');
+        expect($notPlayed)->toHaveCount(1)
+            ->and(examplePair($notPlayed[0]))->toContain('lena')
+            ->and($stillToPlay)->toHaveCount(1)
+            ->and(examplePair($stillToPlay[0]))->not->toContain('lena')
+            ->and($pairs([...$notPlayed, ...$stillToPlay]))->toBe($pairs($published->getEventsByRound()[5]));
+
+        // Ten games of one point each, the awarded one among them, and nothing for a rest: the points add up to
+        // ten, everyone played four games and rested once
+        $standings = exampleResult($results, 'Final standings', Standings::class);
+        expect(array_sum(array_map(static fn(StandingEntry $entry): float => $entry->getRankingValue(), $standings->getEntries())))->toBe(10.0)
+            ->and(array_map(static fn(StandingEntry $entry): array => [$entry->getPlayed(), $entry->getByes()], $standings->getEntries()))
+            ->each->toBe([4, 1])
+            ->and(array_map(
+                static fn(StandingEntry $entry): string => $entry->getParticipant()->getId() . ' ' . $entry->getRankingValue(),
+                $standings->getEntries()
+            ))->toBe(['mira 3', 'lena 2.5', 'tomas 2', 'ines 1.5', 'kofi 1']);
+    },
 ];
 
 /**
