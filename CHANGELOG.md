@@ -96,7 +96,12 @@ entry on the engine fingerprint.
     affected: `StageOutcome::getByes()` of a bracket with a walkover no
     longer counts it, and that of a double elimination bracket with a
     stage that took no round number now counts the bye in it; the
-    ranking of a re-seeded round no longer credits a walkover either.
+    ranking of a re-seeded round credits no walkover either, so the
+    entrant who had one ranks below those who won their tie, and the
+    rounds after a walkover of a re-seeded bracket can be paired
+    differently. Eight entrants, re-seeded, p8 withdraws once the first
+    round is paired and the first-named wins every other tie: the
+    semifinals were p1 v p4 and p2 v p3, and are p2 v p1 and p3 v p4.
   - *A tiebreaker between the tied participants is computed inside a
     tier.* `BetweenTiedParticipants` (and any `TiedParticipantsTiebreaker`)
     formed its tied sets over the whole table, so an event against an

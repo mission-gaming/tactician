@@ -366,6 +366,34 @@ describe('a bye in the table of a bracket', function (): void {
             ->and($outcome->getStandings()->getEntryFor($field[0])?->getRankingValue())->toBe(3.0)
             ->and($outcome->getByes())->toBe([]);
     });
+
+    // The ranking a re-seeded round is folded from counts the same byes as
+    // the table: a walkover is none of them. Eight entrants, re-seeded: p8
+    // withdraws once the first round is paired, so p1 goes on from an
+    // uncontested tie with nothing credited, and the three who won their
+    // quarter-final rank above it. Credited as a bye, p1 would be level with
+    // them and first by list position, and the semifinals p1 v p4, p2 v p3.
+    it('does not credit a walkover in the ranking a re-seeded round is folded from', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
+        $field = bracketTableField(8);
+        $state = StageState::start($field);
+        $first = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($first)->withoutParticipant($field[7]);
+        $state = $state->withAdditionalResults(array_values(array_map(
+            static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[0]),
+            array_filter($first->getEvents(), static fn(Event $event): bool => !in_array($field[7], $event->getParticipants(), true))
+        )));
+
+        $semifinals = array_map(
+            static fn(Event $event): string => implode(' v ', array_map(
+                static fn(Participant $participant): string => $participant->getId(),
+                array_values($event->getParticipants())
+            )),
+            $engine->pairNextRound($state)->getEvents()
+        );
+
+        expect($semifinals)->toBe(['p2 v p1', 'p3 v p4']);
+    });
 });
 
 describe('a bye on a scale that has no value for it', function (): void {
