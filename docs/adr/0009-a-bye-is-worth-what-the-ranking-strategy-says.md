@@ -1,6 +1,9 @@
 # 0009. A bye is worth what the ranking strategy says
 
-Status: accepted
+Status: accepted; amended by [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md),
+which credits the byes of a bracket in its placement table too, and in a
+bracket credits a bye with nothing, and refuses nothing, under a strategy
+without a bye value
 
 ## Context
 

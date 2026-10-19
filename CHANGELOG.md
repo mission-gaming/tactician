@@ -55,6 +55,83 @@ entry on the engine fingerprint.
   still does. Golden fixture: `double-elimination.txt` (the `standings:`
   line of the 12-entrant bracket and of the bracket with a reset; no
   pairing in the file changed).
+- **The table of a bracket credits its byes, and forms the tied sets of a
+  tiebreaker between the tied participants inside a tier (refs
+  [#58](https://github.com/mission-gaming/tactician/issues/58), ADR 0014,
+  `docs/adr/0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md`).**
+  Two rules of the records that order the entrants inside a tier of an
+  elimination outcome (`getOutcome()` and `getStandings()` of both
+  engines) change; no entrant changes tier.
+  - *A bye is credited.* The placement table counted a bye as nothing,
+    where the ranking a re-seeded round is folded from credits it, so the
+    two tables of one bracket disagreed. Now each bye is credited with
+    what the ranking strategy says a bye is worth, once for each leg of a
+    tie, as the re-seeded ranking does; under a ranking strategy that does
+    not say (no `RankingStrategyWithByeValue`) it is counted and credited
+    with nothing, in both tables, so such a bracket has the table it had.
+    Wins and losses still count results only, and
+    `StandingEntry::getByes()` counts the byes. Who is affected: every
+    bracket whose field is not a power of two, or that had a bye from a
+    void tie, in the ranking values of the entrants with byes and in the
+    order of a tier where those decide it. Six entrants, p1 and p2 with
+    byes, p1 loses its semifinal: p1 (0-1 and a bye) and p3 (1-1) share
+    the tier of the semifinals.
+
+    ```text
+    before  3. p3 (1-1) 3 points   4. p1 (0-1) 0 points
+    after   3. p1 (0-1) 3 points   4. p3 (1-1) 3 points (level: list position)
+    ```
+
+  - *A bye is what the bracket view shows as one.* The byes of a bracket
+    are the nodes of its view with the status `BracketNodeStatus::Bye`: an
+    entrant who stood alone and went on, also in a stage that took no
+    round number (a double elimination losers round whose entrants all
+    stand alone). The table, the ranking of a re-seeded round and
+    `StageOutcome::getByes()` all count those. A walkover is no bye: the
+    advancer of an uncontested tie, and the entrant who takes the third
+    place from a third-place tie the other left, are credited with
+    nothing, although the round lists them among its byes
+    (`RoundPairing::getByes()`, unchanged). An application that counts a
+    walkover as a win records an awarded result for the tie. Who is
+    affected: `StageOutcome::getByes()` of a bracket with a walkover no
+    longer counts it, and that of a double elimination bracket with a
+    stage that took no round number now counts the bye in it; the
+    ranking of a re-seeded round credits no walkover either, so the
+    entrant who had one ranks below those who won their tie, and the
+    rounds after a walkover of a re-seeded bracket can be paired
+    differently. Eight entrants, re-seeded, p8 withdraws once the first
+    round is paired and the first-named wins every other tie: the
+    semifinals were p1 v p4 and p2 v p3, and are p2 v p1 and p3 v p4.
+  - *A tiebreaker between the tied participants is computed inside a
+    tier.* `BetweenTiedParticipants` (and any `TiedParticipantsTiebreaker`)
+    formed its tied sets over the whole table, so an event against an
+    entrant of another tier with the same ranking value counted. Now the
+    tied sets are formed inside a tier, and where nothing in the tier
+    separates two entrants the entrant list does. Who is affected: a
+    bracket whose chain holds such a tiebreaker (the default chain holds
+    none). Eight entrants, two legs a tie, with
+    `[BetweenTiedParticipants(RankingValueTiebreaker)]`: p1 and p4 each won
+    a leg of their quarter-final and went out on a decider, level on
+    3 points, without having met. p4 was placed first for the leg it won
+    from p5, who went out a round later on 3 points; now p1 is first.
+
+  What to check: a place inside a tier read from a bracket's table, and
+  ranking values of bracket entrants with byes. Measured over 5,796
+  generated brackets (single, single with a third-place tie, re-seeded,
+  two-legged and double elimination, 3 to 16 entrants, seven chains):
+  1,421 tables change, 1,304 by the credit of a bye alone, 110 by the
+  tiers alone and 7 by both; none without a bye or a tiebreaker between
+  the tied. Golden fixtures: `single-elimination.txt` and
+  `elimination-decided-ties.txt` (the `standings:` line of the brackets of
+  five entrants: the entrant in position 3, who had a bye, is now above
+  the one in position 4), `examples/27-stage-from-application-rows.txt`
+  (entrant 11, with a bye and a walkover, goes from 3 to 6: the bye is
+  credited and the walkover is not) and
+  `examples/30-drawing-a-bracket.txt` (the final table of the double
+  elimination bracket: the four entrants with byes rank 3 points higher
+  for each, in the same order). The usage
+  guide's example "A bye", which pinned the old rule, now shows the new
+  one.
 - **A re-seeded bracket ranks an entrant who had a bye with the winners of
   the round, and level survivors by list position.**
   `EliminationOptions(reseedEachRound: true)` ranked the survivors by a
@@ -1098,6 +1175,25 @@ entry on the engine fingerprint.
     to the selector and not those of the outcome's own table.
   - With no decision supplied, every table, selection and array form is
     what it was. Example: `examples/28-ties-settled-by-decision.php`.
+- **A table with tiers: `StandingsCalculator::calculateWith()` takes a
+  sixth argument, `$tiers`** (the tier of each participant by ID, lower
+  first; ADR 0014). The table is in tier order and has the tiers
+  (`Standings::getTiers()`), the figures order it inside a tier, and a
+  tiebreaker between the tied participants forms its tied sets inside a
+  tier. A participant the tiers do not name is in a tier after all of
+  those named. A subclass of the calculator is put into tiers after its
+  own `calculate()`, and refused tiers (`IncompatibleOptions`) when its
+  chain holds a tiebreaker between the tied participants, whose sets its
+  `calculate()` forms over the whole table. The bracket engines give the
+  calculator their tiers, so a bracket whose calculator is such a subclass
+  is refused before its first round is paired (`IncompatibleOptions`), and
+  not once it has been played and its table is asked for.
+- **A bye counted and credited with nothing: `$creditsPerBye` 0** in
+  `StandingsCalculator::calculateWith()` and `withByesCredited()` counts
+  each bye (`StandingEntry::getByes()`) and adds nothing to the ranking
+  value, under any ranking strategy, without reading a bye value. The
+  bracket engines calculate their tables so under a ranking strategy that
+  does not say what a bye is worth (ADR 0014).
 - **The value of a bye is the caller's choice.** A ranking strategy says
   what one bye adds to a ranking value by implementing the optional
   interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).
@@ -2878,19 +2974,18 @@ entry on the engine fingerprint.
   refused. An event of a bracket round between two entrants neither of
   whom is in the round, or with an entrant who is in another tie of that
   round, is read by nothing, as before.
-- **Breaking: a re-seeded bracket that has a bye needs a ranking strategy
-  that says what a bye is worth.** Crediting the bye needs a value for it, so
-  `SingleEliminationEngine` with `reseedEachRound` and a `RankingStrategy`
-  that is not a `RankingStrategyWithByeValue` (new; `WinDrawLossRanking`
-  is one) throws an
-  `InvalidConfigurationException` (reason `IncompatibleOptions`) for a
-  field that is not a power of two. The field says that the bracket has
-  byes, so every call refuses it, `pairNextRound()` for the first round
-  included: the bracket is not started and then left without a second
-  round. A field that is a power of two, and a bracket on a fixed path, are
-  not affected. What to change: implement `RankingStrategyWithByeValue` on
-  the strategy, use a `WinDrawLossRanking`, or use a fixed
-  path. The Swiss engine refuses later, as it did: it pairs a round that
+- **Breaking: a Swiss stage that has a bye needs a ranking strategy that
+  says what a bye is worth; a bracket credits it with nothing.** Crediting
+  a bye needs a value for it (`RankingStrategyWithByeValue`, new;
+  `WinDrawLossRanking` is one). A bracket under a `RankingStrategy` without
+  one counts each bye (`StandingEntry::getByes()`) and credits it with
+  nothing, in the ranking a re-seeded round is folded from and in the
+  table of the outcome alike, and is refused nothing (ADR 0014): a
+  withdrawal can leave an entrant standing alone in a bracket of any size,
+  so no refusal before the first round could cover every bye. What to
+  change for a bye to count in a bracket: implement
+  `RankingStrategyWithByeValue` on the strategy, or use a
+  `WinDrawLossRanking`. The Swiss engine refuses later, as it did: it pairs a round that
   has a bye and refuses to pair the round after it (the message now begins
   "Crediting a bye requires a ranking strategy that says what a bye is
   worth"), and

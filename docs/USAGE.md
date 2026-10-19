@@ -47,7 +47,7 @@ anything else that competes.
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size, or the schedule is refused; `RoundParityRoleAssignment` (the default up to 0.2.x) alternates with round parity; `BalancedWherePossibleRoleAssignment` (the default) gives the balanced roles where the scheduler finds a schedule with them and otherwise the round-parity roles, with a **role fall-back** mark. A role assignment may state the rule it holds a leg to, and the scheduler then looks for other roles within that rule where a constraint rejects the ones it gave. See [Role Assignment](#role-assignment). |
 | **Role fall-back** | What the default role assignment of a round robin does where it finds no schedule with balanced roles: the schedule is generated with the roles the generator proposes, exactly as under `RoundParityRoleAssignment`, and its metadata says so under the key `role_fallback`, with the reason (`RoleFallback`): no balanced roles exist in what was searched, a bound stopped the search, or the search was cut short because a schedule was in hand. A schedule with balanced roles has no such key. See [Balanced where possible](#balanced-where-possible). |
 | **Fixed seating** | A seating is one pairing of a round as a role assignment is handed it: two seats, with the first-named participant in the first. A fixed seating is one the role assignment is told to keep as given (`RoleAssignmentContext::isFixed()`): the scheduler put its event to the constraints the other way round, they rejected it, and it asks the role assignment for the roles of the other seatings around it. See [Writing a role assignment](#writing-a-role-assignment). |
-| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**. See [Byes in a table](#byes-in-a-table). |
+| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**. In a bracket a bye is a node of the **bracket view** with the status `Bye` (an entrant who stood alone and went on); the advancer of an **uncontested tie** is listed among the byes of its round but has no bye. See [Byes in a table](#byes-in-a-table). |
 | **Bye value** | What one bye adds to the ranking value of the participant who had it, as the ranking strategy states it (`RankingStrategyWithByeValue::getByeValue()`): the value of a win, of a draw, nothing, or any other amount. `WinDrawLossRanking` values a bye as a win unless told otherwise. The same value orders the next round of a stage and stands in its final table. |
 | **Bye treatment** | How a tiebreaker computed from opponents counts a bye (`ByeTreatment`): not at all (`Uncounted`, the default), as an opponent worth nothing (`Zero`), or as an opponent with the participant's own ranking value (`OwnRankingValue`); the last two read an opponent's ranking value with the credit of its byes. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
@@ -90,7 +90,7 @@ anything else that competes.
 | **Unresolved event** | An event of a recorded round that still awaits its result. While there is one, the next round is refused (`UnresolvedRoundException`), the stage is not complete, and reading it throws nothing. `HistoryReadingEngine::getReadiness()` lists the events without an exception. See [Rounds That Are Not Finished](#rounds-that-are-not-finished). |
 | **After round (of a withdrawal or an adjustment)** | When a withdrawal or an adjustment happened, in the rounds of its stage: the number of the last round that was recorded at that moment, 0 before the first round (`Adjustment::getAfterRound()`, `Withdrawal::getAfterRound()`). The verbs of a stage state record it without being told; a history that holds a round states it for every withdrawal and every adjustment. An engine reads a recorded round from the adjustments made, and the entrants still in the stage, before it was paired, which to a state is before it was recorded, so a round is recorded when it is paired (`withRoundPaired()`); a round that names an entrant was paired while that entrant was in the stage, whatever its withdrawal states. Only a withdrawal stored by 0.2.x has no round: its time is not known and is never read as one that suits. See [When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened). |
 | **Settled tie** | A tie of a bracket as its engine settled it (`SettledTie`): who went on from it and who did not, also where no result says so because an entrant withdrew. The outcome of a bracket carries its last one (`StageOutcome::getSettledTies()`), and `MatchOutcomeSelector` reads it. |
-| **Uncontested tie** | A tie of a bracket that is not played because one of its two entrants has withdrawn: the other entrant advances without an event, the bracket is not drawn again, and an event already paired for the tie awaits no result. Some sports call it a walkover. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
+| **Uncontested tie** | A tie of a bracket that is not played because one of its two entrants has withdrawn: the other entrant advances without an event, the bracket is not drawn again, and an event already paired for the tie awaits no result. Some sports call it a walkover. It is no **bye**: no table credits it, and a competition that counts it as a win records an **awarded result** for the tie. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
 | **Over (of a bracket)** | The moment an elimination bracket's last ties are decided: the final and, where it has one, the third-place tie; in double elimination the grand final, or its reset where one is due. A last tie is decided by its results, or by the withdrawal of one of its entrants while the other is still in the stage, who then has it. A withdrawal after that takes nothing back: the winner and every placing stay. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
 | **Paired round (recorded as)** | A round recorded when it is drawn, before any of its results exist (`StageState::withRoundPaired()`); its results are added as they come (`withAdditionalResults()`). Recorded so, it comes before whatever happens while it is played. See [Swiss Tournaments](#swiss-tournaments). |
 | **Void tie** | A tie of a bracket both of whose entrants have withdrawn, with no result that decides it, before either went through it (before its next tie was paired). A last tie has no next tie and goes to the entrant still in when the other left, so it is void only where both had left by the time it had them both (a third-place tie whose entrants both left before the second semifinal was decided), or where the times are not known (data stored by 0.2.x). A void tie sends nobody on: the slot it would have filled is empty, so the entrant who would have met its winner goes on alone, and in double elimination nobody drops from it to the losers bracket. Its two entrants go out in it. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
@@ -1917,6 +1917,9 @@ How a tiebreaker of this kind is computed:
   with the same ranking value (the total, with byes and adjustments in it)
   and the same value for every tiebreaker before the run this one is in. A
   participant level with nobody is a set of one.
+- **Inside a tier.** A table with tiers (below) forms its tied sets inside
+  each tier, so participants of two tiers are never one set, and an event
+  against a participant of another tier counts in no value of this kind.
 - **Several in a row are one small table.** Tiebreakers of this kind that
   follow one another in the chain are a run, and every one of a run is
   computed over the same tied set: the participants level when the first of
@@ -1954,6 +1957,45 @@ How a tiebreaker of this kind is computed:
 A tiebreaker of your own is computed this way when it implements
 `TiedParticipantsTiebreaker`, which adds no method to `TiebreakerInterface`:
 it is handed the results and the entries of the tied set.
+
+**Tiers.** A table can be ordered by a criterion before any figure: the
+table of a bracket is ordered by the round each entrant went out in
+([Who won the bracket](#who-won-the-bracket)), and the bracket engines
+give the calculator those tiers. `calculateWith()` takes them as its
+`tiers` argument, the tier of each participant by ID, lower first. The
+table is in tier order and has the tiers (`Standings::getTiers()`), the
+figures order the entries inside a tier, and the tied sets of a tiebreaker
+between the tied participants are formed inside a tier. With the results
+above, Alice and Bob in one tier and Carol and Dave in the next:
+
+```php
+$inTiers = $betweenTheTiedFirst->calculateWith(
+    $participants,
+    $league,
+    tiers: ['alice' => 0, 'bob' => 0, 'carol' => 1, 'dave' => 1]
+);
+
+foreach ($inTiers as $position => $entry) {
+    echo $entry->getParticipant()->getLabel() . ' (tier ' . $inTiers->getTiers()[$position] . '): '
+        . $entry->getRankingValue() . ' pts, '
+        . $entry->getTiebreakerValue('between-tied:ranking-value') . " between the tied\n";
+}
+```
+
+That prints:
+
+```
+Alice (tier 0): 6 pts, 3 between the tied
+Bob (tier 0): 6 pts, 0 between the tied
+Carol (tier 1): 6 pts, 0 between the tied
+Dave (tier 1): 0 pts, 0 between the tied
+```
+
+Alice and Bob are level on points in their tier, and Alice beat Bob, so
+she is first with 3 points between the two. Carol is level with them on
+points but in another tier: her win over Alice counts in no value between
+the tied, and Carol is a set of one. A participant the tiers do not name is
+in a tier after all of those named.
 
 Who is tied depends on the byes and the adjustments of a table, so a
 calculator with a tiebreaker of this kind takes them with the results, in
@@ -2342,15 +2384,30 @@ That prints:
   `getEarnedRankingValue()` adds the value of each bye, and
   `getRankingValue()` adds the [adjustment](#adjustments). The table is
   ordered by the last.
-- **One value, everywhere.** The engines hand the calculator the byes
-  recorded on the stage state and read one table for the order a round is
-  paired from and for the outcome, so a bye cannot be worth one thing for
-  pairing and another in the final table.
+- **One value, everywhere.** The engines hand the calculator the byes of
+  the stage and read one table for the order a round is paired from and
+  for the outcome, so a bye cannot be worth one thing for pairing and
+  another in the final table. A Swiss stage's byes are the ones recorded
+  on the stage state. A bracket's are the nodes its bracket view shows as
+  byes (`BracketNodeStatus::Bye`, see [Drawing the Bracket](#drawing-the-bracket)):
+  an entrant who stood alone in a node and went on, also in a stage that
+  took no round number (a round of a double elimination losers bracket
+  whose entrants all stand alone). The table of the outcome, its
+  `getByes()` and the ranking a re-seeded bracket folds its rounds from
+  all count those. A **walkover** is no bye: an entrant whose opponent
+  withdrew from their tie goes on from an [uncontested tie](#terminology)
+  (`BracketNodeStatus::Uncontested`), which no table credits. A
+  competition that counts a walkover as a win records an
+  [awarded result](#awarded-results) for the tie.
 - **A ranking strategy of your own says what a bye is worth** by
   implementing `RankingStrategyWithByeValue`. One that does not keeps
-  working wherever no bye is credited; a table with a bye to credit is
-  refused under it (`IncompatibleOptions`), because nothing says what
-  sitting out counts for on its scale.
+  working wherever no bye is credited. In a Swiss stage a table with a
+  bye to credit is refused under it (`IncompatibleOptions`), because
+  nothing says what sitting out counts for on its scale. A bracket credits
+  each bye with nothing under it, in every one of its tables, and still
+  counts it (`getByes()`): no bracket is refused for its byes.
+  `StandingsCalculator::calculateWith()` does the same when it is given
+  `$creditsPerBye` 0.
 
 A tiebreaker that adds up the ranking values of opponents has to say what a
 bye is in that sum, and the two the library has take the answer as a
@@ -3241,11 +3298,11 @@ every bracket.
   That is with a bye worth a win, the default: the ranking strategy says
   what a bye is worth ([Byes in a table](#byes-in-a-table)), and with a
   bye worth nothing the entrants who sat out rank below the winners of
-  the round. Crediting a bye needs that value: a re-seeded bracket whose
-  field is not a power of two, which therefore has byes, is refused under
-  a ranking strategy that does not say what a bye is worth (it is no
-  `RankingStrategyWithByeValue`; reason `IncompatibleOptions`), from the
-  first call on, before a round is paired.
+  the round. Under a ranking strategy that does not say what a bye is
+  worth (it is no `RankingStrategyWithByeValue`) a bye is credited with
+  nothing, here and in the table of the outcome
+  ([Who won the bracket](#who-won-the-bracket)), and the entrant list
+  orders the survivors who are level.
 - `legsPerTie: 2` plays every tie over two mirrored legs (annotated with
   `tie_leg` metadata). Whoever wins more legs advances; when the legs are
   level, the aggregate is **yours** to resolve — away goals, extra time,
@@ -3295,7 +3352,11 @@ The table is ordered by the bracket first and by the records second:
   [third-place tie](#a-third-place-tie) puts the two of the semifinals in a
   tier each, so the places of that bracket are 1, 2, 3, 4, then four.
 - Inside a tier the standings calculator orders the entrants from their
-  records: ranking value, tiebreakers, score difference, scores-for.
+  records: ranking value, tiebreakers, score difference, scores-for. The
+  ranking value credits each bye of the bracket (below), and a
+  [tiebreaker between the tied participants](#between-the-tied-participants)
+  forms its tied sets inside the tier: an event against an entrant of
+  another tier counts in none of its values.
 - Where that leaves two of them level, their position in the entrant list
   decides, and `getTiedSets()` reports them. A tied set never crosses a
   tier.
@@ -3387,40 +3448,62 @@ Won the tie: Heidi
 Scores: 2 for, 2 against
 ```
 
-**A bye.** A bye is not an event, so it is no win in a record. A
-participant who has a bye and wins the bracket has the same points as the
-participant it beat in the final, who played a round more:
+**A bye.** A bye is not an event, so it is no win in a record: wins and
+losses count results, and `getByes()` counts the byes beside them. The
+ranking value credits each bye with what the ranking strategy says a bye
+is worth ([Byes in a table](#byes-in-a-table); a win, by default), once for
+each leg of a tie, as the ranking a re-seeded bracket folds its rounds
+from does. An entrant who had a bye is therefore not placed below an
+entrant of its tier who won a tie where it sat out. A bye is what the
+bracket view shows as one: a walkover (an opponent who withdrew) is none,
+and counts only where the application records an awarded result for it.
+Six entrants:
+Alice and Bob, in positions 1 and 2, have the byes of the first round, and
+Alice loses her semifinal:
 
 ```php
-$bob = $participants[1];
+[$alice, $bob, $carol] = $participants;
 
-// Three entrants: Heidi, in position 1, has the bye of the first round
-$byeState = StageState::start([$heidi, $alice, $bob]);
+$byeState = StageState::start(array_slice($participants, 0, 6));
 while (!$engine->isComplete($byeState)) {
     $pairing = $engine->pairNextRound($byeState);
     $byeState = $byeState->withRoundPaired($pairing);
+
+    // The first-named entrant wins every tie, except that Alice loses hers
     $byeState = $byeState->withAdditionalResults(array_map(
-        fn ($event) => new Result($event, $event->getParticipants()[0]),
+        function ($event) use ($alice) {
+            [$first, $second] = $event->getParticipants();
+
+            return new Result($event, $first->getId() === $alice->getId() ? $second : $first);
+        },
         $pairing->getEvents()
     ));
 }
 
 $byeOutcome = $engine->getOutcome($byeState);
+$byeTable = $byeOutcome->getStandings();
 
-foreach (array_slice($byeOutcome->getStandings()->getEntries(), 0, 2) as $entry) {
-    echo "{$entry->getParticipant()->getLabel()} ({$entry->getWins()}-{$entry->getLosses()})\n";
+foreach ($byeTable->getEntries() as $position => $entry) {
+    echo "{$entry->getParticipant()->getLabel()} ({$entry->getWins()}-{$entry->getLosses()}, "
+        . "{$entry->getByes()} bye): {$entry->getRankingValue()}, tier {$byeTable->getTiers()[$position]}\n";
 }
 echo 'Won the bracket: ' . MatchOutcomeSelector::winners()->select($byeOutcome)[0]->getLabel() . "\n";
 ```
 
 ```text
-Heidi (1-0)
-Alice (1-1)
-Won the bracket: Heidi
+Dave (3-0, 0 bye): 9, tier 0
+Bob (1-1, 1 bye): 6, tier 1
+Alice (0-1, 1 bye): 3, tier 2
+Carol (1-1, 0 bye): 3, tier 2
+Erin (0-1, 0 bye): 0, tier 3
+Frank (0-1, 0 bye): 0, tier 3
+Won the bracket: Dave
 ```
 
-Heidi and Alice both have three points from one win, and the bracket puts
-Heidi first.
+Alice and Carol went out in the semifinals. Alice's bye is worth the win
+Carol earned in the quarter-final, so the two are level on 3 points, and
+the entrant list puts Alice, in position 1, first. Bob is above them
+whatever the records say: the bracket placed him.
 
 Use `MatchOutcomeSelector` to read who advances from one knockout round,
 which the table of a whole bracket does not say, and the standings for the
@@ -4302,7 +4385,12 @@ echo $first->getLabel() . ' v ' . $second->getLabel() . "\n"; // Ada v Bo
 - **A tie that is not paired yet** gets no event. The entrant who advances
   is among the byes of the round the engine pairs, and so is the entrant
   who takes the third place from a third-place tie the other has left; a
-  round in which no tie is left to play takes no round number.
+  round in which no tie is left to play takes no round number. That
+  listing says only that the round has no event for it: the tie is
+  uncontested (a walkover), not a bye, and no table of the bracket and
+  no outcome counts it as one ([Byes in a table](#byes-in-a-table)).
+  Record an [awarded result](#awarded-results) for the tie where your
+  competition counts a walkover as a win.
 - **Results stand.** A tie with a complete result is decided by it,
   whoever withdraws afterwards: an entrant who won and then withdrew went
   on, and it is its next tie that is not played.
