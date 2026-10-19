@@ -547,6 +547,22 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
+     * The first selected rank, 1-based.
+     */
+    public function getFrom(): int
+    {
+        return $this->from;
+    }
+
+    /**
+     * The last selected rank, 1-based: at least getFrom().
+     */
+    public function getTo(): int
+    {
+        return $this->to;
+    }
+
+    /**
      * What the selection does with an order that results do not decide;
      * Refused unless the selector was told otherwise.
      */

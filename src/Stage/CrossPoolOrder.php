@@ -5,37 +5,54 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Stage;
 
 /**
- * The order in which a per-group rank selection lists the pools, rank by
- * rank, so that a bracket folded from the list keeps the entrants of one
- * pool apart.
+ * The order in which a pooled selection lists the pools, rank by rank, so
+ * that a bracket folded from the list keeps the entrants of one pool apart.
  *
  * A selection of several ranks from every pool is a list of blocks: every
  * pool's first selected rank, then every pool's second, and so on. A
  * bracket takes its entrants from list positions (BracketFold), so the
- * order of the pools inside each block decides who meets whom. The first
- * block is in pool order. With every block in pool order, two entrants of
- * one pool meet in the first round with three pools (C1 against C2), and
- * with four or eight pools a pool's first and second are in the same half.
+ * order of the pools inside each block decides who meets whom. With every
+ * block in pool order, two entrants of one pool meet in the first round
+ * with three pools (C1 against C2), and with four or eight pools a pool's
+ * first and second are in the same half.
  *
- * Each later block is therefore ordered against the blocks before it: of
- * all the ways to give its positions to the pools, the one in which
- * entrants of one pool can first meet as late as possible. "As late as
- * possible" is lexicographic: as few pairs of one pool as can be that can
- * meet in round 1, then as few in round 2, and so on. Among orders that
- * are equal in that, the one nearest to pool order is taken, so two pools
- * are still listed A, B: A1, B1, A2, B2.
+ * The blocks can be followed by a tail: entrants of distinct pools whose
+ * positions are fixed, after the last block (the best few of the next rank
+ * across pools, best first, BracketQualifiersSelector). They are placed
+ * before any block, and every block is ordered against them.
+ *
+ * Each block is ordered against the entrants placed before it: of all the
+ * ways to give its positions to the pools, the one in which entrants of
+ * one pool can first meet as late as possible. "As late as possible" is
+ * lexicographic: as few pairs of one pool as can be that can meet in round
+ * 1, then as few in round 2, and so on. Among orders that are equal in
+ * that, the one nearest to pool order is taken, so with no tail the first
+ * block is in pool order and two pools are still listed A, B: A1, B1, A2,
+ * B2.
  *
  * Blocks are settled one after another, each for good; an earlier block is
- * not revisited for the sake of a later one. For two ranks per pool that
- * is the best order there is. The order is a function of the two numbers
- * alone: no entrant, label or result is read.
+ * not revisited for the sake of a later one. For two ranks per pool and no
+ * tail that is the best order there is. In the first round it is the best
+ * order there is whatever the blocks and the tail, as long as there are at
+ * least two pools: no two entrants of one pool meet there. A position of a
+ * block has at most one first-round opponent placed before it, so at most
+ * one pool it must not have; the block can then fail to avoid every such
+ * pool only where each of its positions must avoid the same one, which
+ * takes as many opponents of that pool in as many different blocks (or the
+ * tail). The opponents of a block's positions are consecutive positions,
+ * at most two blocks long when a block is three positions or more, and one
+ * aligned block, or the tail, when it is two. With one pool every entrant
+ * is of that pool and every first-round tie pairs two of them.
+ *
+ * The order is a function of the numbers and the pools of the tail alone:
+ * no entrant, label or result is read.
  *
  * The position of an entrant is the one it has when the whole selection is
  * the entrant list of a bracket. A selection that is put elsewhere (into
  * pools again, or into a bracket together with other entrants) is in an
  * order that means nothing in particular there.
  *
- * @internal Not public API: how RankRangeSelector orders a per-group selection.
+ * @internal Not public API: how RankRangeSelector and BracketQualifiersSelector order a pooled selection.
  */
 final class CrossPoolOrder
 {
@@ -44,22 +61,26 @@ final class CrossPoolOrder
      *
      * @param int $pools How many pools the outcome has, at least 1
      * @param int $ranks How many ranks are selected from each pool, at least 1
+     * @param list<int> $tail The 0-based pools of the entrants listed after the last block, in
+     *                        their order, each pool at most once; empty for none
      * @return list<list<int>> One list per rank: the 0-based pool indices in the order their
      *                         entrants of that rank are listed
      */
-    public static function blocks(int $pools, int $ranks): array
+    public static function blocks(int $pools, int $ranks, array $tail = []): array
     {
-        $size = BracketFold::size($pools * $ranks);
+        $size = BracketFold::size($pools * $ranks + count($tail));
         $slotOf = array_flip(BracketFold::positions($size));
         $rounds = (int) round(log($size, 2));
 
         // The cost of two entrants of one pool that can first meet in
         // round r is base^(depth - r): one such pair in an earlier round
         // outweighs every pair of the later rounds together, because no
-        // block has as many as `base` pairs. The depth is as many rounds
-        // as an integer can hold apart; rounds beyond it are not told
-        // apart (reached only by selections of hundreds of entrants).
-        $base = $pools * max(1, $ranks - 1) + 1;
+        // block has as many as `base` pairs (an entrant of a block can
+        // meet the entrants of its pool in the blocks before it and the
+        // tail). The depth is as many rounds as an integer can hold apart;
+        // rounds beyond it are not told apart (reached only by selections
+        // of hundreds of entrants).
+        $base = $pools * max(1, $ranks - 1 + ($tail === [] ? 0 : 1)) + 1;
         $nearness = $pools * $pools + 1;
         $limit = intdiv(PHP_INT_MAX, $nearness * $base * $pools * $ranks);
         // $weights[$r] is the cost of a pair that can first meet in round
@@ -74,15 +95,15 @@ final class CrossPoolOrder
             $weights[$depth - $exponent] = $power;
         }
 
-        /** @var list<list<int>> $blocks */
-        $blocks = [range(0, $pools - 1)];
         /** @var array<int, list<int>> $slotsOfPool The bracket slots a pool's entrants hold so far */
-        $slotsOfPool = [];
-        for ($pool = 0; $pool < $pools; ++$pool) {
-            $slotsOfPool[$pool] = [$slotOf[$pool + 1]];
+        $slotsOfPool = array_fill(0, $pools, []);
+        foreach ($tail as $index => $pool) {
+            $slotsOfPool[$pool][] = $slotOf[$pools * $ranks + $index + 1];
         }
 
-        for ($block = 1; $block < $ranks; ++$block) {
+        /** @var list<list<int>> $blocks */
+        $blocks = [];
+        for ($block = 0; $block < $ranks; ++$block) {
             $costs = [];
             for ($pool = 0; $pool < $pools; ++$pool) {
                 for ($index = 0; $index < $pools; ++$index) {

@@ -25,6 +25,14 @@ enum SelectionYieldKind: string
     case PerPool = 'per-pool';
 
     /**
+     * A count for each pool of the stage before and a count on top, taken
+     * across the pools: the top of every pool and the best few of the next
+     * rank. The yield is the first count times the number of pools, plus
+     * the second.
+     */
+    case PerPoolPlusFixed = 'per-pool-plus-fixed';
+
+    /**
      * The winners of the last round of the stage before, and its byes:
      * half its entrants rounded up after one knockout round, and 1 after a
      * whole bracket.
