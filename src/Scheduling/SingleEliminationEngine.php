@@ -150,11 +150,17 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * Not part of it: grandFinalReset, which this engine does not read,
      * and the standings calculator of a bracket on a fixed path, which
      * orders the outcome and pairs nothing.
+     *
+     * The version of the rules is 2 for a re-seeded bracket, whose
+     * survivors 0.3.0 orders by their position in the list where 0.2.x
+     * read the seed attribute, the label and the ID, and which credits a
+     * bye (ADR 0004). A bracket on a fixed path is paired as 0.2.x paired
+     * it, so it is at 1, and a state 0.2.x stamped for it is accepted.
      */
     #[Override]
     public function getFingerprint(): string
     {
-        $fingerprint = EngineFingerprint::of('single-elimination')
+        $fingerprint = EngineFingerprint::of('single-elimination', $this->options->reseedEachRound ? 2 : 1)
             ->with('legs-per-tie', $this->options->legsPerTie, 1)
             ->with('reseed-each-round', $this->options->reseedEachRound, false)
             ->with('third-place', $this->options->thirdPlace, false);

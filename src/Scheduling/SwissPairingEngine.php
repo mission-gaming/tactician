@@ -182,7 +182,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     #[Override]
     public function getFingerprint(): string
     {
-        return EngineFingerprint::of('swiss')
+        // Version 2 of the Swiss rules: 0.3.0 orders level participants by
+        // their position in the list, where 0.2.x read the seed attribute,
+        // the label and the ID (ADR 0004).
+        return EngineFingerprint::of('swiss', 2)
             ->withStandingsRules($this->standingsCalculator)
             ->with('results-free', $this->resultsFree, false)
             ->with('subclass', static::class !== self::class, false)

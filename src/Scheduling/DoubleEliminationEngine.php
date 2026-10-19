@@ -117,11 +117,14 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * Not part of it: reseedEachRound and thirdPlace, which this engine
      * rejects, and the standings calculator, which orders the outcome and
      * pairs nothing.
+     *
+     * The version of the rules is 1: the bracket is paired as 0.2.x paired
+     * it, so a state 0.2.x stamped is accepted.
      */
     #[Override]
     public function getFingerprint(): string
     {
-        return EngineFingerprint::of('double-elimination')
+        return EngineFingerprint::of('double-elimination', 1)
             ->with('legs-per-tie', $this->options->legsPerTie, 1)
             ->with('grand-final-reset', $this->options->grandFinalReset, true)
             ->toString();
