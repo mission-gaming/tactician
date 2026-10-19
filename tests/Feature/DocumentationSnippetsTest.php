@@ -276,7 +276,13 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             expect($output)->not->toContain($text);
         }
     })->with([
-        'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player9\nbool(false)\n", "player3\nTeam Alpha\n2\nEurope\n"], []],
+        'a generation failure rendered from typed data' => [
+            'docs/USAGE.md',
+            '$e->getAnalysis()?->getBlockedPairings()',
+            ["Team 1 and Team 2 cannot meet: Derby Ban\n"],
+            ['cannot meet under these rules together'],
+        ],
         'role constraints over shuffled, mirrored and repeated legs' => [
             'docs/USAGE.md',
             '$repeatedLeague = $twoInARow->schedule(',

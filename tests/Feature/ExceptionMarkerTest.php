@@ -182,7 +182,9 @@ describe('everything src/ throws', function () use ($root, $sourceFiles, $source
 
         expect($inEvent)->not->toBe([]);
         expect(array_unique(array_column($inEvent, 'kind')))->toBe([ThrowSites::KIND_THROW_NEW]);
-        expect(array_unique(array_column($inEvent, 'subject')))->toBe([InvalidInputException::class]);
+        $subjects = array_values(array_unique(array_column($inEvent, 'subject')));
+        sort($subjects);
+        expect($subjects)->toBe([InvalidInputException::class, UnavailableValueException::class]);
     });
 
     it('declares no Throwable outside the marker', function () use ($sourceTypes): void {
