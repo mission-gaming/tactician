@@ -216,6 +216,31 @@ describe('a table calculated with its byes', function (): void {
             ->and($calculator->calculateWith($this->field, $this->results, ['nobody' => 1])->getEntryFor($this->p)?->getRankingValue())
             ->toBe(20.0);
     });
+
+    // Credited no times, a bye needs no value: it is counted and adds
+    // nothing, which is how a bracket treats a bye under such a strategy
+    it('counts a bye and credits nothing, under any ranking strategy, when it is credited no times', function (): void {
+        $strategy = new readonly class implements RankingStrategy {
+            #[Override]
+            public function rank(Participant $participant, array $results): float
+            {
+                return 10.0 * count($results);
+            }
+        };
+        $calculator = new StandingsCalculator($strategy);
+        $calculated = $calculator->calculate($this->field, $this->results);
+
+        foreach ([
+            $calculator->calculateWith($this->field, $this->results, $this->byes, [], 0),
+            $calculator->withByesCredited($calculated, $this->byes, 0),
+        ] as $table) {
+            foreach ($table->getEntries() as $entry) {
+                $id = $entry->getParticipant()->getId();
+                expect($entry->getByes())->toBe($this->byes[$id] ?? 0)
+                    ->and($entry->getRankingValue())->toBe($calculated->getEntryFor($entry->getParticipant())?->getRankingValue());
+            }
+        }
+    });
 });
 
 describe('the bye treatment of a tiebreaker computed from opponents', function (): void {

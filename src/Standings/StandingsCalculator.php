@@ -366,7 +366,10 @@ readonly class StandingsCalculator
      *                                     entry in the table, and a count below 1, is ignored
      * @param array<Adjustment> $adjustments Every adjustment of the participants of the table
      * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
-     *                           the legs of a tie where a bye stands for a tie of several legs
+     *                           the legs of a tie where a bye stands for a tie of several legs. 0
+     *                           counts each bye (StandingEntry::getByes()) and credits it with
+     *                           nothing, under any ranking strategy: a bracket does so under one
+     *                           that does not say what a bye is worth
      * @param array<int|string, int> $tiers The tier of each participant by ID, lower first; an ID
      *                                      with no entry in the table is ignored. Empty: a table
      *                                      without tiers
@@ -376,8 +379,9 @@ readonly class StandingsCalculator
      *                               adjustment names a participant that is not among the
      *                               given ones, or the amounts for one participant add up to
      *                               more than a float holds
-     * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
-     *                                       does not say what a bye is worth (it is no
+     * @throws InvalidConfigurationException When there is a bye to credit with a value
+     *                                       ($creditsPerBye above 0) and the ranking strategy does
+     *                                       not say what a bye is worth (it is no
      *                                       RankingStrategyWithByeValue), or the calculator is a
      *                                       subclass with a tiebreaker between the tied
      *                                       participants and is given tiers (reason
@@ -943,10 +947,14 @@ readonly class StandingsCalculator
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
      *                                     entry in the table is ignored
      * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
-     *                           the legs of a tie where a bye stands for a tie of several legs
+     *                           the legs of a tie where a bye stands for a tie of several legs. 0
+     *                           counts each bye (StandingEntry::getByes()) and credits it with
+     *                           nothing, under any ranking strategy: a bracket does so under one
+     *                           that does not say what a bye is worth
      *
-     * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
-     *                                       does not say what a bye is worth (it is no
+     * @throws InvalidConfigurationException When there is a bye to credit with a value
+     *                                       ($creditsPerBye above 0) and the ranking strategy does
+     *                                       not say what a bye is worth (it is no
      *                                       RankingStrategyWithByeValue), or a tiebreaker of the
      *                                       calculator reads byes or is computed between the
      *                                       tied participants (reason `IncompatibleOptions` for
@@ -990,11 +998,19 @@ readonly class StandingsCalculator
      * The entry with the given number of byes more, each credited with
      * what the ranking strategy says a bye is worth.
      *
-     * @throws InvalidConfigurationException When the ranking strategy does not say what a bye is
-     *                                       worth (reason `IncompatibleOptions`)
+     * Credited no times, a bye is counted and adds nothing, and the
+     * ranking strategy is not read.
+     *
+     * @throws InvalidConfigurationException When the bye is credited at least once and the ranking
+     *                                       strategy does not say what a bye is worth (reason
+     *                                       `IncompatibleOptions`)
      */
     private function creditByes(StandingEntry $entry, int $count, int $creditsPerBye): StandingEntry
     {
+        if ($creditsPerBye < 1) {
+            return $entry->withByes($entry->getByes() + $count, $entry->getEarnedRankingValue());
+        }
+
         if (!$this->rankingStrategy instanceof RankingStrategyWithByeValue) {
             throw new InvalidConfigurationException(
                 'Crediting a bye requires a ranking strategy that says what a bye is worth (RankingStrategyWithByeValue);'
