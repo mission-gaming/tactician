@@ -14,6 +14,7 @@ use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\BracketNode;
 use MissionGaming\Tactician\Stage\BracketNodeStatus;
+use MissionGaming\Tactician\Stage\BracketViewEngine;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\BetweenTiedParticipants;
@@ -590,6 +591,9 @@ describe('the table of a bracket, over generated brackets', function (): void {
                     : bracketTableWithAWithdrawal($engine, $field, $field[($seed * 3) % $size], $when);
                 $outcome = $engine->getOutcome($state) ?? throw new LogicException('The bracket is not over.');
 
+                if (!$engine instanceof BracketViewEngine) {
+                    throw new LogicException("{$name} draws no bracket view.");
+                }
                 $inView = [];
                 foreach ($engine->getBracket($state)->getNodes() as $node) {
                     $advancer = $node->getAdvancer();
