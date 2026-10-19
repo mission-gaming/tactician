@@ -342,11 +342,15 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * advanced; the legs of a two-legged tie are counted as recorded. A bye
      * is no win in them (StandingEntry::getByes() counts it): the ranking
      * value credits each one with what the ranking strategy says a bye is
-     * worth, once for each leg of a tie, as single elimination does. The
-     * byes are every advance without a tie: those the rounds list, and an
-     * advance through a stage that had no tie to play and took no round
-     * number (a losers round whose entrants all stand alone), which the
-     * outcome's bye counts do not have. A tiebreaker between the tied
+     * worth, once for each leg of a tie, and with nothing under a ranking
+     * strategy that does not say (it is no RankingStrategyWithByeValue), as
+     * single elimination does. The byes are the nodes the bracket view
+     * shows as byes (BracketNodeStatus::Bye: an entrant who stood alone and
+     * went on), also in a stage that took no round number (a losers round
+     * whose entrants all stand alone), and the outcome's bye counts are the
+     * same. A walkover (an uncontested tie) is no bye, although the round
+     * lists its advancer among its byes: an application that counts it
+     * records an awarded result for the tie. A tiebreaker between the tied
      * participants forms its tied sets inside a tier
      * (StandingsCalculator::calculateWith()). The outcome's results are the
      * results as recorded.
@@ -373,7 +377,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $state->getAdjustments()
             ),
             $state->getResults(),
-            $state->getByeCounts(),
+            $this->byeCountsOf($reading),
             $state->getLastRound(),
             [],
             $entrants,
@@ -429,10 +433,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * finished: recorded with every tie settled, or with no tie to play.
      *
      * @throws InvalidConfigurationException When a tie is broken, a recorded stage does not fit
-     *                                       the stage it is read as, a bye cannot be credited,
-     *                                       the calculator cannot form the tied sets of the
-     *                                       table, or the state is stamped with another
-     *                                       engine's fingerprint
+     *                                       the stage it is read as, the calculator cannot form
+     *                                       the tied sets of the table, or the state is stamped
+     *                                       with another engine's fingerprint
      */
     private function resolveState(StageState $state, bool $capture = false): BracketReading
     {
@@ -440,7 +443,6 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
-        $this->requireByesToBeCreditable($this->standingsCalculator, count($entrants));
         $this->requireTiedSetsInsideATier($this->standingsCalculator);
 
         // The bracket is read as it stood when it was over: a withdrawal
@@ -748,9 +750,6 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             if ($wentOn instanceof Participant) {
                 $slots[$index] = $wentOn;
                 $revived[$index] = $wentOn;
-                // It went on from a tie that was not played: a bye, as in
-                // single elimination
-                $reading->byes[$wentOn->getId()] = ($reading->byes[$wentOn->getId()] ?? 0) + 1;
             }
         }
         $slots = array_values($slots);
@@ -800,7 +799,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             null,
             $pairedAt
         );
-        foreach ($read['unplayed'] as $advanced) {
+        foreach ($read['byes'] as $advanced) {
             $reading->byes[$advanced->getId()] = ($reading->byes[$advanced->getId()] ?? 0) + 1;
         }
 

@@ -251,9 +251,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       event or is recorded twice, a tie carries a decider
      *                                       TieDecision refuses (`InvalidResult`), a recorded
      *                                       round holds a third-place tie where this engine
-     *                                       plays none (reason `RecordedRoundMismatch`), a re-seeded
-     *                                       bracket has a bye and a ranking strategy that does
-     *                                       not say what a bye is worth (`IncompatibleOptions`), or the
+     *                                       plays none (reason `RecordedRoundMismatch`), the
+     *                                       calculator is a subclass with a tiebreaker between the
+     *                                       tied participants (`IncompatibleOptions`), or the
      *                                       bracket is complete
      */
     #[Override]
@@ -413,10 +413,14 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * decision counts as a win for the participant who advanced. A bye is
      * no win in them (StandingEntry::getByes() counts it): the ranking
      * value credits each one with what the ranking strategy says a bye is
-     * worth, once for each leg of a tie, as the ranking of a re-seeded
-     * round does. The byes are every advance without a tie, also one
-     * through a round no round number was taken for, which the outcome's
-     * bye counts (the byes the rounds list) do not have. A tiebreaker
+     * worth, once for each leg of a tie, and with nothing under a ranking
+     * strategy that does not say (it is no RankingStrategyWithByeValue),
+     * as the ranking of a re-seeded round does. The byes are the nodes
+     * the bracket view shows as byes (BracketNodeStatus::Bye: an entrant
+     * who stood alone and went on), and the outcome's bye counts are the
+     * same. A walkover (an uncontested tie) is no bye, although the round
+     * lists its advancer among its byes: an application that counts it
+     * records an awarded result for the tie. A tiebreaker
      * between the tied participants forms its tied sets inside a tier
      * (StandingsCalculator::calculateWith()). The outcome's results are
      * the results as recorded, the draw included.
@@ -443,7 +447,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $state->getAdjustments()
             ),
             $state->getResults(),
-            $state->getByeCounts(),
+            $this->byeCountsOf($reading),
             $state->getLastRound(),
             [],
             $entrants,
@@ -519,8 +523,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * withdrawal after that takes nothing back (see readUntilOver()).
      *
      * @throws InvalidConfigurationException When a tie is broken, a recorded round holds a
-     *                                       third-place tie this engine does not play, a bye
-     *                                       cannot be credited, the calculator cannot form the
+     *                                       third-place tie this engine does not play, the
+     *                                       calculator cannot form the
      *                                       tied sets of the table, or the state is stamped with
      *                                       another engine's fingerprint
      */
@@ -530,7 +534,6 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
-        $this->requireByesToBeCreditable($this->standingsCalculator, count($entrants));
         $this->requireTiedSetsInsideATier($this->standingsCalculator);
         $this->requireAThirdPlaceToDecide(count($entrants));
         $this->requireNoThirdPlaceTieRecorded($state);
@@ -555,7 +558,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * @param list<Participant> $entrants The entrant list of the state
      * @param array<int|string, int> $heldFrom
      *
-     * @throws InvalidConfigurationException When a tie is broken, or a bye cannot be credited
+     * @throws InvalidConfigurationException When a tie is broken
      */
     private function walkBracket(StageState $state, array $entrants, ?int $counted, array $heldFrom, bool $deprecationRaised, bool $capture = false): BracketReading
     {
@@ -594,7 +597,6 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 if ($wentOn instanceof Participant) {
                     $slots[$index] = $wentOn;
                     unset($wentOutIn[$wentOn->getId()]);
-                    $byes[$wentOn->getId()] = ($byes[$wentOn->getId()] ?? 0) + 1;
                     $previousUnits[$index] = [
                         'winner' => $wentOn,
                         'losers' => array_values(array_filter(
@@ -720,7 +722,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                     $wentOutIn[$wentOut->getId()] = $structural;
                 }
             }
-            foreach ($read['unplayed'] as $advanced) {
+            foreach ($read['byes'] as $advanced) {
                 $byes[$advanced->getId()] = ($byes[$advanced->getId()] ?? 0) + 1;
             }
             if ($read['extra'] !== null) {
@@ -1068,8 +1070,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                           null when it is made now
      * @return array<Participant>
      *
-     * @throws InvalidConfigurationException When a survivor had a bye and the ranking strategy does
-     *                                       not say what a bye is worth
+     * @throws InvalidConfigurationException Not thrown here: a bye is credited with a value only
+     *                                       under a ranking strategy that says what it is worth,
+     *                                       and no tiers are given
      */
     private function rankByStandings(
         array $survivors,
@@ -1097,7 +1100,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $this->resultsForStandings($priorResults, $levelAdvancers),
                 $byes,
                 $adjustments,
-                $this->options->legsPerTie
+                $byes === [] ? $this->options->legsPerTie : $this->creditsPerBye($this->standingsCalculator, $this->options->legsPerTie)
             )
             ->withTiedSetsOrderedBy($entrants);
 

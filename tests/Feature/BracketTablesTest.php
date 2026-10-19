@@ -12,9 +12,12 @@ use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\BracketNode;
+use MissionGaming\Tactician\Stage\BracketNodeStatus;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\BetweenTiedParticipants;
+use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\RankingValueTiebreaker;
 use MissionGaming\Tactician\Standings\ScoreDifferenceTiebreaker;
 use MissionGaming\Tactician\Standings\StandingEntry;
@@ -74,6 +77,49 @@ function bracketTablePlayed(StageEngineInterface $engine, array $field, int $see
             $results[] = new Result($event, $winner, [$winner->getId() => $for, $loser->getId() => $rng->getInt(0, $for - 1)]);
         }
         $state = $state->withRoundPlayed($pairing, $results);
+    }
+
+    return $state;
+}
+
+/**
+ * Play a bracket to its end as bracketTablePlayed() does, with one entrant
+ * withdrawing before the second round is paired ('between rounds') or once
+ * it is paired and before it is played ('from a paired tie'). A tie the
+ * withdrawn entrant is in is not played.
+ *
+ * @param list<Participant> $field
+ *
+ * @throws InvalidConfigurationException When the engine refuses the bracket (not expected here)
+ * @throws NoValidPairingException When the engine has no round to pair (not expected here)
+ */
+function bracketTableWithAWithdrawal(StageEngineInterface $engine, array $field, Participant $leaving, string $when): StageState
+{
+    $state = StageState::start($field);
+    $round = 0;
+    while (!$engine->isComplete($state)) {
+        ++$round;
+        if ($round === 2 && $when === 'between rounds') {
+            $state = $state->withoutParticipant($leaving);
+            if ($engine->isComplete($state)) {
+                break;
+            }
+        }
+        $pairing = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($pairing);
+        if ($round === 2 && $when === 'from a paired tie') {
+            $state = $state->withoutParticipant($leaving);
+        }
+        $results = [];
+        foreach ($pairing->getEvents() as $event) {
+            $participants = array_values($event->getParticipants());
+            if (in_array($leaving, $participants, true) && $round >= 2) {
+                continue;
+            }
+            // The entrant named first in the first leg wins every leg
+            $results[] = new Result($event, $participants[$event->getMetadataValue('tie_leg') === 2 ? 1 : 0]);
+        }
+        $state = $state->withAdditionalResults($results);
     }
 
     return $state;
@@ -284,6 +330,75 @@ describe('a bye in the table of a bracket', function (): void {
         }
         expect($credited)->toBe(3);
     });
+
+    // Four entrants: p4 withdraws once the first round is paired, so p1
+    // goes on from a tie that is not played. That is a walkover (an
+    // uncontested tie), not a bye: no table and no outcome counts it, and
+    // the bracket view shows it as uncontested. An application that wants
+    // it to count records an awarded result for it.
+    it('does not count a walkover', function (): void {
+        $engine = new SingleEliminationEngine();
+        $field = bracketTableField(4);
+        $state = StageState::start($field);
+        $first = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($first)->withoutParticipant($field[3]);
+        $state = $state->withAdditionalResults(array_values(array_map(
+            static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[0]),
+            array_filter($first->getEvents(), static fn(Event $event): bool => !in_array($field[3], $event->getParticipants(), true))
+        )));
+        while (!$engine->isComplete($state)) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(
+                static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[0]),
+                $pairing->getEvents()
+            ));
+        }
+
+        $outcome = $engine->getOutcome($state) ?? throw new LogicException('The bracket is not over.');
+        $statuses = array_map(
+            static fn(BracketNode $node): string => $node->getId() . ' ' . $node->getStatus()->value,
+            $engine->getBracket($state)->getNodes()
+        );
+
+        expect($statuses)->toContain('main:1:1 uncontested')
+            ->and($outcome->getStandings()->getEntryFor($field[0])?->getByes())->toBe(0)
+            ->and($outcome->getStandings()->getEntryFor($field[0])?->getRankingValue())->toBe(3.0)
+            ->and($outcome->getByes())->toBe([]);
+    });
+});
+
+describe('a bye on a scale that has no value for it', function (): void {
+    // A ranking strategy that does not say what a bye is worth credits a
+    // bye with nothing. A withdrawal can leave an entrant standing alone in
+    // a bracket of any size, a power of two too: such a bracket is played
+    // to its end and has its table, as it had before byes were credited.
+    it('gives the table of a bracket with a withdrawal, counting its byes and crediting none', function (string $format, int $size, string $when): void {
+        $calculator = new StandingsCalculator(new class implements RankingStrategy {
+            #[Override]
+            public function rank(Participant $participant, array $results): float
+            {
+                return (float) count(array_filter(
+                    $results,
+                    static fn(Result $result): bool => $result->getWinner()?->getId() === $participant->getId()
+                ));
+            }
+        });
+        $engine = $format === 'single elimination'
+            ? new SingleEliminationEngine(new EliminationOptions(), $calculator)
+            : new DoubleEliminationEngine(new EliminationOptions(), $calculator);
+        $field = bracketTableField($size);
+
+        $state = bracketTableWithAWithdrawal($engine, $field, $field[0], $when);
+
+        $outcome = $engine->getOutcome($state) ?? throw new LogicException('The bracket is not over.');
+        foreach ($outcome->getStandings()->getEntries() as $entry) {
+            expect($entry->getRankingValue())->toBe($entry->getRankingValueOfResults())
+                ->and($entry->getByes())->toBe($outcome->getByes()[$entry->getParticipant()->getId()] ?? 0);
+        }
+    })
+        ->with(['single elimination', 'double elimination'])
+        ->with([4, 8])
+        ->with(['between rounds', 'from a paired tie']);
 });
 
 describe('the table of a bracket, over generated brackets', function (): void {
@@ -458,4 +573,50 @@ describe('the table of a bracket, over generated brackets', function (): void {
             }
         }
     })->with(array_keys($engines));
+
+    // A bye is what the bracket view shows as one (BracketNodeStatus::Bye):
+    // an entrant who stood alone and went on. The table counts those, and
+    // so does the outcome, with withdrawals or without: a walkover
+    // (Uncontested) is none of them.
+    it('counts as byes the nodes the bracket view shows as byes, in the table and in the outcome', function (string $name, string $when) use ($engines): void {
+        $engines['two-legged double elimination'] = static fn(StandingsCalculator $calculator): StageEngineInterface => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2), $calculator);
+        $byes = 0;
+        foreach ([3, 5, 6, 7, 8, 12] as $size) {
+            foreach ([1, 2] as $seed) {
+                $engine = $engines[$name](new StandingsCalculator());
+                $field = bracketTableField($size);
+                $state = $when === 'no withdrawal'
+                    ? bracketTablePlayed($engine, $field, $seed)
+                    : bracketTableWithAWithdrawal($engine, $field, $field[($seed * 3) % $size], $when);
+                $outcome = $engine->getOutcome($state) ?? throw new LogicException('The bracket is not over.');
+
+                $inView = [];
+                foreach ($engine->getBracket($state)->getNodes() as $node) {
+                    $advancer = $node->getAdvancer();
+                    if ($node->getStatus() === BracketNodeStatus::Bye && $advancer instanceof Participant) {
+                        $inView[$advancer->getId()] = ($inView[$advancer->getId()] ?? 0) + 1;
+                    }
+                }
+                $inTable = [];
+                foreach ($outcome->getStandings()->getEntries() as $entry) {
+                    if ($entry->getByes() > 0) {
+                        $inTable[$entry->getParticipant()->getId()] = $entry->getByes();
+                    }
+                }
+                ksort($inView);
+                ksort($inTable);
+                $inOutcome = $outcome->getByes();
+                ksort($inOutcome);
+
+                $case = "{$name}, {$size} entrants, seed {$seed}, {$when}";
+                expect($inTable)->toBe($inView, $case)
+                    ->and($inOutcome)->toBe($inView, $case);
+                $byes += array_sum($inView);
+            }
+        }
+
+        expect($byes)->toBeGreaterThan(0);
+    })
+        ->with([...array_keys($engines), 'two-legged double elimination'])
+        ->with(['no withdrawal', 'between rounds', 'from a paired tie']);
 });

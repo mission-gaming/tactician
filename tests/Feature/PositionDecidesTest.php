@@ -546,17 +546,24 @@ describe('re-seeding an elimination bracket', function (): void {
         }
     });
 
-    // The bracket knows from its entrant list that it has byes, so it
-    // refuses before the first round is paired, and not after it has been
-    // played, when the bracket could no longer be finished. Every bracket
-    // credits its byes in its table, re-seeded or not, so every bracket is
-    // refused (ADR 0014).
-    it('refuses a bye it cannot credit on a scale that has no value for a bye, before any round is paired', function (string $bracket, int $size): void {
+    // A ranking strategy that does not say what a bye is worth credits a
+    // bye with nothing, in every table of the bracket: the ranking a
+    // re-seeded round is folded from and the placement table. The bye is
+    // still counted. No bracket is refused for it, before its first round
+    // or after its last (ADR 0014).
+    it('plays a bracket with byes to its end on a scale that has no value for a bye, counting each bye and crediting nothing', function (string $bracket, int $size): void {
         $calculator = new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
             #[Override]
             public function rank(Participant $participant, array $results): float
             {
-                return (float) count($results);
+                $won = 0.0;
+                foreach ($results as $result) {
+                    if ($result->getWinner()?->getId() === $participant->getId()) {
+                        ++$won;
+                    }
+                }
+
+                return $won;
             }
         });
         $engine = match ($bracket) {
@@ -566,25 +573,23 @@ describe('re-seeding an elimination bracket', function (): void {
             default => throw new LogicException("No bracket {$bracket}."),
         };
         $state = StageState::start(positionField($size, 1));
-
-        $calls = [
-            'pairNextRound' => fn(): mixed => $engine->pairNextRound($state),
-            'isComplete' => fn(): mixed => $engine->isComplete($state),
-            'getStandings' => fn(): mixed => $engine->getStandings($state),
-            'getOutcome' => fn(): mixed => $engine->getOutcome($state),
-        ];
-        foreach ($calls as $call => $ask) {
-            try {
-                $ask();
-            } catch (InvalidConfigurationException $exception) {
-                expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
-                    ->and($exception->getMessage())->toContain('a ranking strategy that says what a bye is worth');
-
-                continue;
-            }
-
-            throw new LogicException("{$call}() went on with a bye that cannot be credited.");
+        while (!$engine->isComplete($state)) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(
+                static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[0]),
+                $pairing->getEvents()
+            ));
         }
+
+        $outcome = $engine->getOutcome($state) ?? throw new LogicException('The bracket is not over.');
+        $byes = 0;
+        foreach ($outcome->getStandings()->getEntries() as $entry) {
+            $id = $entry->getParticipant()->getId();
+            expect($entry->getRankingValue())->toBe($entry->getRankingValueOfResults(), "{$id} was credited")
+                ->and($entry->getByes())->toBe($outcome->getByes()[$id] ?? 0, "{$id}");
+            $byes += $entry->getByes();
+        }
+        expect($byes)->toBeGreaterThan(0);
     })
         ->with(['re-seeded', 'fixed path', 'double elimination'])
         ->with([[3], [5], [6], [7], [12]]);

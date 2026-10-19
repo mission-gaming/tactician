@@ -137,9 +137,12 @@ final class BracketReading
     public array $placement = [];
 
     /**
-     * How many times each participant went on without a tie being played,
-     * by ID: the byes of the bracket as far as the walk read it, which the
-     * table credits (see EliminationBracketSupport::placementStandings()).
+     * How many times each participant stood alone in a node and went on,
+     * by ID: the byes of the bracket as far as the walk read it, which are
+     * the nodes the bracket view shows as byes (BracketNodeStatus::Bye).
+     * The tables and the outcome count them
+     * (EliminationBracketSupport::placementStandings()); a walkover (an
+     * uncontested tie) is not among them.
      *
      * @var array<int|string, int>
      */
