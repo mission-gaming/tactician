@@ -9,13 +9,18 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
+use MissionGaming\Tactician\Stage\Bracket;
+use MissionGaming\Tactician\Stage\BracketSide;
 use MissionGaming\Tactician\Stage\BracketTie;
+use MissionGaming\Tactician\Stage\BracketViewEngine;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\HistoryReadingEngine;
 use MissionGaming\Tactician\Stage\PairingReadiness;
 use MissionGaming\Tactician\Stage\RecordedRound;
+use MissionGaming\Tactician\Stage\RoundLabel;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -100,7 +105,7 @@ use Override;
  *
  * @experimental
  */
-final readonly class SingleEliminationEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
+final readonly class SingleEliminationEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine, BracketViewEngine
 {
     use EliminationBracketSupport;
 
@@ -440,6 +445,51 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
+     * The bracket as this engine reads the state (see Bracket): one side,
+     * BracketSide::Main, with a round for every round of the bracket from
+     * the first to the final, recorded or not.
+     *
+     * The first round's slots are the entry fold (SlotSource::Draw, with
+     * the position in the entrant list; a position beyond the field is a
+     * bye). On a fixed path each slot of a later round is filled from one
+     * node of the round before, the node in the same place: slots 1 and 2
+     * of round 2 from nodes 1 and 2 of round 1. In a re-seeded bracket
+     * every slot of a later round is filled from all the nodes of the round
+     * before (BracketSlot::isReseeded(), placeholder Reseeded until the
+     * round is reached). A third-place tie is the last node of the last
+     * round (kind BracketTie::ThirdPlace), its slots filled from the losers
+     * of the two nodes before the final; a field of 3 has none, as the
+     * engine plays none.
+     *
+     * The rounds the engine has read are as it read them: the recorded
+     * rounds with their events, and a round nobody played because of
+     * withdrawals, with no round number. The round it pairs next is
+     * isNext(), its nodes to be paired, settled where an entrant has
+     * withdrawn. The rounds after it are the shape of the bracket from
+     * there, each slot holding the entrant already known to fill it (the
+     * advancer of a node settled early) or its placeholder, and a node
+     * an entrant has withdrawn from settled as the pairing of its round
+     * will settle it. A round drawn
+     * by hand keeps its ties as recorded: a node for each tie, at the slot
+     * of the earlier of its two entrants, and for each entrant left alone;
+     * the rounds after it are shaped from the nodes it has.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getBracket(StageState $state): Bracket
+    {
+        $reading = $this->resolveBracket($state, true);
+
+        return BracketViewBuilder::singleElimination(
+            $reading,
+            $this->options->reseedEachRound,
+            $this->options->thirdPlace,
+            $this->bracketSize(count($state->getEntrants()))
+        );
+    }
+
+    /**
      * Read the bracket from the entry fold through the recorded rounds.
      *
      * The slots of the first round are the fold of the entrant list. Each
@@ -465,7 +515,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       cannot be credited, or the state is stamped with
      *                                       another engine's fingerprint
      */
-    private function resolveBracket(StageState $state): BracketReading
+    private function resolveBracket(StageState $state, bool $capture = false): BracketReading
     {
         $state->requireEngineFingerprint($this->getFingerprint());
 
@@ -479,8 +529,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         return $this->readUntilOver(
             $state,
-            function (?int $counted, array $heldFrom) use ($state, $entrants, &$deprecationRaised): BracketReading {
-                $reading = $this->walkBracket($state, $entrants, $counted, $heldFrom, $deprecationRaised);
+            function (?int $counted, array $heldFrom) use ($state, $entrants, &$deprecationRaised, $capture): BracketReading {
+                $reading = $this->walkBracket($state, $entrants, $counted, $heldFrom, $deprecationRaised, $capture);
                 $deprecationRaised = $reading->tieWinnerDeprecationRaised;
 
                 return $reading;
@@ -497,9 +547,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * @throws InvalidConfigurationException When a tie is broken, or a bye cannot be credited
      */
-    private function walkBracket(StageState $state, array $entrants, ?int $counted, array $heldFrom, bool $deprecationRaised): BracketReading
+    private function walkBracket(StageState $state, array $entrants, ?int $counted, array $heldFrom, bool $deprecationRaised, bool $capture = false): BracketReading
     {
         $reading = $this->beginReading($state, $counted, $heldFrom, $deprecationRaised);
+        $reading->capture = $capture;
         $legsPerTie = $this->options->legsPerTie;
 
         $slots = array_values($this->buildInitialSlots($entrants));
@@ -599,6 +650,18 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 if ($isLastRound) {
                     $reading->lastTies = $this->lastTiesToPair($slots, $thirdPlaceTie, $out);
                 }
+                if ($reading->capture) {
+                    $reading->walked[] = [
+                        'side' => BracketSide::Main,
+                        'round' => $structural,
+                        'slots' => $slots,
+                        'number' => null,
+                        'manual' => false,
+                        'next' => true,
+                        'nodes' => $this->pendingNodes($pairs, $out),
+                        'extra' => $thirdPlaceTie === null ? null : $this->pendingNode([$thirdPlaceTie[0], $thirdPlaceTie[1]], $out),
+                    ];
+                }
                 break;
             }
 
@@ -617,6 +680,18 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
             if ($isLastRound) {
                 $reading->lastTies = $this->lastTiesRead($slots, $thirdPlaceTie, $read);
+            }
+            if ($reading->capture) {
+                $reading->walked[] = [
+                    'side' => BracketSide::Main,
+                    'round' => $structural,
+                    'slots' => $slots,
+                    'number' => $claimed ? $reading->number : null,
+                    'manual' => $claimed && $read['manual'],
+                    'next' => false,
+                    'nodes' => $read['nodes'],
+                    'extra' => $read['extraNode'],
+                ];
             }
 
             if ($claimed && $recorded instanceof RoundPairing) {
@@ -936,8 +1011,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         ?array $thirdPlaceTie,
         array $withdrawn
     ): RoundPairing {
-        $label = $this->roundLabel($slotCount);
-        $round = new Round($roundNumber, ['label' => $label]);
+        $label = RoundLabel::ofBracketRound(BracketSide::Main, 0, 0, $slotCount);
+        $round = new Round($roundNumber, [FormatMetadataKey::ROUND_LABEL => $label->toString()]);
         $marked = $this->options->thirdPlace && $slotCount === 2;
 
         $events = [];
@@ -1062,23 +1137,5 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         }
 
         return $ranked;
-    }
-
-    /**
-     * The label of a round by the number of slots it is entered with: the
-     * final has two, the semifinals four. A round entered with a number
-     * that is no power of two, which only a recorded round that pairs the
-     * bracket otherwise leaves behind, is labelled as the next power up.
-     */
-    private function roundLabel(int $slotCount): string
-    {
-        $size = $this->bracketSize($slotCount);
-
-        return match ($size) {
-            2 => 'final',
-            4 => 'semifinal',
-            8 => 'quarterfinal',
-            default => 'round of ' . $size,
-        };
     }
 }

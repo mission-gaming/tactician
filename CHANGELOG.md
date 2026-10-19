@@ -885,6 +885,52 @@ entry on the engine fingerprint.
 
 ### Added
 
+- **The structured bracket view: `getBracket()`
+  ([#57](https://github.com/mission-gaming/tactician/issues/57),
+  [#93](https://github.com/mission-gaming/tactician/issues/93)).** Both
+  elimination engines implement a new capability interface,
+  `Stage\BracketViewEngine`, whose one method `getBracket(StageState)`
+  returns a `Stage\Bracket`: every round of every side of the bracket, the
+  rounds still to come included, each with its nodes, and each node with
+  its slots, where it stands and who went through. A bracket with byes,
+  two-legged ties, a third-place tie or a losers bracket can be drawn from
+  it alone, at any point of the stage: it is built from the same walk
+  through the state as `getReadiness()`, `getRecordedRounds()`,
+  `getStandings()` and `getOutcome()`, agrees with them, and throws nothing
+  for a round in play, a level tie awaiting its decider, a withdrawal or a
+  void tie. New types, all experimental:
+  - `Bracket` (`getRounds()`, `getRoundsOn()`, `getSides()`, `getNodes()`,
+    `getNode()`, `getNextRound()`, `isComplete()`), `BracketRound` (side,
+    structural round, slot count, label, round number, `isManual()`,
+    `isNext()`), `BracketNode` (ID `<side>:<round>:<position>`, kind,
+    slots, status, advancer, losers, recorded events) and `BracketSlot`
+    (entrant or placeholder, source, source nodes, re-seeded, draw
+    position, withdrawn);
+  - the enums `BracketSide` (`Main`, `Winners`, `Losers`, `GrandFinal`),
+    `BracketNodeStatus` (awaiting entrants, to be paired, in play, awaiting
+    a decision, decided, uncontested, bye, void, empty, not played),
+    `SlotSource` (draw, advancer of, loser of, recorded) and
+    `SlotPlaceholder` (advancer of, loser of, re-seeded, bye, void, not
+    played);
+  - `BracketRound::getRoundLabel()`, the label of a round from its side,
+    structural round and slot count (`RoundLabel::ofBracketRound()`, under
+    "Typed identifiers" below), and `getLabel()`, its English text.
+
+  The third-place tie of a single elimination bracket is a node of its own
+  in the last round, after the final, of kind `BracketTie::ThirdPlace`, its
+  slots filled from the losers of the two nodes before the final (#93). The
+  reset of a double elimination grand final is shown as its second round,
+  with the status `NotPlayed` where it is not due. The view is never
+  stored: it has no `toArray()`. See the usage guide, "Drawing the
+  Bracket", and example 30.
+
+- **The round labels are a rendering of the bracket view.** Both
+  elimination engines now label the rounds they pair with
+  `RoundLabel::ofBracketRound()` over the round's place in the view, which is
+  the label `BracketRound::getRoundLabel()` gives, and write its English
+  text where they wrote the label. Every label is the one it was: no golden
+  fixture changed.
+
 - **The roles of the first leg are searched within what the role
   assignment keeps, without `backtracking`
   ([#51](https://github.com/mission-gaming/tactician/issues/51)).** A role
@@ -1842,6 +1888,95 @@ entry on the engine fingerprint.
   short, and whether the number is therefore proven the fewest
   (`isProvenShortest()`). It tries the numbers one at a time, upwards.
   New example: `examples/29-rescheduling-with-least-churn.php`.
+
+- **A generation failure can be rendered without parsing text
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** Each
+  list of text in a `DiagnosticReport` has a sibling with the same findings
+  as typed data, by participant ID and constraint name:
+  `getMissingPairingDetails()` (`MissingPairing`: the two IDs and the leg),
+  `getConstraintRejections()` (`ConstraintRejection`: the constraint, the
+  two IDs, the rounds it rejects and the rounds probed),
+  `getBlockedPairings()` (`BlockedPairing`: the two IDs and the constraints
+  that block it everywhere, none where only their combination does) and
+  `getPairingsAtCapacity()` (`PairingAtCapacity`: the two IDs and the full
+  rounds it is allowed in). The text is unchanged.
+- **The byes of a schedule with kickoff times
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `ScheduledSchedule::getByesByRound()`, `getByeCounts()` and
+  `getEntrants()` give what the schedule assigned gives.
+  `TimelineAssigner::assign()` hands the scheduled schedule the entrant list
+  of the schedule (a second, optional constructor parameter, which refuses
+  an entrant list that holds one participant twice), and the plain
+  data writes it under a new optional key, `entrants` (the IDs in order),
+  only where it was given. A scheduled schedule built without one reads the
+  entrants from its events, as do arrays without the key. With the byes of
+  `Schedule` (the whole-schedule Swiss preset included), `RoundPairing` and
+  `StageState`, every schedule and pairing that can hold a bye has a typed
+  accessor for it.
+- **A round number that is never null
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `Event::getRoundNumber()` returns the round number as an `int`, and
+  `Event::hasRound()` says whether the event has a round. Every event a
+  scheduler or an engine produces has one, the events of a round-robin
+  schedule included; on an event built without a round `getRoundNumber()`
+  throws an `UnavailableValueException`. `getRound()` is unchanged.
+- **A participant's label is optional
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `new Participant('id')` is a participant without a label: `getLabel()`
+  gives its ID, and `hasLabel()` is false. Its plain data has no `label`
+  key, and `Participant::fromArray()` reads one without the key, or with
+  `null`, as a participant without a label. A participant with a label is
+  written as it always was. The refusal of participant data without a
+  valid ID now reads "Participant data requires a non-empty string id, and
+  a string label when it has one".
+- **Typed identifiers for configuration-driven applications
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** An
+  application that maps its configuration to the library no longer matches
+  on strings it copied:
+  - `Stage\Algorithm` has a case for every algorithm identifier
+    (`round-robin`, `swiss`, `pot-draw`, `single-elimination`,
+    `double-elimination`), backed by the string `StagePlan::getAlgorithm()`
+    returns and a generated schedule records under `algorithm`.
+  - `Stage\MatchOutcomeMode` and `Stage\RankRangeMode` are the modes of the
+    two selectors (`MatchOutcomeSelector::getMode()`,
+    `RankRangeSelector::getMode()`), and `Stage\SelectionTiePolicy` is what a
+    rank selection does with an order results leave open
+    (`getTiePolicy()` on `RankRangeSelector` and `BestOfRankSelector`). Each
+    is backed by the identifier of the plain-data form, which is unchanged.
+  - `Stage\RoundLabel` is the label of a bracket round as typed data, a
+    `Stage\RoundLabelKind` and, for 'round of', 'winners round' and 'losers
+    round', a number. The engines build it from the round's place in the
+    bracket (`RoundLabel::ofBracketRound()`) and write its English text
+    (`toString()`), the text they wrote before; `RoundPairing::getRoundLabel()`
+    and `BracketRound::getRoundLabel()` give it. `RoundLabel::fromString()`
+    and `RoundLabel::ofRound()` (for the `DTO\Round` of an event) read stored
+    text back. A `RoundPairing` takes its label as a `RoundLabel` or as text,
+    and stores the text as before.
+  - `DTO\MetadataKey` holds the metadata keys whose meaning the stable
+    surface owns, those the round-robin scheduler writes on a schedule, as
+    constants with the strings it has always written.
+    `Stage\FormatMetadataKey`, experimental, holds the keys only the
+    experimental formats write: the rounds of the Swiss preset, the pots,
+    pot size, opponents per pot and seed of the pot draw, and the round
+    label, tie leg and bracket tie of the elimination engines.
+- **Every progression selector states its yield
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).**
+  `ProgressionSelector::getYield()` returns a `Stage\SelectionYield`: a
+  fixed count, a count per pool, the winners or the losers of the last round
+  of the stage before, or a number only the outcome gives
+  (`Stage\SelectionYieldKind`). `SelectionYield::countFrom()` gives the
+  number for a stage before of a given shape. `CompositionValidator` now
+  counts every transition by it, a selector of an application's included,
+  where it recognised the match-outcome selector by its class and counted
+  any other selector only by a fixed size. A per-group rank range, which
+  always passed unchecked, is checked where the transition declares the
+  pools of the stage before (`StageTransition`'s new `sourcePools`); without
+  them it passes as before. Every chain of the library's selectors that the
+  validator accepted or refused before gets the same answer; a selector of
+  an application's is now counted by the yield it declares, where it was
+  counted by `getSelectionSize()` alone. The yield is stated before any
+  outcome, so a withdrawal can make a match-outcome selection hand on fewer
+  than it says (a bracket tie both entrants left sends nobody on).
 
 ### Changed
 
@@ -3274,12 +3409,30 @@ entry on the engine fingerprint.
   After: the exception. Where a `MinimumRestRule` reported such a clash,
   the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
   because the round is refused before the rules are asked (#121, item 10).
+- **Breaking for a progression selector of an application's:
+  `ProgressionSelector` has a new method, `getYield()`
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)).** The
+  interface is experimental. A class that implements it adds the method and
+  returns what it yields: `SelectionYield::fixed($n)` where
+  `getSelectionSize()` returns `$n`, and otherwise the kind that says what
+  the number depends on, `SelectionYield::dependsOnOutcome()` where nothing
+  can be said. `getSelectionSize()` stays, and is the count of a fixed
+  yield.
 
 - The `Coverage` job of CI measures with PCOV where it used Xdebug. It
   reports line coverage only, which PCOV measures, and the suite had grown
   until the job took 25 to 40 minutes under Xdebug. The `Mutation testing`
   workflow still uses Xdebug, and `composer test-coverage` works with either
   driver as before. Nothing a consumer installs changes.
+
+- `ScheduledSchedule::toArray()` of a schedule from
+  `TimelineAssigner::assign()` has the key `entrants`, and lists after the
+  participants of its events any entrant that plays in no event
+  ([#58](https://github.com/mission-gaming/tactician/issues/58)). The form
+  stays version 1: the key is optional and 0.3.0 defines what version 1
+  holds (ADR 0005). A participant without a label is written without the
+  `label` key, which 0.2.x requires; a release of 0.2.x refuses such a
+  participant, loudly.
 
 ### Deprecated
 

@@ -21,13 +21,20 @@ use MissionGaming\Tactician\Serialization\PlainData;
  */
 final readonly class RoundPairing
 {
+    private ?string $label;
+
+    private ?RoundLabel $roundLabel;
+
     /**
      * Nothing is checked here. StageState::withRoundPlayed() checks, when
      * the pairing is recorded, that every event carries this round
      * number.
      *
      * @param int $roundNumber 1-based round number
-     * @param string|null $label Human-readable round label ('semifinal', 'losers round 2'); null for Swiss
+     * @param RoundLabel|string|null $label The round label: as typed data, which the elimination
+     *                                      engines give (RoundLabel::ofBracketRound()), or as
+     *                                      text ('semifinal', 'Matchday 1'), which is read by
+     *                                      RoundLabel::fromString(); null for Swiss
      * @param array<Event> $events The paired events for this round
      * @param array<Participant> $byes Participants advancing or sitting out without playing
      * @param bool $pairedOnIncompleteResults Whether the round was paired, on purpose, while an
@@ -35,11 +42,19 @@ final readonly class RoundPairing
      */
     public function __construct(
         private int $roundNumber,
-        private ?string $label,
+        RoundLabel|string|null $label,
         private array $events,
         private array $byes = [],
         private bool $pairedOnIncompleteResults = false
-    ) {}
+    ) {
+        if ($label instanceof RoundLabel) {
+            $this->label = $label->toString();
+            $this->roundLabel = $label;
+        } else {
+            $this->label = $label;
+            $this->roundLabel = $label === null ? null : RoundLabel::fromString($label);
+        }
+    }
 
     /**
      * Whether the round was paired while an event of an earlier round
@@ -69,11 +84,27 @@ final readonly class RoundPairing
 
     /**
      * Human-readable round label ('semifinal', 'losers round 2'); null for
-     * formats whose rounds have no names (Swiss).
+     * formats whose rounds have no names (Swiss). For a label given as a
+     * RoundLabel, its toString().
      */
     public function getLabel(): ?string
     {
         return $this->label;
+    }
+
+    /**
+     * The label as typed data: its kind, and the number it names where it
+     * names one. An elimination engine gives it from the place of the round
+     * in the bracket, the label of the same round of the bracket view
+     * (BracketRound::getRoundLabel()); a label given as text, as fromArray()
+     * gives it, is read by RoundLabel::fromString(), which reads every label
+     * an engine writes back to the one it was. Null for a round without a
+     * label, and for text the library does not write (a label an
+     * application gave a pairing of its own); getLabel() has the text.
+     */
+    public function getRoundLabel(): ?RoundLabel
+    {
+        return $this->roundLabel;
     }
 
     /**

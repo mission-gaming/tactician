@@ -271,7 +271,7 @@ final readonly class StageState
         // result of no recorded event goes last, where the replay finds it
         // and refuses it with the verb's reason.
         $ordered = [];
-        $seen = [];
+        $resultEvents = [];
         foreach (array_values($results) as $index => $result) {
             $event = $result->getEvent();
             foreach ($event->getParticipants() as $participant) {
@@ -279,7 +279,7 @@ final readonly class StageState
             }
 
             $key = $state->eventKey($event);
-            if (isset($seen[$key])) {
+            if (isset($resultEvents[$key])) {
                 throw new InvalidConfigurationException(
                     'The history holds two results for one event',
                     [
@@ -292,7 +292,7 @@ final readonly class StageState
                     reason: InvalidConfigurationReason::DuplicateResult
                 );
             }
-            $seen[$key] = true;
+            $resultEvents[$key] = true;
 
             $ordered[] = [$positions[$key] ?? [PHP_INT_MAX, PHP_INT_MAX], $index, $result];
         }
@@ -635,7 +635,7 @@ final readonly class StageState
     private function eventKey(Event $event): string
     {
         $ids = array_map(fn(Participant $participant) => $participant->getId(), $event->getParticipants());
-        $leg = $event->getMetadataValue('tie_leg');
+        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
 
         return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }
@@ -1443,7 +1443,7 @@ final readonly class StageState
      * the other, as the scheme did in 0.3.0 while this form stayed at
      * version 1.
      *
-     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}, decider?: array{participants: list<string>, label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null, after_round?: int}>, entrants?: list<string>, withdrawals?: list<array{participant: string, after_round: int}>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label?: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}, decider?: array{participants: list<string>, label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null, after_round?: int}>, entrants?: list<string>, withdrawals?: list<array{participant: string, after_round: int}>}
      */
     public function toArray(): array
     {

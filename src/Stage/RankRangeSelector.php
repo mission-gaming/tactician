@@ -74,8 +74,8 @@ use Override;
  */
 final readonly class RankRangeSelector implements ProgressionSelector
 {
-    private const string MODE_OVERALL = 'overall';
-    private const string MODE_PER_GROUP = 'per-group';
+    private const string MODE_OVERALL = RankRangeMode::Overall->value;
+    private const string MODE_PER_GROUP = RankRangeMode::PerGroup->value;
 
     private const string TIES_REFUSED = SelectionTies::REFUSED;
     private const string TIES_INSIDE_ACCEPTED = SelectionTies::INSIDE_ACCEPTED;
@@ -513,6 +513,19 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
+     * to - from + 1 in overall mode, a fixed count. In per-group mode the
+     * same number from each pool, so the yield is that number times the
+     * number of pools of the stage before.
+     */
+    #[Override]
+    public function getYield(): SelectionYield
+    {
+        $count = $this->to - $this->from + 1;
+
+        return $this->mode === self::MODE_OVERALL ? SelectionYield::fixed($count) : SelectionYield::perPool($count);
+    }
+
+    /**
      * to - from + 1 in overall mode. Null in per-group mode, where the
      * count is that number times the number of pools, which only the
      * outcome says.
@@ -522,6 +535,24 @@ final readonly class RankRangeSelector implements ProgressionSelector
     {
         // Per-group counts depend on how many pools the outcome carries
         return $this->mode === self::MODE_OVERALL ? $this->to - $this->from + 1 : null;
+    }
+
+    /**
+     * Which table the ranks are taken from: the outcome's own, or each
+     * pool's.
+     */
+    public function getMode(): RankRangeMode
+    {
+        return RankRangeMode::from($this->mode);
+    }
+
+    /**
+     * What the selection does with an order that results do not decide;
+     * Refused unless the selector was told otherwise.
+     */
+    public function getTiePolicy(): SelectionTiePolicy
+    {
+        return SelectionTiePolicy::from($this->ties);
     }
 
     /**

@@ -188,7 +188,7 @@ describe('the entrants of a schedule built by hand', function (): void {
         $schedule = new Schedule([new Event([$renamed, $this->bob])], [], [$this->alice, $this->bob]);
 
         expect($schedule->getEntrants())->toBe([$this->alice, $this->bob])
-            ->and($schedule->toArray()['participants'][0]['label'])->toBe('Alice');
+            ->and($schedule->toArray()['participants'][0]['label'] ?? null)->toBe('Alice');
     });
 
     it('stay as they are when an event is added, and a newcomer follows them', function (): void {

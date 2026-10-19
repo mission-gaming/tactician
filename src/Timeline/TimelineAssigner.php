@@ -158,7 +158,7 @@ final readonly class TimelineAssigner
             $previousLastSlot = $slotTimes[count($slotTimes) - 1];
         }
 
-        $scheduled = new ScheduledSchedule($scheduledEvents);
+        $scheduled = new ScheduledSchedule($scheduledEvents, $schedule->getEntrants());
         $this->applyRules($scheduled);
 
         return $scheduled;

@@ -276,7 +276,13 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             expect($output)->not->toContain($text);
         }
     })->with([
-        'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player9\nbool(false)\n", "player3\nTeam Alpha\n2\nEurope\n"], []],
+        'a generation failure rendered from typed data' => [
+            'docs/USAGE.md',
+            '$e->getAnalysis()?->getBlockedPairings()',
+            ["Team 1 and Team 2 cannot meet: Derby Ban\n"],
+            ['cannot meet under these rules together'],
+        ],
         'role constraints over shuffled, mirrored and repeated legs' => [
             'docs/USAGE.md',
             '$repeatedLeague = $twoInARow->schedule(',
@@ -352,8 +358,22 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         ],
         'schedule metadata' => [
             'docs/USAGE.md',
-            "getMetadataValue('participant_count')",
-            ["Algorithm: round-robin\nParticipant count: 4\nTotal rounds: 3\n"],
+            'getMetadataValue(MetadataKey::PARTICIPANT_COUNT)',
+            ["Algorithm: round-robin\nParticipant count: 4\nTotal rounds: 3\na round robin\n"],
+            [],
+        ],
+        'a round label as typed data' => [
+            'docs/USAGE.md',
+            '$label = $firstRound->getRoundLabel();',
+            ["Quarterfinal\nLast 16\nLast eight\n"],
+            [],
+        ],
+        'the yield of a per-group selection' => [
+            'docs/USAGE.md',
+            '$topTwo = RankRangeSelector::topPerGroup(2);',
+            [
+                "PerPool\n8\n0\nStage 'quarterfinals' expects 8 entrants but its selection yields 6 from the previous stage's 12.\n",
+            ],
             [],
         ],
         'multi-leg analysis' => [
@@ -765,6 +785,20 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$fourOutcome = $withThirdPlace->getOutcome($fourState);',
             ["1. Bob (2-0)\n2. Alice (1-1)\n3. Carol (1-1)\n4. Dave (0-2)\nThird: Carol\nWon the bracket: Bob\n"],
+            [],
+        ],
+        // The bracket view of a field of five, before the first round and after it
+        'a bracket drawn from its view, before and after its first round' => [
+            'docs/USAGE.md',
+            '$draw(StageState::start($field));',
+            [
+                "quarterfinal: Ana v bye (bye) | Di v Ed (to-be-paired) | Ben v bye (bye) | Cy v bye (bye)\n"
+                . "semifinal: Ana v advancer-of main:1:2 (awaiting-entrants) | Ben v Cy (to-be-paired)\n"
+                . "final: advancer-of main:2:1 v advancer-of main:2:2 (awaiting-entrants)\n"
+                . "quarterfinal: Ana v bye (bye) | Di v Ed (decided) | Ben v bye (bye) | Cy v bye (bye)\n"
+                . "semifinal: Ana v Ed (to-be-paired) | Ben v Cy (to-be-paired)\n"
+                . "final: advancer-of main:2:1 v advancer-of main:2:2 (awaiting-entrants)\n",
+            ],
             [],
         ],
         'a selection that results do not decide is refused, and says what is undecided' => [

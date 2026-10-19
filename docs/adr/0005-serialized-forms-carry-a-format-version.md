@@ -50,12 +50,17 @@ round-robin options, `seed` in Swiss options, `ties`, `comparison` and
 `award` and `decider` in a result, `adjustments`, `entrants` and
 `withdrawals` in a stage state, `after_round` in an adjustment,
 `paired_on_incomplete_results` in a round pairing, `bye` in a
-win-draw-loss ranking and `objectives` in repack options). Each of those
+win-draw-loss ranking, `objectives` in repack options and `entrants` in a
+scheduled schedule). Each of those
 may be left out and is then read
 as 0.2.x behaved, so an array without the version key is read as version 1,
 under the rules of version 1, and data stored by 0.2.x keeps loading.
 One form that is written and never read has a key 0.2.x did not write: the
 `metrics` of a repack outcome.
+One key 0.2.x required may be left out from 0.3.0 on: the `label` of a
+participant, which is written only for a participant that was given one.
+Every participant 0.2.x wrote has a label and is read as it was; a
+participant without one is refused by 0.2.x, loudly, as a missing key.
 Two of them say when something happened, and what leaving them out means
 is stated where it is decided
 ([ADR 0007](0007-recorded-rounds-are-read-not-derived.md), "A state says

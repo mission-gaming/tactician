@@ -31,9 +31,9 @@ use MissionGaming\Tactician\Standings\Standings;
  */
 final class SelectionTies
 {
-    public const string REFUSED = 'refuse';
-    public const string INSIDE_ACCEPTED = 'accept-inside-selection';
-    public const string ORDER_ACCEPTED = 'accept-table-order';
+    public const string REFUSED = SelectionTiePolicy::Refused->value;
+    public const string INSIDE_ACCEPTED = SelectionTiePolicy::InsideSelectionAccepted->value;
+    public const string ORDER_ACCEPTED = SelectionTiePolicy::TableOrderAccepted->value;
 
     public const array POLICIES = [self::REFUSED, self::INSIDE_ACCEPTED, self::ORDER_ACCEPTED];
 

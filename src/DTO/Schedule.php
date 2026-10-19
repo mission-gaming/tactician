@@ -410,7 +410,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * none. fromArray() reads an array without the key as version 1, the
      * form the releases before 0.3.0 wrote.
      *
-     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label?: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
@@ -439,7 +439,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     /**
      * What json_encode() encodes: the array form of toArray().
      *
-     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label?: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
      */
     #[Override]
     public function jsonSerialize(): array

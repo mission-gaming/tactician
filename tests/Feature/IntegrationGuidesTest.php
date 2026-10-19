@@ -599,7 +599,7 @@ it('catches a symbol the library does not have, and leaves alone what is not a s
     'a constant the type does not have' => ['TieDecision::WINNER', 'does not have'],
     'a member of a type that does not exist' => ['Grid::shapeOnly()', 'not a type of the library'],
     'a bare method nothing has' => ['withResultSwapped()', 'no type of the library has'],
-    'a method nothing has, late in a chain' => ['getAnalysis()?->getBlockedPairings()', 'no type of the library has'],
+    'a method nothing has, late in a chain' => ['getAnalysis()?->getBlockedFixtures()', 'no type of the library has'],
     'a constructor argument that does not exist' => ['RepackOptions(budget: 5)', 'its constructor does not have'],
     'an argument by itself' => ['capacityPerSlot', null],
     'an argument by itself that nothing takes' => ['capacityPerSession', 'no constructor or method'],

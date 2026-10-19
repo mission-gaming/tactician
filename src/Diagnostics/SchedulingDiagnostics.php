@@ -49,7 +49,7 @@ class SchedulingDiagnostics
         $expectedEvents = $plan->getExpectedEventCount() ?? 0;
 
         $missingEvents = max(0, $expectedEvents - $eventsGenerated);
-        $missingPairings = $this->identifyMissingPairings($participants, $partialEvents, $plan);
+        $missing = $this->identifyMissingPairings($participants, $partialEvents, $plan);
         $attribution = $this->attributeMissingPairings($participants, $constraints, $partialEvents, $plan);
         $suggestions = [
             ...$this->generateSuggestions($participants, $partialEvents, $plan),
@@ -61,11 +61,15 @@ class SchedulingDiagnostics
             expectedEvents: $expectedEvents,
             generatedEvents: $eventsGenerated,
             missingEvents: $missingEvents,
-            missingPairings: $missingPairings,
+            missingPairings: $missing['lines'],
             constraintViolations: $attribution['attribution'],
             impossiblePairings: $attribution['impossible'],
             suggestions: $suggestions,
-            analysisContext: $context
+            analysisContext: $context,
+            missingPairingDetails: $missing['details'],
+            constraintRejections: $attribution['rejections'],
+            blockedPairings: $attribution['blocked'],
+            pairingsAtCapacity: $attribution['atCapacity']
         );
     }
 
@@ -149,17 +153,21 @@ class SchedulingDiagnostics
      *
      * @param array<Participant> $participants
      * @param array<Event> $events
-     * @return array<string>
+     * @return array{lines: list<string>, details: list<MissingPairing>} The same findings as
+     *                                                                   lines of text and as
+     *                                                                   typed data
      */
     private function identifyMissingPairings(array $participants, array $events, StagePlan $plan): array
     {
+        $none = ['lines' => [], 'details' => []];
         if (!$plan instanceof PairwisePlan) {
-            return [];
+            return $none;
         }
 
+        $participants = array_values($participants);
         $participantCount = count($participants);
         if ($participantCount < 2) {
-            return [];
+            return $none;
         }
 
         $legs = $plan->getLegs() ?? 1;
@@ -184,6 +192,7 @@ class SchedulingDiagnostics
         }
 
         $missingPairings = [];
+        $details = [];
         for ($i = 0; $i < $participantCount; ++$i) {
             for ($j = $i + 1; $j < $participantCount; ++$j) {
                 if ($plan->getExpectedMeetings($participants[$i], $participants[$j]) === 0) {
@@ -196,12 +205,13 @@ class SchedulingDiagnostics
                     if (($legMeetingCounts[$key][$leg] ?? 0) === 0) {
                         $missingPairings[] = $participants[$i]->getLabel() . ' vs ' . $participants[$j]->getLabel()
                             . " (Leg {$leg})";
+                        $details[] = new MissingPairing($participants[$i]->getId(), $participants[$j]->getId(), $leg);
                     }
                 }
             }
         }
 
-        return $missingPairings;
+        return ['lines' => $missingPairings, 'details' => $details];
     }
 
     /**
@@ -258,7 +268,11 @@ class SchedulingDiagnostics
      *
      * @param array<Participant> $participants
      * @param array<Event> $events
-     * @return array{impossible: array<string>, attribution: array<string>, structural: array<string>}
+     * Each finding comes out twice, as a line of text and as typed data:
+     * blocked beside impossible, rejections beside attribution, atCapacity
+     * beside structural.
+     *
+     * @return array{impossible: list<string>, attribution: list<string>, structural: list<string>, blocked: list<BlockedPairing>, rejections: list<ConstraintRejection>, atCapacity: list<PairingAtCapacity>}
      */
     private function attributeMissingPairings(
         array $participants,
@@ -266,7 +280,7 @@ class SchedulingDiagnostics
         array $events,
         StagePlan $plan
     ): array {
-        $empty = ['impossible' => [], 'attribution' => [], 'structural' => []];
+        $empty = ['impossible' => [], 'attribution' => [], 'structural' => [], 'blocked' => [], 'rejections' => [], 'atCapacity' => []];
         if (!$plan instanceof PairwisePlan || $constraints->count() === 0) {
             return $empty;
         }
@@ -307,8 +321,12 @@ class SchedulingDiagnostics
 
         $impossible = [];
         $structural = [];
-        /** @var array<string, array<string>> $rejectionsByConstraint constraint name => pairing summaries */
+        $blocked = [];
+        $atCapacity = [];
+        /** @var array<string, list<string>> $rejectionsByConstraint constraint name => pairing summaries */
         $rejectionsByConstraint = [];
+        /** @var array<string, list<ConstraintRejection>> $rejectionDetails constraint name => rejections */
+        $rejectionDetails = [];
 
         foreach ($missingPairs as [$a, $b]) {
             $pairLabel = $a->getLabel() . ' vs ' . $b->getLabel();
@@ -349,16 +367,25 @@ class SchedulingDiagnostics
             }
 
             foreach ($roundsRejectedBy as $constraintName => $rejectedRounds) {
+                $constraintName = (string) $constraintName;
                 $rejectionsByConstraint[$constraintName][] = "{$pairLabel} in {$rejectedRounds} of {$totalRounds} rounds";
+                $rejectionDetails[$constraintName][] = new ConstraintRejection(
+                    $constraintName,
+                    $a->getId(),
+                    $b->getId(),
+                    $rejectedRounds,
+                    $totalRounds
+                );
             }
 
             if ($allowedRounds === []) {
-                $culprits = array_keys(array_filter(
+                $culprits = array_map(strval(...), array_keys(array_filter(
                     $roundsRejectedBy,
                     fn(int $rejectedRounds) => $rejectedRounds === $totalRounds
-                ));
+                )));
                 $blockedBy = $culprits === [] ? 'a combination of constraints' : implode(', ', $culprits);
                 $impossible[] = "{$pairLabel} cannot join the generated schedule in any round (blocked by: {$blockedBy})";
+                $blocked[] = new BlockedPairing($a->getId(), $b->getId(), $culprits);
                 continue;
             }
 
@@ -369,15 +396,25 @@ class SchedulingDiagnostics
             if ($openRounds === []) {
                 $structural[] = "{$pairLabel} is only allowed in rounds already at capacity (rounds "
                     . implode(', ', $allowedRounds) . ') - the conflict is structural, not any single constraint';
+                $atCapacity[] = new PairingAtCapacity($a->getId(), $b->getId(), $allowedRounds);
             }
         }
 
         $attribution = [];
+        $rejections = [];
         foreach ($rejectionsByConstraint as $constraintName => $pairSummaries) {
             $attribution[] = "{$constraintName} rejects " . implode('; ', $pairSummaries);
+            array_push($rejections, ...$rejectionDetails[$constraintName]);
         }
 
-        return ['impossible' => $impossible, 'attribution' => $attribution, 'structural' => $structural];
+        return [
+            'impossible' => $impossible,
+            'attribution' => $attribution,
+            'structural' => $structural,
+            'blocked' => $blocked,
+            'rejections' => $rejections,
+            'atCapacity' => $atCapacity,
+        ];
     }
 
     /**
