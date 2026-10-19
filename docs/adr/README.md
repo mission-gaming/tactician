@@ -23,6 +23,7 @@ there is not repeated here.
 | [0011](0011-a-tie-both-entrants-left-is-void.md) | A tie both entrants left is void |
 | [0012](0012-a-withdrawal-states-its-round.md) | A withdrawal states its round (amended: an adjustment does too) |
 | [0013](0013-a-finished-bracket-keeps-its-winner.md) | A finished bracket keeps its winner |
+| [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md) | An engine fingerprint versions the rules of each configuration |
 
 ## Adding a record
 
