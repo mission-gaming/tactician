@@ -50,6 +50,7 @@
             <file>./tests/Feature/ParticipantIdKeysTest.php</file>
             <file>./tests/Feature/RepackRelocationTest.php</file>
             <file>./tests/Feature/RepackScenarioTest.php</file>
+            <file>./tests/Feature/RoundRobinEngineTest.php</file>
             <file>./tests/Feature/RoundRobinIntegrationTest.php</file>
             <file>./tests/Feature/SeedsDecideTest.php</file>
             <file>./tests/Feature/TypedTieDeciderTest.php</file>

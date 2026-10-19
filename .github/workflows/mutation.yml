@@ -73,6 +73,8 @@ jobs:
         include:
           - shard: round robin
             path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php,src/Scheduling/ConstraintPurity.php
+          - shard: round robin engine
+            path: src/Scheduling/RoundRobinEngine.php
           - shard: round robin role search
             path: src/Scheduling/LegRoleSearch.php
           - shard: pot draw and context

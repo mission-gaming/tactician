@@ -10,7 +10,7 @@ namespace MissionGaming\Tactician\Stage;
  * and refuses a stamped state whose fingerprint is not that one
  * (StageState::requireEngineFingerprint()).
  *
- * The library's three engines implement it. It is separate from
+ * The library's engines implement it. It is separate from
  * StageEngineInterface so that an engine written against that interface
  * alone keeps working; code that holds a StageEngineInterface asks before
  * it stamps:

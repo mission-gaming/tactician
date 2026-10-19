@@ -9,8 +9,16 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
+use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
+use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinEngine;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
@@ -265,6 +273,10 @@ function fingerprintedEngines(): array
         'double elimination without a reset' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2, grandFinalReset: false)),
         ],
+        'round robin' => [fn() => new RoundRobinEngine()],
+        'round robin over two shuffled legs, with a seed' => [
+            fn() => new RoundRobinEngine(new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 5)), seed: 9),
+        ],
     ];
 }
 
@@ -514,6 +526,44 @@ describe('engine fingerprints', function (): void {
             ),
             'tactician:v2:double-elimination',
         ],
+        'round robin' => [fn() => new RoundRobinEngine(), 'tactician:v2:round-robin'],
+        'round robin, every default stated' => [
+            fn() => new RoundRobinEngine(
+                new RoundRobinOptions(1, new MirroredLegStrategy(), false, new BalancedWherePossibleRoleAssignment()),
+                null,
+                null,
+                new StandingsCalculator()
+            ),
+            'tactician:v2:round-robin',
+        ],
+        'round robin over two legs' => [
+            fn() => new RoundRobinEngine(new RoundRobinOptions(legs: 2)),
+            'tactician:v2:round-robin;legs=2',
+        ],
+        'round robin over three repeated legs' => [
+            fn() => new RoundRobinEngine(new RoundRobinOptions(legs: 3, strategy: new RepeatedLegStrategy())),
+            'tactician:v2:round-robin;leg-strategy=repeated;legs=3',
+        ],
+        'round robin over two shuffled legs' => [
+            fn() => new RoundRobinEngine(new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 5))),
+            'tactician:v2:round-robin;leg-strategy=shuffled;leg-strategy-seed=5;legs=2',
+        ],
+        'round robin with strictly balanced roles' => [
+            fn() => new RoundRobinEngine(new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())),
+            'tactician:v2:round-robin;role-assignment=balanced',
+        ],
+        'round robin with round-parity roles and backtracking' => [
+            fn() => new RoundRobinEngine(new RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment())),
+            'tactician:v2:round-robin;backtracking=yes;role-assignment=round_parity',
+        ],
+        'round robin with a seed' => [fn() => new RoundRobinEngine(seed: 0), 'tactician:v2:round-robin;seed=0'],
+        'round robin, whatever its constraints and calculator' => [
+            fn() => new RoundRobinEngine(
+                constraints: ConstraintSet::create()->noRepeatPairings()->build(),
+                standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()])
+            ),
+            'tactician:v2:round-robin',
+        ],
     ]);
 
     // Every way an engine can be configured is listed here as part of its
@@ -538,6 +588,16 @@ describe('engine fingerprints', function (): void {
         ])->and($constructor(DoubleEliminationEngine::class))->toBe([
             'options',              // in, see EliminationOptions below
             'standingsCalculator',  // out: orders the outcome only
+        ])->and($constructor(RoundRobinEngine::class))->toBe([
+            'options',              // in, see RoundRobinOptions below
+            'constraints',          // out: cannot be described
+            'seed',                 // in: seed, default none
+            'standingsCalculator',  // out: orders the table only
+        ])->and($constructor(RoundRobinOptions::class))->toBe([
+            'legs',                 // in: legs, default 1
+            'strategy',             // in: leg-strategy, default mirrored, and leg-strategy-seed for shuffled
+            'backtracking',         // in: backtracking, default false
+            'roleAssignment',       // in: role-assignment, default balanced where possible
         ])->and($constructor(EliminationOptions::class))->toBe([
             'legsPerTie',           // in: legs-per-tie, default 1
             'reseedEachRound',      // in for single (default false); double rejects it
@@ -576,8 +636,12 @@ describe('engine fingerprints', function (): void {
         $ranking = (new StandingsCalculator())->getRankingStrategy();
         assert($ranking instanceof WinDrawLossRanking);
 
+        $roundRobin = new RoundRobinOptions();
+
         expect([$options->legsPerTie, $options->reseedEachRound, $options->grandFinalReset, $options->thirdPlace])
             ->toBe([1, false, true, false])
+            ->and([$roundRobin->legs, $roundRobin->strategy::class, $roundRobin->backtracking, $roundRobin->roleAssignment::class])
+            ->toBe([1, MirroredLegStrategy::class, false, BalancedWherePossibleRoleAssignment::class])
             ->and($ranking->toArray())->toBe(['format_version' => 1, 'win' => 3.0, 'draw' => 1.0, 'loss' => 0.0])
             ->and((new StandingsCalculator())->getTiebreakers())->toBe([])
             ->and((new StandingsCalculator())->getAwardedResultPolicy()->toArray())->toBe([
@@ -596,6 +660,7 @@ describe('engine fingerprints', function (): void {
         'Swiss' => [fn() => new SwissPairingEngine(), 'swiss'],
         'single elimination' => [fn() => new SingleEliminationEngine(), 'single-elimination'],
         'double elimination' => [fn() => new DoubleEliminationEngine(), 'double-elimination'],
+        'round robin' => [fn() => new RoundRobinEngine(), 'round-robin'],
         'single elimination, every default stated' => [
             fn() => new SingleEliminationEngine(
                 new EliminationOptions(legsPerTie: 1, reseedEachRound: false, grandFinalReset: true),
@@ -655,7 +720,7 @@ describe('engine fingerprints', function (): void {
 
         expect(substr_count($source, 'EngineFingerprint::of('))->toBe(1)
             ->and($source)->not->toContain('tactician:v');
-    })->with(['SwissPairingEngine.php', 'SingleEliminationEngine.php', 'DoubleEliminationEngine.php']);
+    })->with(['SwissPairingEngine.php', 'SingleEliminationEngine.php', 'DoubleEliminationEngine.php', 'RoundRobinEngine.php']);
 
     it('can be stamped by code that holds the engine interface', function (StageEngineInterface $engine): void {
         expect($engine)->toBeInstanceOf(FingerprintedEngine::class);
