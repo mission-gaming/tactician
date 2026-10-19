@@ -160,7 +160,7 @@ final readonly class PotDrawPlan implements StagePlan
     #[Override]
     public function getAlgorithm(): string
     {
-        return 'pot-draw';
+        return Algorithm::PotDraw->value;
     }
 
     /**

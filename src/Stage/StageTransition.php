@@ -31,11 +31,17 @@ final readonly class StageTransition
      *                                for a MatchOutcomeSelector only, which reads the last
      *                                round of the stage: after a whole bracket that is the
      *                                final, and the selection is one participant
+     * @param int|null $sourcePools The number of pools the previous stage is played in; null
+     *                              when not declared. It matters for a selector whose yield is
+     *                              a count per pool (a per-group rank range): with it the
+     *                              validator checks that count times the pools, and without it
+     *                              such a transition passes unchecked
      */
     public function __construct(
         public string $label,
         public int $expectedEntrants,
         public ?ProgressionSelector $selector = null,
-        public bool $afterWholeBracket = false
+        public bool $afterWholeBracket = false,
+        public ?int $sourcePools = null
     ) {}
 }

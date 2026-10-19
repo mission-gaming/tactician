@@ -13,6 +13,7 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
 use MissionGaming\Tactician\Exceptions\RejectedDecisionReason;
 use MissionGaming\Tactician\Serialization\PlainData;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\PairKey;
 use ReflectionException;
 use ReflectionProperty;
@@ -900,7 +901,7 @@ readonly class StandingsCalculator
         }
 
         $ids = array_map(fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
-        $leg = $event->getMetadataValue('tie_leg');
+        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
 
         return $round . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }
