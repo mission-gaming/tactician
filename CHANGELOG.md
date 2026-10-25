@@ -985,8 +985,8 @@ entry on the engine fingerprint.
     `new RoundRobinEngine(?RoundRobinOptions $options, ?ConstraintSet
     $constraints, ?int $seed, StandingsCalculator $standingsCalculator)`.
     The seed is an integer, from which a `Randomizer` on the
-    `Xoshiro256StarStar` engine is made for every call, so that the same
-    round is paired twice; a `ShuffledLegStrategy` that holds a randomizer
+    `Xoshiro256StarStar` engine is made for every call, so that every call
+    gives the same round for the same state; a `ShuffledLegStrategy` that holds a randomizer
     is refused (`IncompatibleOptions`). The fingerprint is
     `tactician:v1:round-robin`, version 1 of the rules of a new format
     ([ADR 0015](docs/adr/0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)),

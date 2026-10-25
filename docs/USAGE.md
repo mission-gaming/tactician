@@ -4803,7 +4803,7 @@ options and the seed to that; the constraints have no name, and keeping
 them the same is the caller's to do, as for the Swiss engine. The seed is an
 integer, not a `Randomizer`: the scheduler is given
 `new Randomizer(new Xoshiro256StarStar($seed))`, made anew on every call, so
-that the same round is paired twice. For the same reason a
+that every call gives the same round for the same state. For the same reason a
 `ShuffledLegStrategy` that holds a randomizer is refused
 (`IncompatibleOptions`); build it from a seed.
 
@@ -8385,7 +8385,11 @@ Three things to know beside that:
   (`new SwissPairingEngine(seed: 2026)`): it builds the `Randomizer` of a
   round from the seed and the round number on every call, so the same
   state gives the same round, on one engine or on many, and is refused a
-  seed together with a `Randomizer`.
+  seed together with a `Randomizer`. A `RoundRobinEngine` built with a seed
+  (`new RoundRobinEngine(seed: 2026)`) takes nothing else: it gives the
+  scheduler a `Randomizer` on the `Xoshiro256StarStar` engine built from the
+  seed on every call, so every call draws the same schedule (see
+  [Leagues Run Round by Round](#leagues-run-round-by-round)).
 
 ## Real-World Examples
 
