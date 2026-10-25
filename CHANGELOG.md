@@ -2714,7 +2714,7 @@ entry on the engine fingerprint.
   - Forms are versioned one by one. A later release that changes a form
     gives it the next number, says so here, and keeps reading the earlier
     versions; a patch release never changes a form.
-  - It is not the `v2` of an engine fingerprint (the version of the rules
+  - It is not the `v1` or `v2` of an engine fingerprint (the version of the rules
     of a configuration) or the `v1` of an outcome fingerprint (the version
     of its scheme). The stage state form is version 1 whatever version its
     stamp is of, and
