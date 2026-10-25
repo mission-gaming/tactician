@@ -71,10 +71,15 @@ checks against the pools a `StageTransition` declares (`sourcePools`).
   of pools and ranks and of the pools of the best of the next rank, in
   their order.
 - Later rounds are kept apart as far as the rank-by-rank assignment does:
-  an earlier rank is settled for good and not revisited for a later one.
+  an earlier rank is settled for good and not revisited for a later one,
+  so the whole list does not always have the fewest pairs of one pool that
+  can meet in the second round or later (two pools, their top two and the
+  best third-placed from pool A: two such pairs where one order has one).
 - Who is selected stays with the two selectors, each with its tie policy,
   comparison method and decisions; the placement settles nothing by
-  decision and marks nothing.
+  decision and marks nothing. Where the two order a pool's level entries
+  differently, so that both select one entrant, the selector refuses
+  (`IncompatibleOptions`) rather than hand a bracket that entrant twice.
 - The argument is checked by `tests/Feature/BracketQualifiersTest.php`,
   over generated pool stages and over every set and order of the pools the
   best of the next rank can come from, with the first round paired by

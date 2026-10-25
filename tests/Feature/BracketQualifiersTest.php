@@ -402,6 +402,51 @@ describe('The two selections a placement is made of', function (): void {
             ->and(bracketQualifiersFirstRound($selection->getParticipants())['poolMates'])->toBe([]);
     });
 
+    // A tie of a pool's table across the last per-group rank and the rank
+    // compared across the pools is read by both selectors. Ordered one way
+    // by one and the other way by the other, both would select one entrant
+    // and neither the other: the list would hold that entrant twice
+    it('refuses where the two selectors read a pool\'s level entries in different orders', function (): void {
+        // Given: In pool A, A2 and A3 draw and are level on every figure; the table lists A2 first
+        $byMargin = bracketQualifiersByMargin(['A' => 1, 'B' => 2, 'C' => 3]);
+        $outcome = bracketQualifiersOutcome([4, 4, 4], static function (Participant $first, Participant $second, string $label) use ($byMargin): array {
+            $pair = [$first->getId(), $second->getId()];
+            sort($pair);
+
+            return $pair === ['A2', 'A3'] ? [1, 1] : $byMargin($first, $second, $label);
+        });
+        $aSecond = new Decider(['A3', 'A2'], 'drawn');
+
+        // When: The per-group selector is told that A3 is second, and the
+        // best-of-rank selector takes the table order, in which A3 is third
+        $selector = BracketQualifiersSelector::of(
+            RankRangeSelector::topPerGroup(2)->withDecisions([$aSecond]),
+            BestOfRankSelector::ofRank(3, 2)->withTableOrderAccepted()
+        );
+
+        // Then: Both would select A3, so the placement is refused, naming A3
+        try {
+            $selector->select($outcome);
+        } catch (InvalidConfigurationException $refusal) {
+            expect($refusal->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
+                ->and($refusal->getContext())->toBe(['participants' => ['A3']]);
+
+            // And: With the decision given to both, A3 is second and A2 third
+            $agreed = BracketQualifiersSelector::of(
+                RankRangeSelector::topPerGroup(2)->withDecisions([$aSecond]),
+                BestOfRankSelector::ofRank(3, 2)->withDecisions([$aSecond])
+            )->select($outcome);
+            $ids = bracketQualifiersIds($agreed);
+            expect(array_slice($ids, 0, 6))->toContain('A3')
+                ->and(array_slice($ids, 6))->toContain('A2')
+                ->and(array_unique($ids))->toHaveCount(8);
+
+            return;
+        }
+
+        throw new LogicException('Both selections selected A3 and the placement was not refused.');
+    });
+
     it('reads and writes plain data', function (): void {
         $selector = BracketQualifiersSelector::of(
             RankRangeSelector::topPerGroup(2)->withTiesInsideSelectionAccepted(),

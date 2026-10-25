@@ -5294,8 +5294,11 @@ Give a decision to the selector whose order it settles: one for a tie of a
 pool's table in the per-group ranks to the per-group selector, one for the
 holders of the lower rank to the best-of-rank selector, one for a tie of a
 pool's table that touches both to both (or put it on the pool's table,
-where both read it). `selection()` returns the list with the marks the two
-selectors made.
+where both read it). Where the two read the level entries of a pool in
+different orders, so that both select one entrant, the selector refuses
+(`IncompatibleOptions`, with the IDs under `participants`): such a list
+would hold that entrant twice. `selection()` returns the list with the
+marks the two selectors made.
 
 **From two pools up, the pools are always kept apart in the first round.**
 Whatever the number of pools from two, the number of ranks and the count,

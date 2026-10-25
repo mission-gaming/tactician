@@ -1886,9 +1886,13 @@ entry on the engine fingerprint.
   best first, at the last positions. Only the order of the pools inside
   each rank follows from which pools the best of the next rank come from:
   the order in which entrants of one pool can first meet as late as
-  possible, rank after rank, and nearest to pool order among equals. Who is
+  possible, rank after rank, and nearest to pool order among equals. Each
+  rank is settled before the next, so from the second round on the list
+  does not always have the fewest pairs of one pool that can meet. Who is
   selected is what the two selectors select, with their tie policies,
   comparison methods and decisions; `selection()` carries their marks.
+  Where the two order a pool's level entries differently, so that both
+  select one entrant, the selector refuses (`IncompatibleOptions`).
   From two pools up the first round always keeps the pools apart, byes
   included, whichever pools the best of the next rank come from; with one
   pool the selector refuses with the new reason `PoolMatesInFirstRound`

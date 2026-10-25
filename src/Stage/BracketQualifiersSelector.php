@@ -28,6 +28,10 @@ use Override;
  * per-group selector, one that touches the rank compared across the pools
  * to the best-of-rank selector, a tie that touches both to both), or put it
  * on the pool's table (Standings::withDecisions()), where both read it.
+ * Where the two read one set of level entries of a pool in different
+ * orders, so that both select one entrant, select() refuses
+ * (`IncompatibleOptions`): such a list holds that entrant twice and leaves
+ * out another of the level entries.
  *
  * **The list is in tiers.** It holds every pool's first selected rank,
  * then every pool's second, and so on, then the best of the lower rank,
@@ -172,14 +176,19 @@ final readonly class BracketQualifiersSelector implements ProgressionSelector
      *
      * Things are checked in this order, and the first that fails is
      * reported: the outcome has pools; it has two or more; the per-group
-     * selection is made; the best-of-rank selection is made. The list is
-     * that of selection(), which also says which places a decision settled.
+     * selection is made; the best-of-rank selection is made; no entrant is
+     * in both. The list is that of selection(), which also says which
+     * places a decision settled.
      *
      * @return array<Participant>
      * @throws InvalidConfigurationException When the outcome has no pools (reason
      *                                       `IncompatibleOutcome`), it has one
-     *                                       (`PoolMatesInFirstRound`), or either selector refuses
-     *                                       it (the reason it gives)
+     *                                       (`PoolMatesInFirstRound`), either selector refuses
+     *                                       it (the reason it gives), or both select one
+     *                                       entrant, because their tie policies or decisions
+     *                                       order a pool's level entries differently
+     *                                       (`IncompatibleOptions`, with the IDs under
+     *                                       `participants`)
      * @throws UndecidedSelectionException When either selector refuses an order that results do
      *                                     not decide
      * @throws RejectedDecisionException When either selector rejects a decision it was given
@@ -229,6 +238,25 @@ final readonly class BracketQualifiersSelector implements ProgressionSelector
 
         $perGroup = $this->perGroup->selection($outcome);
         $bestOfRank = $this->bestOfRank->selection($outcome);
+
+        // The two selectors read a pool's table each with its own tie
+        // policy and decisions; where they put one set of level entries in
+        // different orders, one entrant can be selected by both (and
+        // another by neither), which no bracket takes
+        $selectedByBoth = array_values(array_intersect(
+            array_map(static fn(Participant $participant): string => $participant->getId(), $perGroup->getParticipants()),
+            array_map(static fn(Participant $participant): string => $participant->getId(), $bestOfRank->getParticipants())
+        ));
+        if ($selectedByBoth !== []) {
+            throw new InvalidConfigurationException(
+                sprintf(
+                    'The two selections read a pool\'s table in different orders and both select %s: give a decision of a tie that touches both to both selectors, or put it on the pool\'s table',
+                    implode(', ', $selectedByBoth)
+                ),
+                ['participants' => $selectedByBoth],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
 
         // The per-group selection lists its ranks block by block, a block
         // holding one entrant of every pool
