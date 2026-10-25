@@ -39,6 +39,7 @@ use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\BestOfRankSelector;
+use MissionGaming\Tactician\Stage\BracketQualifiersSelector;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\PoolComparison;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
@@ -338,6 +339,36 @@ final class PlainDataForms
                     return $selector->withDecisions(self::decisions($random, array_values($field)));
                 },
             ],
+            'bracket qualifiers selector' => [
+                'class' => BracketQualifiersSelector::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['per_group', 'best_of_rank'],
+                // Each selection in its own form, without a format version
+                'sample' => [
+                    'per_group' => ['mode' => 'per-group', 'from' => 1, 'to' => 2, 'ties' => 'accept-inside-selection'],
+                    'best_of_rank' => ['rank' => 3, 'count' => 2, 'comparison' => 'per-event', 'decisions' => [$decision]],
+                ],
+                'read' => static fn(array $data, array $registry): object => BracketQualifiersSelector::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $from = $random->getInt(1, 4);
+                    $to = $from + $random->getInt(0, 3);
+                    $perGroup = $from === 1 && $random->getInt(0, 1) === 1
+                        ? RankRangeSelector::topPerGroup($to)
+                        : RankRangeSelector::perGroup($from, $to);
+                    $bestOfRank = BestOfRankSelector::ofRank($to + $random->getInt(1, 2), $random->getInt(1, 8));
+
+                    // One in two of each was given a tie policy, a method or
+                    // decisions, which their forms write
+                    if ($random->getInt(0, 1) === 1) {
+                        $perGroup = $perGroup->withTableOrderAccepted()->withDecisions(self::decisions($random, array_values($field)));
+                    }
+                    if ($random->getInt(0, 1) === 1) {
+                        $bestOfRank = $bestOfRank->comparedBy(PoolComparison::DiscardLowest)->withTiesInsideSelectionAccepted();
+                    }
+
+                    return BracketQualifiersSelector::of($perGroup, $bestOfRank);
+                },
+            ],
             'minimum rest rule' => [
                 'class' => MinimumRestRule::class,
                 'kind' => self::CONFIGURATION,
@@ -632,7 +663,7 @@ final class PlainDataForms
      */
     public static function addedInZeroThree(): array
     {
-        return [Award::class, Decider::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class, StandingsCalculator::class];
+        return [Award::class, Decider::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class, BracketQualifiersSelector::class, StandingsCalculator::class];
     }
 
     /**

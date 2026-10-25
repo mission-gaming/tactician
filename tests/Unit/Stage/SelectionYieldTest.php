@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\BestOfRankSelector;
+use MissionGaming\Tactician\Stage\BracketQualifiersSelector;
 use MissionGaming\Tactician\Stage\CompositionValidator;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\ProgressionSelector;
@@ -68,7 +69,39 @@ describe('SelectionYield', function (): void {
         'winners after a whole bracket' => [SelectionYield::winnersOfLastRound(), 16, null, true, 1],
         'losers after a whole bracket' => [SelectionYield::losersOfLastRound(), 16, null, true, 1],
         'depends on the outcome' => [SelectionYield::dependsOnOutcome(), 16, 4, false, null],
+        'per pool plus a count across them, with the pools' => [SelectionYield::perPoolPlus(2, 2, 2), 12, 3, false, 8],
+        'per pool plus a count across them, without the pools' => [SelectionYield::perPoolPlus(2, 2, 2), 12, null, false, null],
+        'per pool plus a count across them, from the fewest pools it is made from' => [SelectionYield::perPoolPlus(1, 3, 3), 9, 3, false, 6],
+        'per pool plus a count across them, from fewer pools than it is made from' => [SelectionYield::perPoolPlus(2, 1, 2), 4, 1, false, null],
     ]);
+
+    it('states the count across the pools and the fewest pools for a count per pool plus a count', function (): void {
+        $yield = SelectionYield::perPoolPlus(2, 3, 4);
+
+        expect($yield->getKind())->toBe(SelectionYieldKind::PerPoolPlusFixed)
+            ->and($yield->getCount())->toBe(2)
+            ->and($yield->getAddedCount())->toBe(3)
+            ->and($yield->getMinimumPools())->toBe(4)
+            ->and(SelectionYield::perPoolPlus(2, 3)->getMinimumPools())->toBe(1);
+    });
+
+    // Every other kind states no count across the pools, and can be made
+    // from a stage of a single pool
+    it('states no count across the pools and a minimum of 1 pool for every other kind', function (SelectionYield $yield): void {
+        expect($yield->getAddedCount())->toBeNull()
+            ->and($yield->getMinimumPools())->toBe(1);
+    })->with([
+        'fixed' => [SelectionYield::fixed(3)],
+        'per pool' => [SelectionYield::perPool(2)],
+        'winners' => [SelectionYield::winnersOfLastRound()],
+        'losers' => [SelectionYield::losersOfLastRound()],
+        'depends on the outcome' => [SelectionYield::dependsOnOutcome()],
+    ]);
+
+    it('refuses a minimum below 1 pool', function (): void {
+        expect(fn() => SelectionYield::perPoolPlus(2, 2, 0))
+            ->toThrow(InvalidInputException::class, 'A selection is made from at least 1 pool, 0 given');
+    });
 
     it('states its kind and count', function (): void {
         expect(SelectionYield::fixed(3)->getKind())->toBe(SelectionYieldKind::Fixed)
@@ -85,6 +118,8 @@ describe('SelectionYield', function (): void {
     })->with([
         'fixed' => [fn() => SelectionYield::fixed(-1)],
         'per pool' => [fn() => SelectionYield::perPool(-1)],
+        'per pool plus, the count per pool' => [fn() => SelectionYield::perPoolPlus(-1, 2)],
+        'per pool plus, the count across the pools' => [fn() => SelectionYield::perPoolPlus(2, -1)],
     ]);
 
     // A stage is played in at least one pool. Counted with fewer, a per-pool
@@ -115,6 +150,11 @@ describe('The yield every library selector declares', function (): void {
         'per-group rank range' => [RankRangeSelector::perGroup(2, 3), SelectionYieldKind::PerPool, 2],
         'top per group' => [RankRangeSelector::topPerGroup(2), SelectionYieldKind::PerPool, 2],
         'best of a rank' => [BestOfRankSelector::ofRank(3, 2), SelectionYieldKind::Fixed, 2],
+        'qualifiers placed for a bracket' => [
+            BracketQualifiersSelector::of(RankRangeSelector::perGroup(1, 3), BestOfRankSelector::ofRank(4, 2)),
+            SelectionYieldKind::PerPoolPlusFixed,
+            3,
+        ],
         'match outcome, winners' => [MatchOutcomeSelector::winners(), SelectionYieldKind::WinnersOfLastRound, null],
         'match outcome, losers' => [MatchOutcomeSelector::losers(), SelectionYieldKind::LosersOfLastRound, null],
     ]);
@@ -128,6 +168,7 @@ describe('The yield every library selector declares', function (): void {
         'overall rank range' => [RankRangeSelector::overall(1, 8)],
         'per-group rank range' => [RankRangeSelector::topPerGroup(2)],
         'best of a rank' => [BestOfRankSelector::ofRank(3, 2)],
+        'qualifiers placed for a bracket' => [BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 2))],
         'match outcome, winners' => [MatchOutcomeSelector::winners()],
         'match outcome, losers' => [MatchOutcomeSelector::losers()],
     ]);
@@ -176,9 +217,36 @@ describe('CompositionValidator reads the declared yield', function (): void {
     })->with([
         'fixed' => [SelectionYield::fixed(4), 4],
         'per pool' => [SelectionYield::perPool(2), 6],
+        'per pool plus a count across them' => [SelectionYield::perPoolPlus(2, 1, 3), 7],
         'winners of the last round' => [SelectionYield::winnersOfLastRound(), 5],
         'losers of the last round' => [SelectionYield::losersOfLastRound(), 4],
     ]);
+
+    // The top two of every pool and the best of those placed third come
+    // from at least 2 pools, and from at least as many as the best third-placed:
+    // with fewer the selection is refused, and its count is not checked
+    it('reports fewer pools than the selection is made from, and does not count with them', function (): void {
+        $qualifiers = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 3));
+        $validator = new CompositionValidator();
+
+        expect($validator->validateChain(4, [new StageTransition('knockout', 5, $qualifiers, sourcePools: 1)]))
+            ->toBe(["Stage 'knockout' declares 1 pool for the previous stage; its selection is made from at least 3."])
+            ->and($validator->validateChain(8, [new StageTransition('knockout', 7, $qualifiers, sourcePools: 2)]))
+            ->toBe(["Stage 'knockout' declares 2 pools for the previous stage; its selection is made from at least 3."])
+            ->and($validator->validateChain(12, [new StageTransition('knockout', 9, $qualifiers, sourcePools: 3)]))->toBe([])
+            ->and($validator->validateChain(12, [new StageTransition('knockout', 8, $qualifiers, sourcePools: 3)]))
+            ->toBe(["Stage 'knockout' expects 8 entrants but its selection yields 9 from the previous stage's 12."])
+            ->and($validator->validateChain(12, [new StageTransition('knockout', 8, $qualifiers)]))->toBe([]);
+    });
+
+    it('reports one pool for the best of a single rank placed for a bracket', function (): void {
+        $qualifiers = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 1));
+
+        expect((new CompositionValidator())->validateChain(4, [new StageTransition('knockout', 3, $qualifiers, sourcePools: 1)]))
+            ->toBe(["Stage 'knockout' declares 1 pool for the previous stage; its selection is made from at least 2."])
+            ->and((new CompositionValidator())->validateChain(8, [new StageTransition('knockout', 5, $qualifiers, sourcePools: 2)]))
+            ->toBe([]);
+    });
 
     it('passes a selector of an application whose yield depends on the outcome', function (): void {
         expect((new CompositionValidator())->validateChain(9, [

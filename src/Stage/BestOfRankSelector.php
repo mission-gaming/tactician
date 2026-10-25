@@ -103,6 +103,8 @@ use Override;
  * bracket: appended to a per-group selection it can pair an entrant with
  * one of its own pool in the first round, because where the entrant has to
  * go depends on which pools the selected ones come from.
+ * BracketQualifiersSelector puts the two selections together in an order
+ * that keeps the entrants of one pool apart.
  *
  * @experimental
  */
@@ -546,6 +548,22 @@ final readonly class BestOfRankSelector implements ProgressionSelector
      */
     #[Override]
     public function getSelectionSize(): int
+    {
+        return $this->count;
+    }
+
+    /**
+     * The 1-based rank whose holders are compared.
+     */
+    public function getRank(): int
+    {
+        return $this->rank;
+    }
+
+    /**
+     * How many of the holders are selected, at least 1.
+     */
+    public function getCount(): int
     {
         return $this->count;
     }

@@ -258,6 +258,7 @@ describe('the reason of a configuration error', function (): void {
             'TieAcrossSelection' => 'tie_across_selection',
             'TieWithinSelection' => 'tie_within_selection',
             'PoolComparisonRequired' => 'pool_comparison_required',
+            'PoolMatesInFirstRound' => 'pool_mates_in_first_round',
             'RoundOutOfSequence' => 'round_out_of_sequence',
             'ParticipantNotAnEntrant' => 'participant_not_an_entrant',
             'ParticipantTwiceInRound' => 'participant_twice_in_round',

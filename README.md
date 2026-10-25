@@ -276,7 +276,8 @@ and the round is read as it was paired. Single and double elimination
 (`SingleEliminationEngine`, `DoubleEliminationEngine`) drive through the
 same loop, and group stages
 compose from pools and progression selectors (`PoolDistributor`,
-`RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`) — see the
+`RankRangeSelector`, `BestOfRankSelector`, `BracketQualifiersSelector`,
+`MatchOutcomeSelector`) — see the
 [usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
 (`StageState::toJson()`, `$schedule->toJson()`), so platforms persist
 between rounds instead of re-deriving. A platform that keeps its fixtures

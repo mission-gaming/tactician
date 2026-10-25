@@ -69,9 +69,10 @@ anything else that competes.
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
 | **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
 | **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
-| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
-| **Selection yield** | How many participants a progression selector hands on, as the selector states it before any outcome exists (`ProgressionSelector::getYield()`, a `SelectionYield`): a fixed count, a count per pool, the winners or the losers of the last round of the stage before, or a number only the outcome gives. `CompositionValidator` counts a chain with it. See [Multi-Stage Tournaments](#ahead-of-time-composition-validation). |
+| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`, `BracketQualifiersSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Selection yield** | How many participants a progression selector hands on, as the selector states it before any outcome exists (`ProgressionSelector::getYield()`, a `SelectionYield`): a fixed count, a count per pool, a count per pool plus a count across the pools, the winners or the losers of the last round of the stage before, or a number only the outcome gives. `CompositionValidator` counts a chain with it. See [Multi-Stage Tournaments](#ahead-of-time-composition-validation). |
 | **Best of a rank** | The best few of the entrants that hold one rank in their pools, compared with each other across the pools and listed best first (`BestOfRankSelector`): the two best of those placed third. See [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
+| **Qualifiers placed for a bracket** | The selected ranks of every pool and the best few of a lower rank, in an order in which no two entrants of one pool meet in the first round of a bracket (`BracketQualifiersSelector`). See [Qualifiers placed for a bracket](#qualifiers-placed-for-a-bracket). |
 | **Pool comparison** | How entrants of pools of unequal size are compared (`PoolComparison`): by raw totals, per event played, or without the results against the lowest-placed entrants of the larger pools. The caller's choice; a selection across pools of unequal size is refused until it is made. Pools are unequal when their tables do not have the same number of entries. |
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as the **decider** of the event's result, or of one leg's result. Ties are not legs: brackets have no legs concept. |
 | **Third-place tie** | An opt-in second tie in the last round of a single elimination bracket (`EliminationOptions(thirdPlace: true)`), between the two entrants who went out in the round before it. It decides places 3 and 4, which the bracket otherwise leaves to the records. It is in the same round as the final and has the same round label, so each event of that round carries which tie it belongs to (**bracket tie**). See [A third-place tie](#a-third-place-tie). |
@@ -5054,13 +5055,14 @@ source.
 **Every selector states its yield.** The validator counts a transition by
 what its selector declares, `getYield()`, and reads no other method: a
 selector of your own is counted the way the library's are. A
-`SelectionYield` is one of five kinds (`SelectionYieldKind`), and
+`SelectionYield` is one of six kinds (`SelectionYieldKind`), and
 `countFrom()` turns it into a number for a stage before of a given shape:
 
 | Selector | Kind | Yield from the stage before |
 |---|---|---|
 | `RankRangeSelector::overall(from, to)`, `BestOfRankSelector::ofRank(rank, count)` | `Fixed` | the count |
 | `RankRangeSelector::perGroup(from, to)`, `topPerGroup(n)` | `PerPool` | the count per pool times the pools |
+| `BracketQualifiersSelector::of(perGroup, bestOfRank)` | `PerPoolPlusFixed` | the count per pool times the pools, plus the count across them; nothing from fewer pools than `getMinimumPools()`, which the validator reports |
 | `MatchOutcomeSelector::winners()` | `WinnersOfLastRound` | half the entrants rounded up; 1 after a whole bracket |
 | `MatchOutcomeSelector::losers()` | `LosersOfLastRound` | half the entrants rounded down; 1 after a whole bracket |
 | a selector whose count only the outcome gives | `DependsOnOutcome` | not counted |
@@ -5317,11 +5319,117 @@ and a per-group selection takes no method at all; both are refused with
 
 **The selector states its yield, and does not place for a bracket.**
 Its yield is the count, fixed (`getYield()`, and `getSelectionSize()`), so
-composition validation checks a transition that uses it. The list is best first and nothing else: put
-after a per-group selection (`[...$topTwo, ...$bestThirds]`) it can pair an
-entrant with one of its own pool in the first round of a bracket, because
-where each has to go depends on which pools the selected entrants come
-from. Order the combined list yourself where that matters.
+composition validation checks a transition that uses it. The list is best
+first and nothing else: put after a per-group selection
+(`[...$topTwo, ...$bestThirds]`) it can pair an entrant with one of its own
+pool in the first round of a bracket, because where each has to go depends
+on which pools the selected entrants come from. To hand both to a bracket,
+place them with a `BracketQualifiersSelector`, below.
+
+### Qualifiers placed for a bracket
+
+`BracketQualifiersSelector` puts a per-group selection and a best-of-rank
+selection of a lower rank together, in the order a bracket needs: no two
+entrants of one pool meet in its first round. It is the knockout of "the
+top two of every pool and the two best of those placed third":
+
+```php
+use MissionGaming\Tactician\Stage\BracketQualifiersSelector;
+
+$qualifiers = BracketQualifiersSelector::of(
+    RankRangeSelector::topPerGroup(2),
+    BestOfRankSelector::ofRank(rank: 3, count: 2)
+);
+$knockoutEntrants = $qualifiers->select($stage);
+
+// Pool A is Ada, Fay, Gus, Lou in that order; B is Ben, Eli, Hal, Kit; C is Cy, Di, Ian, Joy
+echo implode(', ', array_map(fn (Participant $p) => $p->getLabel(), $knockoutEntrants)) . "\n";
+// Ada, Ben, Cy, Fay, Di, Eli, Gus, Hal
+
+$firstRound = (new SingleEliminationEngine())->pairNextRound(StageState::start($knockoutEntrants));
+foreach ($firstRound->getEvents() as $event) {
+    echo implode(' v ', array_map(fn (Participant $p) => $p->getLabel(), $event->getParticipants())) . "\n";
+}
+```
+
+```text
+Ada v Hal
+Fay v Di
+Ben v Gus
+Cy v Eli
+```
+
+**The list is in tiers.** It holds every pool's first selected rank, then
+every pool's second, and so on, then the best of the lower rank, best
+first: an entrant of a higher rank always has a better seed than one of a
+lower rank, and of the best third-placed the better has the better seed.
+Inside each rank of the per-group selection the order of the pools is free,
+and it is chosen against the pools the best of the lower rank come from, as
+the draw of such a format is: above, Gus (pool A) is seventh and Hal (pool
+B) eighth, so the first seed, a pool winner, must not be Ben, and the
+second must not be Ada. Of the orders that keep every pool apart in the
+first round, the one taken lets entrants of one pool meet as late as it
+can, rank after rank (as few pairs of one pool as can be that can meet in
+the second round, then in the third, and so on), and is the nearest to
+pool order among those that are equal in that. Above, the two of pool C
+can meet only in the final. The order depends on the numbers of pools and
+of ranks and on the pools of the best of the lower rank, in their order,
+and on nothing else.
+
+Each rank is settled before the next and not revisited, so from the second
+round on the whole list does not always have the fewest pairs of one pool
+that can meet. With two pools, their top two and the best third-placed
+from pool A, the list is B1, A1, A2, B2, A3: A1 cannot meet A3 before the
+final, and A1 and A2, and B1 and B2, can meet in the second round, where
+A1, B1, A2, B2, A3 would let only A1 and A3 meet. The first round is never
+affected.
+
+**Who is selected is the two selectors' business.** Each selects by its own
+rules, with its own tie policy, comparison method and decisions, and
+refuses what it refuses; the placement adds an order and settles nothing.
+Give a decision to the selector whose order it settles: one for a tie of a
+pool's table in the per-group ranks to the per-group selector, one for the
+holders of the lower rank to the best-of-rank selector, one for a tie of a
+pool's table that touches both to both (or put it on the pool's table,
+where both read it). Where the two read the level entries of a pool in
+different orders, so that both select one entrant, the selector refuses
+(`IncompatibleOptions`, with the IDs under `participants`): such a list
+would hold that entrant twice. `selection()` returns the list with the
+marks the two selectors made.
+
+**From two pools up, the pools are always kept apart in the first round.**
+Whatever the number of pools from two, the number of ranks and the count,
+and whichever pools the best of the lower rank come from, there is an order
+with no first-round tie of one pool, byes included, and the selector finds
+it. With one pool there is none: every qualifier is of that pool. The
+selector refuses such an outcome with the reason `PoolMatesInFirstRound`
+(the context holds `pools`), and its yield says so ahead of time, so
+composition validation reports a transition that declares one pool before
+anything is played:
+
+```php
+$validator = new CompositionValidator();
+echo count($validator->validateChain(12, [new StageTransition('quarterfinals', 8, $qualifiers, sourcePools: 3)])) . "\n"; // 0
+
+$onePool = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 1));
+echo $validator->validateChain(4, [new StageTransition('knockout', 3, $onePool, sourcePools: 1)])[0] . "\n";
+// Stage 'knockout' declares 1 pool for the previous stage; its selection is made from at least 2.
+```
+
+The yield is of the kind `PerPoolPlusFixed`: the ranks per pool times the
+pools, plus the count (`getAddedCount()`), made from at least 2 pools, and
+from at least as many as the count, which the best of the lower rank come
+from (`getMinimumPools()`). The order is the one for a bracket of exactly
+these entrants; put anywhere else (dealt into pools again, or into a
+bracket with others) it has no special meaning.
+
+`of()` takes a per-group rank selection and a best-of-rank selection of a
+rank below its last; anything else is refused (`IncompatibleOptions`). In
+plain data the selector is the two selections in their own forms, without
+a format version of their own, under `per_group` and `best_of_rank`:
+`['per_group' => ['mode' => 'per-group', 'from' => 1, 'to' => 2],
+'best_of_rank' => ['rank' => 3, 'count' => 2]]`, with
+[`format_version`](#format-versions) written first.
 
 ## Timeline Assignment
 
@@ -7307,7 +7415,7 @@ records with its reasons:
 - **The key is written once to an array, at its top.** The participants and
   events inside a schedule, the round inside an event, the rounds,
   results and adjustments inside a stage state, the award and the decider
-  inside a result, the decisions inside a rank selector and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
+  inside a result, the decisions inside a rank selector, the two selections inside a bracket qualifiers selector and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
   A part serialized by itself (`$participant->toArray()`) is the top of its
   own array and has the key.
 - **An array without the key is version 1.** Version 1 is the form 0.2.x
@@ -7915,6 +8023,7 @@ identifier for logs and stored data):
 | `TieAcrossSelection` | `tie_across_selection` | A rank selection takes only some of the entries that no result separates (`UndecidedSelectionException`) |
 | `TieWithinSelection` | `tie_within_selection` | Entries that no result separates are all selected, and the order they are selected in is not decided (`UndecidedSelectionException`) |
 | `PoolComparisonRequired` | `pool_comparison_required` | A selection that compares entrants of different pools was asked of pools of unequal size, with no comparison method chosen. The context lists the pool sizes (`pool_sizes`) |
+| `PoolMatesInFirstRound` | `pool_mates_in_first_round` | A selection placed for a bracket (`BracketQualifiersSelector`) was asked of an outcome of one pool, whose qualifiers meet each other in the first round however they are placed. The context holds the number of pools (`pools`) |
 | `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one. From `StageState::fromHistory()`: the round numbers are not 1, 2, 3 and so on |
 | `ParticipantNotAnEntrant` | `participant_not_an_entrant` | A history given to `StageState::fromHistory()` names a participant who is not one of its entrants |
 | `ParticipantTwiceInRound` | `participant_twice_in_round` | A round of a history given to `StageState::fromHistory()` holds one participant twice |
