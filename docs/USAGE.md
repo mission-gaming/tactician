@@ -5279,6 +5279,14 @@ can meet only in the final. The order depends on the numbers of pools and
 of ranks and on the pools of the best of the lower rank, in their order,
 and on nothing else.
 
+Each rank is settled before the next and not revisited, so from the second
+round on the whole list does not always have the fewest pairs of one pool
+that can meet. With two pools, their top two and the best third-placed
+from pool A, the list is B1, A1, A2, B2, A3: A1 cannot meet A3 before the
+final, and A1 and A2, and B1 and B2, can meet in the second round, where
+A1, B1, A2, B2, A3 would let only A1 and A3 meet. The first round is never
+affected.
+
 **Who is selected is the two selectors' business.** Each selects by its own
 rules, with its own tie policy, comparison method and decisions, and
 refuses what it refuses; the placement adds an order and settles nothing.

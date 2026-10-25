@@ -26,13 +26,21 @@ namespace MissionGaming\Tactician\Stage;
  * one pool can first meet as late as possible. "As late as possible" is
  * lexicographic: as few pairs of one pool as can be that can meet in round
  * 1, then as few in round 2, and so on. Among orders that are equal in
- * that, the one nearest to pool order is taken, so with no tail the first
- * block is in pool order and two pools are still listed A, B: A1, B1, A2,
- * B2.
+ * that, the one nearest to pool order is taken: the least sum, over the
+ * pools, of how far each is from its own place in pool order. So with no
+ * tail the first block is in pool order and two pools are still listed A,
+ * B: A1, B1, A2, B2. Several orders can be equally near (with three pools,
+ * two blocks and a tail of one from pool C, the first block C, A, B and C,
+ * B, A, of which C, B, A is taken): the one taken is the one the
+ * assignment below returns, which depends on the numbers and the pools of
+ * the tail alone, and which the tests pin.
  *
  * Blocks are settled one after another, each for good; an earlier block is
  * not revisited for the sake of a later one. For two ranks per pool and no
- * tail that is the best order there is. In the first round it is the best
+ * tail that is the best order there is. With a tail it is not always: a
+ * block placed to keep its entrants from the tail in round 2 can leave a
+ * later block more pairs in round 2 than another order would leave the
+ * two together. In the first round it is the best
  * order there is whatever the blocks and the tail, as long as there are at
  * least two pools: no two entrants of one pool meet there. A position of a
  * block has at most one first-round opponent placed before it, so at most

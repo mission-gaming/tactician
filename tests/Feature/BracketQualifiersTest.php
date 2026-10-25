@@ -181,6 +181,44 @@ describe('The top two of three pools and the two best third-placed, into a knock
     });
 });
 
+describe('The order of the pools inside a rank', function (): void {
+    // Each rank is settled before the next. The winners are placed against
+    // A3 alone: seed 1 can meet seed 5 in the second round and seed 2 only
+    // in the final, so A1 is second. That forces the runners-up: seed 4
+    // meets A3 in the first round, so it is B2, and A2 is seed 3, who can
+    // meet A1 in the second round, as B1 (seed 1) can meet B2. A1, B1, A2,
+    // B2, A3 would let only A1 and A3 meet there; the selector does not
+    // revisit the winners for that (the usage guide states this example)
+    it('settles the winners before the runners-up, and does not revisit them', function (): void {
+        // Given: Two pools of three, A3 the best third-placed
+        $outcome = bracketQualifiersOutcome([3, 3], bracketQualifiersByMargin(['A' => 1, 'B' => 2]));
+
+        // When
+        $placed = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 1))->select($outcome);
+
+        // Then
+        expect(bracketQualifiersIds($placed))->toBe(['B1', 'A1', 'A2', 'B2', 'A3'])
+            ->and(bracketQualifiersFirstRound($placed))->toBe(['ties' => ['B2 v A3'], 'poolMates' => []]);
+    });
+
+    // Placed against C3 alone, the winners can be C, A, B or C, B, A: in
+    // both C1 can meet C3 only in the final, and both are as far from pool
+    // order. Of the two, the one the assignment returns is taken, and it is
+    // pinned here so that a change to it is seen
+    it('takes one of two orders that are equally near pool order, the same every time', function (): void {
+        // Given: Three pools of three, C3 the best third-placed
+        $outcome = bracketQualifiersOutcome([3, 3, 3], bracketQualifiersByMargin(['A' => 3, 'B' => 2, 'C' => 1]));
+        $selector = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 1));
+
+        // When
+        $placed = bracketQualifiersIds($selector->select($outcome));
+
+        // Then
+        expect($placed)->toBe(['C1', 'B1', 'A1', 'A2', 'B2', 'C2', 'C3'])
+            ->and(bracketQualifiersFirstRound($selector->select($outcome))['poolMates'])->toBe([]);
+    });
+});
+
 describe('Qualifiers of one pool', function (): void {
     it('are refused, because two of them meet in the first round however they are placed', function (): void {
         $outcome = bracketQualifiersOutcome([4], bracketQualifiersByMargin(['A' => 1]));

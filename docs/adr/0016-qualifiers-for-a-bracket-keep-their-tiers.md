@@ -33,7 +33,9 @@ that order is the pool order of a draw, which no result decides.
 The order inside the ranks is the one `CrossPoolOrder` gives with the best
 of the next rank placed first: rank after rank, the order in which
 entrants of one pool can first meet as late as possible, and of orders
-equal in that, the one nearest to pool order. Without a tail that is the
+equal in that, the one nearest to pool order (of several equally near, the
+one the assignment returns, which depends on the same numbers alone).
+Without a tail that is the
 order `RankRangeSelector` has always given, so a per-group selection is
 unchanged.
 

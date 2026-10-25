@@ -41,7 +41,14 @@ use Override;
  * before it, and settled for good: of the orders a rank can take, the one
  * in which no two entrants of one pool meet in the first round, then in
  * which as few pairs of one pool as can be can meet in the second, and so
- * on; and of orders that are equal in that, the one nearest to pool order.
+ * on; and of orders that are equal in that, the one nearest to pool order
+ * (CrossPoolOrder says how near is measured, and which of several equally
+ * near orders is taken). Because each rank is settled before the next, the
+ * whole list does not always have the fewest pairs of one pool that can
+ * meet in the second round or later: with two pools, their top two and the
+ * best third-placed from pool A, the list is B1, A1, A2, B2, A3, in which
+ * A1 and A2, and B1 and B2, can meet in the second round; A1, B1, A2, B2,
+ * A3 lets only A1 and A3 meet there.
  *
  * **No two entrants of one pool meet in the first round, from two pools
  * up.** With one pool the bracket cannot keep them apart, and select()
