@@ -672,9 +672,14 @@ describe('a league that plays on while a fixture is postponed', function (): voi
             expect($early->isPairedOnIncompleteResults())->toBeTrue()
                 ->and(leagueEvents($early->getEvents()))->toBe(leagueEvents($schedule[$number]));
             $rounds[] = $early;
-            $results = [...$results, ...leagueResults($early->getEvents(), $rng)];
-            $state = $state->withRoundPlayed($early, leagueResults($early->getEvents(), $rng));
+            $played = leagueResults($early->getEvents(), $rng);
+            $results = [...$results, ...$played];
+            $byVerbs = $state->withRoundPlayed($early, $played);
             $state = StageState::fromHistory($field, $rounds, $results);
+
+            // The history reads as the verbs recorded it, the mark included
+            expect($state)->toEqual($byVerbs)
+                ->and($state->getLastRound()?->isPairedOnIncompleteResults())->toBeTrue();
         }
 
         expect($engine->isComplete($state))->toBeFalse()
