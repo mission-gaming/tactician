@@ -1677,7 +1677,10 @@ describe('a withdrawal from a live bracket', function (): void {
         expect($legs)->toHaveCount(2)
             ->and($reading[1])->toBe($reading[0])
             ->and($reading[0]['complete'])->toBeTrue()
-            ->and($reading[0]['standings'][0])->toBe(['h1 0', 'h2 0', 'h3 0']);
+            // h1 went on three times without a tie (its bye, the winners
+            // final and the grand final, which had nobody to meet it), each
+            // credited as a win of a two-legged tie: 3 x 2 x 3 points
+            ->and($reading[0]['standings'][0])->toBe(['h1 18', 'h2 0', 'h3 0']);
     });
 
     // A state stored before the entrant list was kept (0.2.x, and 0.3.0

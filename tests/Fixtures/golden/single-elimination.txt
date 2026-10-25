@@ -12,7 +12,7 @@
 R1 [quarterfinal]: 4-5 | byes: 1 2 3
 R2 [semifinal]: 1-4 2-3
 R3 [final]: 1-2
-standings: 1(2-0) 2(1-1) 4(1-1) 3(0-1) 5(0-1)
+standings: 1(2-0) 2(1-1) 3(0-1) 4(1-1) 5(0-1)
 
 == n=8, first-named wins ==
 R1 [quarterfinal]: 1-8 4-5 2-7 3-6
@@ -56,4 +56,4 @@ standings: 12(4-0) 11(3-1) 9(2-1) 10(2-1) 1(0-1) 2(0-1) 3(0-1) 4(0-1) 5(0-1) 6(0
 R1 [quarterfinal]: 4-5{"tie_leg":1} 5-4{"tie_leg":2} | byes: 1 2 3
 R2 [semifinal]: 1-4{"tie_leg":1} 4-1{"tie_leg":2} 2-3{"tie_leg":1} 3-2{"tie_leg":2}
 R3 [final]: 1-2{"tie_leg":1} 2-1{"tie_leg":2}
-standings: 1(4-0) 2(2-2) 4(2-2) 3(0-2) 5(0-2)
+standings: 1(4-0) 2(2-2) 3(0-2) 4(2-2) 5(0-2)

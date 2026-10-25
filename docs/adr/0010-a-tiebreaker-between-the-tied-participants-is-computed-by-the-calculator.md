@@ -1,6 +1,8 @@
 # 0010. A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table
 
-Status: accepted
+Status: accepted; amended by [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md),
+which forms the tied sets inside a tier (the consequence on tiers below no
+longer holds)
 
 ## Context
 
