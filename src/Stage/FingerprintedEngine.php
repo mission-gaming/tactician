@@ -27,7 +27,7 @@ namespace MissionGaming\Tactician\Stage;
  *   and agree on every option that shapes which rounds the format has or
  *   how they are paired. Nothing else is part of it.
  * - An option at its default value is left out. That is the rule by
- *   which an option is added within a scheme: an engine that gains an
+ *   which an option is added: an engine that gains an
  *   option keeps the fingerprint of every configuration that does not use
  *   the option, a state stamped before the option existed is still
  *   accepted, and the default of an option that is part of a fingerprint
