@@ -424,6 +424,46 @@ describe('a league paired round by round', function (): void {
             ->and($read->isManual())->toBeFalse()
             ->and($read->getUnresolvedEvents())->toBe($byHand->getEvents());
     });
+
+    it('refuses a state stamped by an engine with other options in every call', function (): void {
+        $state = StageState::start(leagueField(4))->withEngineFingerprint((new RoundRobinEngine(new RoundRobinOptions(legs: 2)))->getFingerprint());
+        $engine = new RoundRobinEngine();
+
+        foreach ([
+            fn() => $engine->pairNextRound($state),
+            fn() => $engine->pairNextRoundOnIncompleteResults($state),
+            fn() => $engine->isComplete($state),
+            fn() => $engine->getOutcome($state),
+            fn() => $engine->getReadiness($state),
+            fn() => $engine->getRecordedRounds($state),
+            fn() => $engine->getStandings($state),
+            fn() => $engine->getPlan($state),
+        ] as $call) {
+            expect(leagueRefusal($call)->getReason())->toBe(InvalidConfigurationReason::EngineFingerprintMismatch);
+        }
+    });
+
+    // The verbs accept a round with a number above the next one; a round
+    // beyond the last of the schedule is read as recorded, with no
+    // derivation to compare it with, and asks for no further round
+    it('reads a round recorded beyond the last round of the schedule without a derivation', function (): void {
+        $engine = new RoundRobinEngine();
+        [$one, $two, $three] = $field = leagueField(3);
+        $state = StageState::start($field);
+        while (!$engine->isComplete($state)) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(static fn(Event $event): Result => new Result($event), $pairing->getEvents()));
+        }
+        $extra = new RoundPairing(4, null, [new Event([$one, $two], new Round(4))], [$three]);
+        $state = $state->withRoundPlayed($extra, [new Result($extra->getEvents()[0])]);
+
+        $read = $engine->getRecordedRounds($state)[3];
+
+        expect($read->getDerivation())->toBeNull()
+            ->and($read->isManual())->toBeFalse()
+            ->and($engine->isComplete($state))->toBeTrue()
+            ->and(leagueRefusal(fn() => $engine->pairNextRound($state))->getReason())->toBe(InvalidConfigurationReason::PlannedRoundsPlayed);
+    });
 });
 
 describe('the table of a league', function (): void {
@@ -646,6 +686,49 @@ describe('a withdrawal from a league', function (): void {
                 ->and($entries[4]->getParticipant()->getId())->toBe('p2')
                 ->and($entries[4]->getRankingValue())->toBe(-3.0);
         }
+    });
+
+    // Round 1 was paired from every entrant, the entrant withdrew before it
+    // was recorded, and round 1 is recorded as it was paired: the entrant
+    // was in the draw after all, keeps its place, and the league is the
+    // one drawn from every entrant
+    it('keeps the draw of every entrant when the first round, recorded after a withdrawal, names the entrant', function (): void {
+        $engine = new RoundRobinEngine();
+        [, $p2] = $field = leagueField(5);
+        $schedule = leagueSchedule($field, null, null, null)->getEventsByRound();
+        $first = $engine->pairNextRound(StageState::start($field));
+        $state = StageState::start($field)->withoutParticipant($p2)->withRoundPaired($first);
+        $own = array_values(array_filter($first->getEvents(), static fn(Event $event): bool => $event->hasParticipant($p2)));
+        $read = $engine->getRecordedRounds($state)[0];
+
+        expect(leagueIds($state->getEntrants()))->toBe(leagueIds($field))
+            ->and($read->isManual())->toBeFalse()
+            ->and($read->getUncontestedEvents())->toBe($own)
+            ->and($engine->getReadiness($state)->getUnresolvedEvents())->toBe(array_values(array_filter(
+                $first->getEvents(),
+                static fn(Event $event): bool => !$event->hasParticipant($p2)
+            )))
+            ->and(leagueEvents($engine->pairNextRoundOnIncompleteResults($state)->getEvents()))->toBe(leagueEvents($schedule[2]));
+    });
+
+    // A fixture is postponed, and one of its two entrants withdraws before
+    // it is played: it will not be played, so it awaits nothing from then on
+    it('awaits no postponed fixture once one of its entrants has withdrawn', function (): void {
+        $engine = new RoundRobinEngine();
+        $field = leagueField(4);
+        $rng = new Randomizer(new Mt19937(9));
+        $first = $engine->pairNextRound(StageState::start($field));
+        [$postponed, $played] = $first->getEvents();
+        $state = StageState::start($field)->withRoundPlayed($first, leagueResults([$played], $rng));
+
+        expect($engine->getReadiness($state)->getUnresolvedEvents())->toBe([$postponed]);
+
+        $state = $state->withoutParticipant($postponed->getParticipants()[0]);
+
+        expect($engine->getReadiness($state)->isReady())->toBeTrue()
+            ->and($engine->getRecordedRounds($state)[0]->getUncontestedEvents())->toBe([$postponed])
+            ->and($engine->getRecordedRounds($state)[0]->getUnresolvedEvents())->toBe([])
+            ->and($engine->pairNextRound($state)->isPairedOnIncompleteResults())->toBeFalse();
     });
 });
 
