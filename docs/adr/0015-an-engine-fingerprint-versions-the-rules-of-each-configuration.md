@@ -79,12 +79,22 @@ In 0.3.0:
 
 One case pairs otherwise on a fixed path and in double elimination, and does
 not raise the version: a withdrawal after the first round. 0.2.x drew the
-bracket again from the participants left. In the same measurement, with one
-withdrawal after round 1 or 2, 0.2.3 offered a round 1 again, which could
-not be recorded, in 211 of 240 stages, and in 5 more paired a round that
-put an entrant back where a result had already sent it down or out. A stage 0.2.x could not carry on is
-no stage whose next round this release changes; 0.3.0 gives the tie away
-(issue #57, rule 5) and reads such a state that way.
+bracket again from the participants left, which rule 5 of issue #57 calls a
+defect; 0.3.0 gives the tie away and reads a state with such a withdrawal
+that way. In the same measurement, with one withdrawal after round 1 or 2,
+0.2.3 mostly offered a round 1 again, which could not be recorded (211 of
+240 stages). In the rest it paired a round with the right number that put
+an entrant back where a result had already sent it down or out (5 of the
+240; more often where the entrant who withdrew had just won a two-legged
+tie), and that round could be recorded. A state stamped by 0.2.x that
+holds such a round is accepted by 0.3.0 under its `v1` stamp:
+`getRecordedRounds()` reports the redrawn round as manual (and the rounds
+before it too, because 0.2.x kept no place in its list for the entrant who
+withdrew), and the next round follows the bracket as 0.3.0 reads it, not
+the redraw. That is the price of keeping the
+stamps of every other bracket valid: a version raised for the whole
+configuration would refuse all of them, to protect stages that 0.2.x had
+already paired against its own bracket.
 
 When the options of two fingerprints differ, the error names the options
 (the version may differ with them, as fixed and re-seeded single

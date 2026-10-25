@@ -2968,7 +2968,11 @@ entry on the engine fingerprint.
     the participants left (in a replay of 240 such stages, 211 offered a
     round 1 again, which could not be recorded, and 5 put an entrant back
     where a result had sent it down or out). 0.3.0 gives the tie away
-    instead and reads such a state that way.
+    instead and reads such a state that way. A round 0.2.x redrew that way
+    could be recorded, and a stored state that holds one is accepted under
+    its stamp too: `getRecordedRounds()` reports the redrawn round as
+    manual, and the next round follows the bracket as 0.3.0 reads it, not
+    the redraw (ADR 0015). Check such a stage before carrying it on.
   - *Swiss*: the recorded rounds stand, and the next round is paired by the
     new order (list position between level participants, and the table
     order among participants whose points include a bye). Stamp it again
