@@ -1911,9 +1911,9 @@ entry on the engine fingerprint.
   `CompositionValidator::validateChain()` reports a transition whose
   `sourcePools` are fewer, and does not count its yield then, so a
   composition whose qualifiers cannot be kept apart in a bracket is
-  reported before any pool is played. `SelectionYieldKind` has a case
-  more: a `match` over it without a default arm needs one.
-  `RankRangeSelector::getFrom()`/`getTo()` and
+  reported before any pool is played. `SelectionYieldKind` is new in this
+  release (below), so no released code matches over it without the new
+  case. `RankRangeSelector::getFrom()`/`getTo()` and
   `BestOfRankSelector::getRank()`/`getCount()` read the settings of the two
   selectors.
 - **`PoolComparison`, the method pools of unequal size are compared by**,
