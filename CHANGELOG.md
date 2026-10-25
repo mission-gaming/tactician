@@ -55,6 +55,83 @@ entry on the engine fingerprint.
   still does. Golden fixture: `double-elimination.txt` (the `standings:`
   line of the 12-entrant bracket and of the bracket with a reset; no
   pairing in the file changed).
+- **The table of a bracket credits its byes, and forms the tied sets of a
+  tiebreaker between the tied participants inside a tier (refs
+  [#58](https://github.com/mission-gaming/tactician/issues/58), ADR 0014,
+  `docs/adr/0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md`).**
+  Two rules of the records that order the entrants inside a tier of an
+  elimination outcome (`getOutcome()` and `getStandings()` of both
+  engines) change; no entrant changes tier.
+  - *A bye is credited.* The placement table counted a bye as nothing,
+    where the ranking a re-seeded round is folded from credits it, so the
+    two tables of one bracket disagreed. Now each bye is credited with
+    what the ranking strategy says a bye is worth, once for each leg of a
+    tie, as the re-seeded ranking does; under a ranking strategy that does
+    not say (no `RankingStrategyWithByeValue`) it is counted and credited
+    with nothing, in both tables, so such a bracket has the table it had.
+    Wins and losses still count results only, and
+    `StandingEntry::getByes()` counts the byes. Who is affected: every
+    bracket whose field is not a power of two, or that had a bye from a
+    void tie, in the ranking values of the entrants with byes and in the
+    order of a tier where those decide it. Six entrants, p1 and p2 with
+    byes, p1 loses its semifinal: p1 (0-1 and a bye) and p3 (1-1) share
+    the tier of the semifinals.
+
+    ```text
+    before  3. p3 (1-1) 3 points   4. p1 (0-1) 0 points
+    after   3. p1 (0-1) 3 points   4. p3 (1-1) 3 points (level: list position)
+    ```
+
+  - *A bye is what the bracket view shows as one.* The byes of a bracket
+    are the nodes of its view with the status `BracketNodeStatus::Bye`: an
+    entrant who stood alone and went on, also in a stage that took no
+    round number (a double elimination losers round whose entrants all
+    stand alone). The table, the ranking of a re-seeded round and
+    `StageOutcome::getByes()` all count those. A walkover is no bye: the
+    advancer of an uncontested tie, and the entrant who takes the third
+    place from a third-place tie the other left, are credited with
+    nothing, although the round lists them among its byes
+    (`RoundPairing::getByes()`, unchanged). An application that counts a
+    walkover as a win records an awarded result for the tie. Who is
+    affected: `StageOutcome::getByes()` of a bracket with a walkover no
+    longer counts it, and that of a double elimination bracket with a
+    stage that took no round number now counts the bye in it; the
+    ranking of a re-seeded round credits no walkover either, so the
+    entrant who had one ranks below those who won their tie, and the
+    rounds after a walkover of a re-seeded bracket can be paired
+    differently. Eight entrants, re-seeded, p8 withdraws once the first
+    round is paired and the first-named wins every other tie: the
+    semifinals were p1 v p4 and p2 v p3, and are p2 v p1 and p3 v p4.
+  - *A tiebreaker between the tied participants is computed inside a
+    tier.* `BetweenTiedParticipants` (and any `TiedParticipantsTiebreaker`)
+    formed its tied sets over the whole table, so an event against an
+    entrant of another tier with the same ranking value counted. Now the
+    tied sets are formed inside a tier, and where nothing in the tier
+    separates two entrants the entrant list does. Who is affected: a
+    bracket whose chain holds such a tiebreaker (the default chain holds
+    none). Eight entrants, two legs a tie, with
+    `[BetweenTiedParticipants(RankingValueTiebreaker)]`: p1 and p4 each won
+    a leg of their quarter-final and went out on a decider, level on
+    3 points, without having met. p4 was placed first for the leg it won
+    from p5, who went out a round later on 3 points; now p1 is first.
+
+  What to check: a place inside a tier read from a bracket's table, and
+  ranking values of bracket entrants with byes. Measured over 5,796
+  generated brackets (single, single with a third-place tie, re-seeded,
+  two-legged and double elimination, 3 to 16 entrants, seven chains):
+  1,421 tables change, 1,304 by the credit of a bye alone, 110 by the
+  tiers alone and 7 by both; none without a bye or a tiebreaker between
+  the tied. Golden fixtures: `single-elimination.txt` and
+  `elimination-decided-ties.txt` (the `standings:` line of the brackets of
+  five entrants: the entrant in position 3, who had a bye, is now above
+  the one in position 4), `examples/27-stage-from-application-rows.txt`
+  (entrant 11, with a bye and a walkover, goes from 3 to 6: the bye is
+  credited and the walkover is not) and
+  `examples/30-drawing-a-bracket.txt` (the final table of the double
+  elimination bracket: the four entrants with byes rank 3 points higher
+  for each, in the same order). The usage
+  guide's example "A bye", which pinned the old rule, now shows the new
+  one.
 - **A re-seeded bracket ranks an entrant who had a bye with the winners of
   the round, and level survivors by list position.**
   `EliminationOptions(reseedEachRound: true)` ranked the survivors by a
@@ -188,8 +265,9 @@ entry on the engine fingerprint.
   `IncompleteScheduleException` for roughly one seed in ten to one in four
   at the larger counts (the first draw of 30 of 200 seeds at 6 participants
   and 4 rounds, of 44 at 12 and 11), because a round is paired without a
-  look at the rounds to come. A draw that reaches a round with no pairing is now drawn again from
-  the same sequence, up to twenty draws, and after that, or with nothing to
+  look at the rounds to come. A draw that reaches a round with no pairing is now drawn again
+  (continuing the sequence of a `Randomizer`; with the new seed option,
+  from a seed of its own that the seed gives), up to twenty draws, and after that, or with nothing to
   draw from, the rounds are built by the rotation that lays out a round
   robin. Without a source of draws there is one draw, and the rotation is
   what generates the schedule where that draw fails (26 participants from
@@ -910,10 +988,12 @@ entry on the engine fingerprint.
     `Xoshiro256StarStar` engine is made for every call, so that the same
     round is paired twice; a `ShuffledLegStrategy` that holds a randomizer
     is refused (`IncompatibleOptions`). The fingerprint is
-    `tactician:v2:round-robin` with the options and the seed that are not
-    at their default (`legs`, `leg-strategy`, `leg-strategy-seed`,
-    `role-assignment`, `backtracking`, `seed`); the constraints and the
-    standings calculator are not part of it.
+    `tactician:v1:round-robin`, version 1 of the rules of a new format
+    ([ADR 0015](docs/adr/0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)),
+    with the options and the seed that are not at their default (`legs`,
+    `leg-strategy`, `leg-strategy-seed`, `role-assignment`, `backtracking`,
+    `seed`); the constraints and the standings calculator are not part of
+    it.
   - **It waits for results**, as every engine does (rule 6 of the issue):
     `pairNextRound()` refuses with an `UnresolvedRoundException` while a
     recorded event awaits one, `getReadiness()` says the same without
@@ -1165,6 +1245,25 @@ entry on the engine fingerprint.
     to the selector and not those of the outcome's own table.
   - With no decision supplied, every table, selection and array form is
     what it was. Example: `examples/28-ties-settled-by-decision.php`.
+- **A table with tiers: `StandingsCalculator::calculateWith()` takes a
+  sixth argument, `$tiers`** (the tier of each participant by ID, lower
+  first; ADR 0014). The table is in tier order and has the tiers
+  (`Standings::getTiers()`), the figures order it inside a tier, and a
+  tiebreaker between the tied participants forms its tied sets inside a
+  tier. A participant the tiers do not name is in a tier after all of
+  those named. A subclass of the calculator is put into tiers after its
+  own `calculate()`, and refused tiers (`IncompatibleOptions`) when its
+  chain holds a tiebreaker between the tied participants, whose sets its
+  `calculate()` forms over the whole table. The bracket engines give the
+  calculator their tiers, so a bracket whose calculator is such a subclass
+  is refused before its first round is paired (`IncompatibleOptions`), and
+  not once it has been played and its table is asked for.
+- **A bye counted and credited with nothing: `$creditsPerBye` 0** in
+  `StandingsCalculator::calculateWith()` and `withByesCredited()` counts
+  each bye (`StandingEntry::getByes()`) and adds nothing to the ranking
+  value, under any ranking strategy, without reading a bye value. The
+  bracket engines calculate their tables so under a ranking strategy that
+  does not say what a bye is worth (ADR 0014).
 - **The value of a bye is the caller's choice.** A ranking strategy says
   what one bye adds to a ranking value by implementing the optional
   interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).
@@ -1726,12 +1825,35 @@ entry on the engine fingerprint.
   renamed without a deprecation, here and on `calculateWith()`.
 - **A seed for a pre-drawn Swiss schedule.** `SwissOptions(rounds: 5,
   seed: 2026)`, and `'seed'` in `SwissOptions::fromArray()`; `toArray()`
-  writes the key when there is a seed. The scheduler builds a
-  `Random\Randomizer` on the `Xoshiro256StarStar` engine from it on every
-  call, so the same participants, rounds and seed give the same schedule on
-  every call, also on one scheduler asked twice, and the engine is part of
-  the output for a seed. A scheduler that holds a `Randomizer` is refused a
-  seed in its options (`IncompatibleOptions`).
+  writes the key when there is a seed. The schedule is the stage a seeded
+  Swiss engine pairs in results-free mode (see the next entry): each round
+  drawn from the seed and its number on the `Xoshiro256StarStar` engine, so
+  the same participants, rounds and seed give the same schedule on every
+  call, also on one scheduler asked twice, and the engine and its jumps are
+  part of the output for a seed. A draw that has to be made again (see
+  **Output change (fix)**) is made from a seed of its own, the next integer
+  of a `Xoshiro256StarStar` sequence from the seed advanced by one
+  `jumpLong()`. A scheduler that holds a `Randomizer` is refused a seed in
+  its options (`IncompatibleOptions`). `tests/Fixtures/golden/swiss.txt`
+  gains a section per seed option.
+- **A seed for the Swiss engine, which draws each round from the seed and
+  the round number (issue #57, rule 4).** `new SwissPairingEngine(seed:
+  2026)`, a sixth constructor argument (default `null`). Round n is drawn
+  from a `Random\Randomizer` the engine builds for it on every call:
+  `Xoshiro256StarStar` seeded with the seed and advanced by n − 1 `jump()`s,
+  so round 1 draws what a new randomizer on that engine draws, and the
+  engine and the jumps are part of the output for a seed. A round depends
+  on the seed, its number and the state it is paired from, and on nothing
+  drawn for an earlier round: a state rebuilt from an application's rows
+  (`StageState::fromHistory()`) pairs its next round exactly as the state
+  built round by round does, with a new engine as with the one that played
+  the stage, and `getRecordedRounds()` shows the engine's own draw beside
+  every recorded round, where an engine that holds a `Randomizer` has none.
+  An engine given both a seed and a randomizer is refused
+  (`InvalidConfigurationException`, reason `IncompatibleOptions`). The seed
+  is part of the engine fingerprint when it is given (`;seed=2026`); an
+  engine without one has the fingerprint it had. An engine given a
+  `Randomizer` draws as before.
 - **`UndecidedSelectionException`**, an `InvalidConfigurationException`,
   with `getParticipantIds()`, `getFirstPlace()`, `getLastPlace()`,
   `getPool()`, `getFrom()` and `getTo()`, and four cases of
@@ -2662,9 +2784,10 @@ entry on the engine fingerprint.
   - Forms are versioned one by one. A later release that changes a form
     gives it the next number, says so here, and keeps reading the earlier
     versions; a patch release never changes a form.
-  - It is not the `v2` of an engine fingerprint or the `v1` of an outcome
-    fingerprint, which version those schemes. The stage state form is
-    version 1 whichever scheme its stamp is of, and
+  - It is not the `v1` or `v2` of an engine fingerprint (the version of the rules
+    of a configuration) or the `v1` of an outcome fingerprint (the version
+    of its scheme). The stage state form is version 1 whatever version its
+    stamp is of, and
     `RepackOutcome::fingerprint()` does not cover the key, so the key
     changes no fingerprint.
 
@@ -2881,33 +3004,58 @@ entry on the engine fingerprint.
   The selector cannot see that a pool with some results has events still
   to play; check that before selecting, as before. The error for a rank a
   pool does not have (`RankUnavailable`) is unchanged and is raised first.
-- **Breaking: the engine fingerprint scheme is `tactician:v2:`, and a
-  state stamped by 0.2.x is refused until it is stamped again.** The same
-  recorded state can give another next round than it gave under 0.2.x (the
-  Swiss and re-seeding entries above), and a fingerprint stands for how a
-  state is paired, so the scheme changed as its contract provides for a
-  0.x minor. Every fingerprint is the string of 0.2.x with `v2` in place of
-  `v1`; no option was added or renamed. An engine refuses a state that
-  carries a `v1` stamp, on every call, with an
-  `InvalidConfigurationException` (reason `EngineFingerprintMismatch`) that
-  says the stamp was written by an earlier release. Who is affected: an
-  application that stamps its states (`withEngineFingerprint()`) and has
+- **Breaking: an engine fingerprint states the version of the rules of
+  its configuration, and 0.3.0 raised it for Swiss and re-seeded single
+  elimination, so a state 0.2.x stamped for one of those is refused until it
+  is stamped again** (ADR 0015,
+  `docs/adr/0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md`).
+  The `v1` in a 0.2.x fingerprint was one version for every format. It is
+  now the version of the rules an engine pairs its configuration by,
+  stated per configuration and raised, in a minor release, for exactly the
+  configurations that release pairs differently from the same recorded
+  state; every other configuration keeps its string. The same recorded
+  Swiss state, and the same recorded re-seeded bracket, can give another
+  next round than it gave under 0.2.x (the Swiss and re-seeding entries
+  above), so those two are at `v2`: their fingerprints are the strings of
+  0.2.x with `v2` in place of `v1`, and no option was added or renamed. A
+  single elimination bracket on a fixed path and a double elimination
+  bracket pair as 0.2.x paired them (1,080 stages of 2 to 19 entrants
+  replayed against the 0.2.3 tag, one and two legs, with and without a
+  reset: every round the same), so they are at `v1`, and their fingerprints
+  are the strings 0.2.x wrote. An engine refuses a state that carries a
+  stamp of an earlier version of its rules, on every call, with an
+  `InvalidConfigurationException` (reason `EngineFingerprintMismatch`)
+  whose `differences` say that an earlier release wrote the stamp; a stamp
+  of a later version is refused as a later release's. Where the options
+  differ too, the options are what the differences name. Who is affected:
+  an application that stamps its states (`withEngineFingerprint()`) and has
   stages in progress across the upgrade. A state that was never stamped is
   accepted as before. What a stored state does, format by format:
-  - *Fixed-path single elimination and double elimination*: every pairing
-    is what it was. The state resolves to the same rounds; only the order
-    of the outcome's table is the new one. Stamp it again.
+  - *Fixed-path single elimination and double elimination*: the stamp is
+    accepted as it is. Every pairing is what it was; only the order of the
+    outcome's table is the new one. The one exception is a withdrawal after
+    the first round, which 0.2.x answered by drawing the bracket again from
+    the participants left (in a replay of 240 such stages, 211 offered a
+    round 1 again, which could not be recorded, and 5 put an entrant back
+    where a result had sent it down or out). 0.3.0 gives the tie away
+    instead and reads such a state that way. A round 0.2.x redrew that way
+    could be recorded, and a stored state that holds one is accepted under
+    its stamp too: `getRecordedRounds()` reports the redrawn round as
+    manual, the recorded rounds stand, and the next round is paired from
+    them by the rules of 0.3.0, which can differ from what 0.2.x would
+    have paired next (ADR 0015). Check such a stage before carrying it on.
   - *Swiss*: the recorded rounds stand, and the next round is paired by the
     new order (list position between level participants, and the table
     order among participants whose points include a bye). Stamp it again
     once that is what you want; to finish a stage exactly as 0.2.x would
     have paired it, finish it on 0.2.x. Nothing refuses a Swiss state that
-    was never stamped: it is paired by the new order without a word. A
-    round that 0.2.x paired and you have published, and that is not yet
-    recorded, stands only if you record the pairing you kept
-    (`withRoundPlayed()` with that `RoundPairing`): asked again,
-    `pairNextRound()` can answer with other pairs, and results for the
-    published events are then refused as not part of the round
+    was never stamped: it is paired by the new order without a word, and
+    `getRecordedRounds()` reports the rounds 0.2.x paired otherwise than
+    0.3.0 would have as manual. A round that 0.2.x paired and you have
+    published, and that is not yet recorded, stands only if you record the
+    pairing you kept (`withRoundPlayed()` with that `RoundPairing`): asked
+    again, `pairNextRound()` can answer with other pairs, and results for
+    the published events are then refused as not part of the round
     (`EventNotInRound`).
   - *Re-seeded single elimination*: the recorded rounds stand, whatever
     order 0.2.x folded them in. A recorded round is read as it was
@@ -2921,7 +3069,11 @@ entry on the engine fingerprint.
 
   What to change: after the upgrade, `$state =
   $state->withEngineFingerprint($engine->getFingerprint())` for each stored
-  stamped state you have decided to carry on.
+  stamped Swiss or re-seeded state you have decided to carry on. An
+  application that builds its states from its own rows
+  (`StageState::fromHistory()`) keeps the fingerprint beside the stage and
+  stamps each state it builds; the fingerprint stays an opaque string to
+  compare, not a description to build an engine from (ADR 0015 says why).
 - **Breaking: the bracket engines read the rounds recorded on a state, and
   no longer work the bracket out again from the participant list.** Through
   0.2.x both elimination engines derived every round on every call and
@@ -2946,19 +3098,18 @@ entry on the engine fingerprint.
   refused. An event of a bracket round between two entrants neither of
   whom is in the round, or with an entrant who is in another tie of that
   round, is read by nothing, as before.
-- **Breaking: a re-seeded bracket that has a bye needs a ranking strategy
-  that says what a bye is worth.** Crediting the bye needs a value for it, so
-  `SingleEliminationEngine` with `reseedEachRound` and a `RankingStrategy`
-  that is not a `RankingStrategyWithByeValue` (new; `WinDrawLossRanking`
-  is one) throws an
-  `InvalidConfigurationException` (reason `IncompatibleOptions`) for a
-  field that is not a power of two. The field says that the bracket has
-  byes, so every call refuses it, `pairNextRound()` for the first round
-  included: the bracket is not started and then left without a second
-  round. A field that is a power of two, and a bracket on a fixed path, are
-  not affected. What to change: implement `RankingStrategyWithByeValue` on
-  the strategy, use a `WinDrawLossRanking`, or use a fixed
-  path. The Swiss engine refuses later, as it did: it pairs a round that
+- **Breaking: a Swiss stage that has a bye needs a ranking strategy that
+  says what a bye is worth; a bracket credits it with nothing.** Crediting
+  a bye needs a value for it (`RankingStrategyWithByeValue`, new;
+  `WinDrawLossRanking` is one). A bracket under a `RankingStrategy` without
+  one counts each bye (`StandingEntry::getByes()`) and credits it with
+  nothing, in the ranking a re-seeded round is folded from and in the
+  table of the outcome alike, and is refused nothing (ADR 0014): a
+  withdrawal can leave an entrant standing alone in a bracket of any size,
+  so no refusal before the first round could cover every bye. What to
+  change for a bye to count in a bracket: implement
+  `RankingStrategyWithByeValue` on the strategy, or use a
+  `WinDrawLossRanking`. The Swiss engine refuses later, as it did: it pairs a round that
   has a bye and refuses to pair the round after it (the message now begins
   "Crediting a bye requires a ranking strategy that says what a bye is
   worth"), and
@@ -3686,6 +3837,18 @@ entry on the engine fingerprint.
   is not stated in `phpunit.xml`, because PHPUnit sets such a value
   outright and would lower the limit of a CI run. Nothing a consumer
   installs changes.
+
+- The suite passes on PHP 8.4.27 and 8.5.12. From those releases PHP's
+  date parser rejects a string of nothing but white space ("Empty string"),
+  which it read as `now` before (php/php-src@aaa8707), and a test that
+  holds every clock-dependent string to being one PHP accepts failed on
+  them. Such a string is rejected by the library on every PHP version, as
+  before, with the same exception and reason (`UnparseableTime` from a
+  timeline, blackout or session grid, `InvalidInputException` for a
+  kickoff); from those releases the previous exception is PHP's
+  `DateMalformedStringException`, as for any string PHP cannot parse. The
+  white-space strings are now a corpus of their own, tested on what PHP
+  makes of them. Test suite only; the library is unchanged.
 
 ## [0.2.3] - 2026-10-13
 

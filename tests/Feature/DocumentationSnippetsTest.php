@@ -454,6 +454,17 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ],
             [],
         ],
+        'a tied set between the tied participants is formed inside a tier' => [
+            'docs/USAGE.md',
+            '$inTiers = $betweenTheTiedFirst->calculateWith(',
+            [
+                "Alice (tier 0): 6 pts, 3 between the tied\n"
+                . "Bob (tier 0): 6 pts, 0 between the tied\n"
+                . "Carol (tier 1): 6 pts, 0 between the tied\n"
+                . "Dave (tier 1): 0 pts, 0 between the tied\n",
+            ],
+            [],
+        ],
         'a tiebreaker chain and a calculator from plain data' => [
             'docs/USAGE.md',
             '$chain = TiebreakerChain::fromIdentifiers([',
@@ -786,10 +797,18 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Rank 1: Heidi\nWon the tie: Heidi\n0 tied sets\n"],
             [],
         ],
-        'the winner of a bracket is rank 1 although a bye is no win in its record' => [
+        'a bye is no win in a record and is credited in the ranking value of a bracket' => [
             'docs/USAGE.md',
             'MatchOutcomeSelector::winners()->select($byeOutcome)',
-            ["Heidi (1-0)\nAlice (1-1)\nWon the bracket: Heidi\n"],
+            [
+                "Dave (3-0, 0 bye): 9, tier 0\n"
+                . "Bob (1-1, 1 bye): 6, tier 1\n"
+                . "Alice (0-1, 1 bye): 3, tier 2\n"
+                . "Carol (1-1, 0 bye): 3, tier 2\n"
+                . "Erin (0-1, 0 bye): 0, tier 3\n"
+                . "Frank (0-1, 0 bye): 0, tier 3\n"
+                . "Won the bracket: Dave\n",
+            ],
             [],
         ],
         // The last round of a bracket with a third-place tie, and the places it decides
@@ -920,6 +939,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$early = $swiss->pairNextRoundOnIncompleteResults($swissState);',
             ["bool(false)\nbool(true)\n"],
+            [],
+        ],
+        'a seeded Swiss engine pairs a rebuilt state as the state built round by round' => [
+            'docs/USAGE.md',
+            '$seededAgain = new SwissPairingEngine(plannedRounds: 4, seed: 2026);',
+            ["bool(true)\nbool(false)\n"],
             [],
         ],
         'results-free mode pairs its planned rounds and has a fingerprint of its own' => [

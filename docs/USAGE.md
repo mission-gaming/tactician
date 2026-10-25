@@ -48,7 +48,7 @@ anything else that competes.
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size, or the schedule is refused; `RoundParityRoleAssignment` (the default up to 0.2.x) alternates with round parity; `BalancedWherePossibleRoleAssignment` (the default) gives the balanced roles where the scheduler finds a schedule with them and otherwise the round-parity roles, with a **role fall-back** mark. A role assignment may state the rule it holds a leg to, and the scheduler then looks for other roles within that rule where a constraint rejects the ones it gave. See [Role Assignment](#role-assignment). |
 | **Role fall-back** | What the default role assignment of a round robin does where it finds no schedule with balanced roles: the schedule is generated with the roles the generator proposes, exactly as under `RoundParityRoleAssignment`, and its metadata says so under the key `role_fallback`, with the reason (`RoleFallback`): no balanced roles exist in what was searched, a bound stopped the search, or the search was cut short because a schedule was in hand. A schedule with balanced roles has no such key. See [Balanced where possible](#balanced-where-possible). |
 | **Fixed seating** | A seating is one pairing of a round as a role assignment is handed it: two seats, with the first-named participant in the first. A fixed seating is one the role assignment is told to keep as given (`RoleAssignmentContext::isFixed()`): the scheduler put its event to the constraints the other way round, they rejected it, and it asks the role assignment for the roles of the other seatings around it. See [Writing a role assignment](#writing-a-role-assignment). |
-| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**. See [Byes in a table](#byes-in-a-table). |
+| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**. In a bracket a bye is a node of the **bracket view** with the status `Bye` (an entrant who stood alone and went on); the advancer of an **uncontested tie** is listed among the byes of its round but has no bye. See [Byes in a table](#byes-in-a-table). |
 | **Bye value** | What one bye adds to the ranking value of the participant who had it, as the ranking strategy states it (`RankingStrategyWithByeValue::getByeValue()`): the value of a win, of a draw, nothing, or any other amount. `WinDrawLossRanking` values a bye as a win unless told otherwise. The same value orders the next round of a stage and stands in its final table. |
 | **Bye treatment** | How a tiebreaker computed from opponents counts a bye (`ByeTreatment`): not at all (`Uncounted`, the default), as an opponent worth nothing (`Zero`), or as an opponent with the participant's own ranking value (`OwnRankingValue`); the last two read an opponent's ranking value with the credit of its byes. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
@@ -92,14 +92,16 @@ anything else that competes.
 | **Unresolved event** | An event of a recorded round that still awaits its result. While there is one, the next round is refused (`UnresolvedRoundException`), the stage is not complete, and reading it throws nothing. `HistoryReadingEngine::getReadiness()` lists the events without an exception. See [Rounds That Are Not Finished](#rounds-that-are-not-finished). |
 | **After round (of a withdrawal or an adjustment)** | When a withdrawal or an adjustment happened, in the rounds of its stage: the number of the last round that was recorded at that moment, 0 before the first round (`Adjustment::getAfterRound()`, `Withdrawal::getAfterRound()`). The verbs of a stage state record it without being told; a history that holds a round states it for every withdrawal and every adjustment. An engine reads a recorded round from the adjustments made, and the entrants still in the stage, before it was paired, which to a state is before it was recorded, so a round is recorded when it is paired (`withRoundPaired()`); a round that names an entrant was paired while that entrant was in the stage, whatever its withdrawal states. Only a withdrawal stored by 0.2.x has no round: its time is not known and is never read as one that suits. See [When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened). |
 | **Settled tie** | A tie of a bracket as its engine settled it (`SettledTie`): who went on from it and who did not, also where no result says so because an entrant withdrew. The outcome of a bracket carries its last one (`StageOutcome::getSettledTies()`), and `MatchOutcomeSelector` reads it. |
-| **Uncontested tie** | A tie of a bracket that is not played because one of its two entrants has withdrawn: the other entrant advances without an event, the bracket is not drawn again, and an event already paired for the tie awaits no result. Some sports call it a walkover. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
+| **Uncontested tie** | A tie of a bracket that is not played because one of its two entrants has withdrawn: the other entrant advances without an event, the bracket is not drawn again, and an event already paired for the tie awaits no result. Some sports call it a walkover. It is no **bye**: no table credits it, and a competition that counts it as a win records an **awarded result** for the tie. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
 | **Uncontested event** | An event of a round-robin stage that names an entrant who has withdrawn and has no result: it awaits none and counts for nobody, and the fixtures are not drawn again. The application may record an awarded result for it, which counts as any result does (`RecordedRound::getUncontestedEvents()`). See [Leagues Run Round by Round](#leagues-run-round-by-round). |
 | **Over (of a bracket)** | The moment an elimination bracket's last ties are decided: the final and, where it has one, the third-place tie; in double elimination the grand final, or its reset where one is due. A last tie is decided by its results, or by the withdrawal of one of its entrants while the other is still in the stage, who then has it. A withdrawal after that takes nothing back: the winner and every placing stay. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
 | **Paired round (recorded as)** | A round recorded when it is drawn, before any of its results exist (`StageState::withRoundPaired()`); its results are added as they come (`withAdditionalResults()`). Recorded so, it comes before whatever happens while it is played. See [Swiss Tournaments](#swiss-tournaments). |
 | **Void tie** | A tie of a bracket both of whose entrants have withdrawn, with no result that decides it, before either went through it (before its next tie was paired). A last tie has no next tie and goes to the entrant still in when the other left, so it is void only where both had left by the time it had them both (a third-place tie whose entrants both left before the second semifinal was decided), or where the times are not known (data stored by 0.2.x). A void tie sends nobody on: the slot it would have filled is empty, so the entrant who would have met its winner goes on alone, and in double elimination nobody drops from it to the losers bracket. Its two entrants go out in it. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
 | **Results-free mode** | The mode of the Swiss engine in which rounds are recorded without results on purpose (`new SwissPairingEngine(resultsFree: true)`): no event awaits a result, and each round is a non-repeat pairing of the field. It is what the whole-schedule Swiss preset pairs in, and it is part of the engine fingerprint. Without it the engine waits for the results of a recorded round. |
-| **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. A patch release keeps the fingerprint of every configuration; a 0.x minor release may change the scheme ([how long it lasts](#recording-which-engine-pairs-a-state)). An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
-| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes the **bye value** for every bye a participant has had, as the table of the outcome does. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
+| **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format, the **version of the rules** that pair the configuration, and the options that shape which rounds the format has or how they are paired; an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. A patch release keeps the fingerprint of every configuration; a minor release raises the version of the rules of exactly the configurations it pairs differently ([how long it lasts](#recording-which-engine-pairs-a-state)). An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
+| **Version of the rules** | The number in an engine fingerprint that says by which rules a configuration is paired. It is stated per configuration, starts at 1 and is raised, in a minor release, only for the configurations that release pairs differently from the same recorded state, so a change to one engine leaves the stamps of every other as they were. In 0.3.0: Swiss and a re-seeded single elimination bracket at 2, a bracket on a fixed path and double elimination at 1 (what 0.2.x wrote). |
+| **Seeded Swiss engine** | A Swiss engine built with a seed (`new SwissPairingEngine(seed: 2026)`). It draws each round from the seed and the round number alone, so a round does not depend on what was drawn for the rounds before it: a state rebuilt from its history pairs its next round exactly as the state built round by round does, and the engine shows its own draw beside every recorded round (the **derivation**). An engine given a `Randomizer` instead draws from its sequence and cannot. |
+| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a source of draws (a seed or a randomizer). The ranking value it groups by includes the **bye value** for every bye a participant has had, as the table of the outcome does. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, the structural final round and the entrant list. Deliberately free of champion/winner vocabulary. The standings are the table of the whole stage: for an elimination stage the bracket placement, so rank 1 is the participant who advanced from its last tie (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes, and a mark when the round was paired, on request, before the results of the round before it were all in. |
 | **Round label** | The name an elimination engine gives a bracket round ('semifinal', 'round of 16', 'losers round 2'), from where the round stands in the bracket. It is typed data (`RoundLabel`): a kind (`RoundLabelKind`) and, for three kinds, a number, built from the round's side, structural round and slot count (`RoundLabel::ofBracketRound()`); `RoundPairing::getRoundLabel()` and `BracketRound::getRoundLabel()` give it, so an application can word a round its own way without parsing text. Its English text (`toString()`) is what the round pairing and the metadata of its round hold. Swiss and round-robin rounds have none. |
@@ -1920,6 +1922,9 @@ How a tiebreaker of this kind is computed:
   with the same ranking value (the total, with byes and adjustments in it)
   and the same value for every tiebreaker before the run this one is in. A
   participant level with nobody is a set of one.
+- **Inside a tier.** A table with tiers (below) forms its tied sets inside
+  each tier, so participants of two tiers are never one set, and an event
+  against a participant of another tier counts in no value of this kind.
 - **Several in a row are one small table.** Tiebreakers of this kind that
   follow one another in the chain are a run, and every one of a run is
   computed over the same tied set: the participants level when the first of
@@ -1957,6 +1962,45 @@ How a tiebreaker of this kind is computed:
 A tiebreaker of your own is computed this way when it implements
 `TiedParticipantsTiebreaker`, which adds no method to `TiebreakerInterface`:
 it is handed the results and the entries of the tied set.
+
+**Tiers.** A table can be ordered by a criterion before any figure: the
+table of a bracket is ordered by the round each entrant went out in
+([Who won the bracket](#who-won-the-bracket)), and the bracket engines
+give the calculator those tiers. `calculateWith()` takes them as its
+`tiers` argument, the tier of each participant by ID, lower first. The
+table is in tier order and has the tiers (`Standings::getTiers()`), the
+figures order the entries inside a tier, and the tied sets of a tiebreaker
+between the tied participants are formed inside a tier. With the results
+above, Alice and Bob in one tier and Carol and Dave in the next:
+
+```php
+$inTiers = $betweenTheTiedFirst->calculateWith(
+    $participants,
+    $league,
+    tiers: ['alice' => 0, 'bob' => 0, 'carol' => 1, 'dave' => 1]
+);
+
+foreach ($inTiers as $position => $entry) {
+    echo $entry->getParticipant()->getLabel() . ' (tier ' . $inTiers->getTiers()[$position] . '): '
+        . $entry->getRankingValue() . ' pts, '
+        . $entry->getTiebreakerValue('between-tied:ranking-value') . " between the tied\n";
+}
+```
+
+That prints:
+
+```
+Alice (tier 0): 6 pts, 3 between the tied
+Bob (tier 0): 6 pts, 0 between the tied
+Carol (tier 1): 6 pts, 0 between the tied
+Dave (tier 1): 0 pts, 0 between the tied
+```
+
+Alice and Bob are level on points in their tier, and Alice beat Bob, so
+she is first with 3 points between the two. Carol is level with them on
+points but in another tier: her win over Alice counts in no value between
+the tied, and Carol is a set of one. A participant the tiers do not name is
+in a tier after all of those named.
 
 Who is tied depends on the byes and the adjustments of a table, so a
 calculator with a tiebreaker of this kind takes them with the results, in
@@ -2345,15 +2389,30 @@ That prints:
   `getEarnedRankingValue()` adds the value of each bye, and
   `getRankingValue()` adds the [adjustment](#adjustments). The table is
   ordered by the last.
-- **One value, everywhere.** The engines hand the calculator the byes
-  recorded on the stage state and read one table for the order a round is
-  paired from and for the outcome, so a bye cannot be worth one thing for
-  pairing and another in the final table.
+- **One value, everywhere.** The engines hand the calculator the byes of
+  the stage and read one table for the order a round is paired from and
+  for the outcome, so a bye cannot be worth one thing for pairing and
+  another in the final table. A Swiss stage's byes are the ones recorded
+  on the stage state. A bracket's are the nodes its bracket view shows as
+  byes (`BracketNodeStatus::Bye`, see [Drawing the Bracket](#drawing-the-bracket)):
+  an entrant who stood alone in a node and went on, also in a stage that
+  took no round number (a round of a double elimination losers bracket
+  whose entrants all stand alone). The table of the outcome, its
+  `getByes()` and the ranking a re-seeded bracket folds its rounds from
+  all count those. A **walkover** is no bye: an entrant whose opponent
+  withdrew from their tie goes on from an [uncontested tie](#terminology)
+  (`BracketNodeStatus::Uncontested`), which no table credits. A
+  competition that counts a walkover as a win records an
+  [awarded result](#awarded-results) for the tie.
 - **A ranking strategy of your own says what a bye is worth** by
   implementing `RankingStrategyWithByeValue`. One that does not keeps
-  working wherever no bye is credited; a table with a bye to credit is
-  refused under it (`IncompatibleOptions`), because nothing says what
-  sitting out counts for on its scale.
+  working wherever no bye is credited. In a Swiss stage a table with a
+  bye to credit is refused under it (`IncompatibleOptions`), because
+  nothing says what sitting out counts for on its scale. A bracket credits
+  each bye with nothing under it, in every one of its tables, and still
+  counts it (`getByes()`): no bracket is refused for its byes.
+  `StandingsCalculator::calculateWith()` does the same when it is given
+  `$creditsPerBye` 0.
 
 A tiebreaker that adds up the ranking values of opponents has to say what a
 bye is in that sum, and the two the library has take the answer as a
@@ -2442,8 +2501,8 @@ stage was started with decides: the first round pairs position 1 with 2 and
 or ID is read, so give `StageState::start()` the entrants in the order that
 matters.
 
-Participants who are level form a **score group**. With a `Randomizer` the
-engine shuffles the order within each group, and a credited bye is level
+Participants who are level form a **score group**. With a source of draws
+the engine shuffles the order within each group, and a credited bye is level
 with the win it stands for. Level means equal, with one allowance. A
 `WinDrawLossRanking` value is a float sum, and with a scale floats cannot
 hold exactly (0.1 for a draw) the same results added in another order
@@ -2555,6 +2614,50 @@ ranking values (Buchholz, Sonneborn–Berger) leaves byes out unless it is
 given a `ByeTreatment`: by default an opponent counts for the value of its
 results, without its byes.
 
+**A seeded draw.** The source of draws is a seed or a `Randomizer`, and an
+engine has at most one (both together are refused, reason
+`IncompatibleOptions`). Prefer the seed: `new SwissPairingEngine(seed:
+2026)` draws each round from the seed and the round number alone, on a
+`Randomizer` it builds for that round (`Xoshiro256StarStar` seeded with the
+seed and advanced by one `jump()` per earlier round, so round 1 draws what a
+new `Randomizer` on that engine seeded with the seed draws, and the engine
+and the jumps are part of the output). A round therefore depends on the
+seed, its number and the state it is paired from, and on nothing drawn for
+an earlier round: an application that rebuilds the state from its own rows
+on every request ([Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows))
+and builds the engine again gets the round the state built round by round
+gets, and the engine shows its own draw beside every recorded round
+([Rounds the engine would have paired otherwise](#rounds-the-engine-would-have-paired-otherwise)).
+A `Randomizer` has a sequence: each round continues it, so the next round
+depends on every call made before it, and a recorded round has no
+derivation. The seed is part of the engine fingerprint; a `Randomizer` is
+not.
+
+```php
+$seededField = array_map(
+    fn (string $name) => new Participant(strtolower($name), $name),
+    ['Ana', 'Ben', 'Cas', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal']
+);
+
+// Two rounds played on one engine
+$seededEngine = new SwissPairingEngine(plannedRounds: 4, seed: 2026);
+$seededState = StageState::start($seededField);
+for ($seededRound = 1; $seededRound <= 2; ++$seededRound) {
+    $seededPairing = $seededEngine->pairNextRound($seededState);
+    $seededState = $seededState->withRoundPaired($seededPairing)->withAdditionalResults(array_map(
+        fn ($event) => new Result($event, $event->getParticipants()[0]),
+        $seededPairing->getEvents()
+    ));
+}
+
+// The same stage rebuilt from its rows, and an engine built again
+$seededRebuilt = StageState::fromHistory($seededField, $seededState->getRoundsPlayed(), $seededState->getResults());
+$seededAgain = new SwissPairingEngine(plannedRounds: 4, seed: 2026);
+
+var_dump($seededAgain->pairNextRound($seededRebuilt)->toArray() === $seededEngine->pairNextRound($seededState)->toArray()); // bool(true)
+var_dump($seededAgain->getRecordedRounds($seededRebuilt)[1]->isManual()); // bool(false)
+```
+
 `StageState` absorbs the between-round bookkeeping (bye threading, round
 numbers, played pairings) and serializes — `toArray()`/`fromArray()` and
 `toJson()`/`fromJson()` — so platforms persist it between rounds instead
@@ -2607,17 +2710,24 @@ $drawn = (new SwissScheduler())->schedule($participants, new SwissOptions(rounds
 The source of draws is the `seed` of the options or a `Randomizer` given to
 the scheduler, and not both (a scheduler that has both refuses the call,
 with the reason `IncompatibleOptions`). A seed is plain data
-(`SwissOptions::fromArray(['rounds' => 3, 'seed' => 2026])`) and builds a new
-`Randomizer` on the `Xoshiro256StarStar` engine for every call, so the engine
-is part of the output for a seed. A `Randomizer` has state: a scheduler that
-holds one continues its sequence, and two calls give two schedules.
+(`SwissOptions::fromArray(['rounds' => 3, 'seed' => 2026])`), and the
+schedule it draws is the stage a seeded engine pairs in results-free mode
+(`new SwissPairingEngine(plannedRounds: 3, resultsFree: true, seed: 2026)`):
+each round drawn from the seed and its number, on the `Xoshiro256StarStar`
+engine, which is part of the output for a seed (see
+[A seeded draw](#swiss-tournaments) above). A `Randomizer` has state: a
+scheduler that holds one continues its sequence, and two calls give two
+schedules.
 
 Every round count the scheduler accepts is generated when it has no
 constraints. A round is paired without a look at the rounds to come, so at
 the larger round counts a draw can reach a round that has no pairing left
-without a repeat. The scheduler then draws again, continuing the same
-sequence, so the schedule is still a function of the seed; a schedule that
-needs no second draw is the one the first draw gives. If twenty draws are
+without a repeat. The scheduler then draws again: with a seed, each later
+draw from a seed of its own that the seed gives (a `Xoshiro256StarStar`
+sequence from the seed, advanced by one `jumpLong()`), and with a
+`Randomizer`, continuing its sequence. Either way the schedule is still a
+function of the seed; a schedule that needs no second draw is the one the
+first draw gives. If twenty draws are
 not enough, or there is nothing to draw from, it builds the rounds by the
 rotation that lays out a round robin, which cannot fail. Without a source of
 draws there is one draw, and it needs the rotation at a few of the largest
@@ -2729,28 +2839,32 @@ that leaves the option alone, and the states stamped before are still
 accepted.
 
 **How long a fingerprint lasts.** The `Stage` namespace is experimental,
-and how a stage is described is not settled. The fingerprint follows the
-rule for experimental API and promises nothing beyond it (see
-[Versioning and stability](../README.md#versioning-and-stability)):
+and the fingerprint follows the rule for experimental API (see
+[Versioning and stability](../README.md#versioning-and-stability)), with
+one more promise about how it changes:
 
 - A patch release keeps the fingerprint of every configuration, so within
   one 0.x series a stored stamp stays valid. The exception is the one
   the patch rule itself has: a fingerprint that was wrong (one string for
   two configurations that pair differently, for example) may be corrected,
   and the changelog then lists it under "Output change (fix)".
-- A 0.x minor release may change the scheme. The changelog of that release
-  then has a migration note saying what a stored stamp is replaced with.
-  The string states the version of its scheme (`tactician:v2:`), so that a
-  stamp of another scheme can be told from one of this scheme.
+- A fingerprint states the **version of the rules** that pair its
+  configuration. A minor release that pairs a configuration differently
+  from the same recorded state raises that version for that configuration,
+  and for no other, with a migration note in its changelog. A stamp of
+  every other configuration stays valid: a change to how Swiss rounds are
+  paired leaves the stamps of brackets as they were. A stamp of an earlier
+  version is refused with a message that says an earlier release wrote it;
+  one of a later version, with a message that says a later release did.
 
-0.3.0 made that change, from `v1` to `v2`: it pairs a Swiss round and a
-re-seeded bracket round from another order than 0.2.x did (the position in
-the entrant list where 0.2.x read the seed attribute, the label and the ID,
-and a bye credited in a re-seeded bracket), so the same recorded state can
-give another next round. A state stamped by 0.2.x is therefore refused by
-every engine, with a message that says the stamp is of an earlier release.
-Once you have decided that the stage goes on under the rules of this
-release, stamp it again:
+0.3.0 raised the version of two configurations from 1 to 2: a Swiss stage
+and a re-seeded single elimination bracket. Both pair from another order
+than 0.2.x did (the position in the entrant list where 0.2.x read the seed
+attribute, the label and the ID, and a bye credited in a re-seeded
+bracket), so the same recorded state can give another next round. A state
+0.2.x stamped for one of them is refused, with a message that says the
+stamp is of an earlier release. Once you have decided that the stage goes
+on under the rules of this release, stamp it again:
 
 ```php
 $fingerprintOfThisRelease = $engine->getFingerprint();
@@ -2758,16 +2872,34 @@ $stampedAgain = $state->withEngineFingerprint($fingerprintOfThisRelease);
 ```
 
 Rounds already recorded stand. A Swiss stage pairs its later rounds by the
-new order. A fixed-path bracket and a double-elimination bracket pair as
-they always did. A re-seeded bracket keeps the rounds it has: a recorded
-round that this release would pair differently is read as it was recorded
-and reported as paired by hand
+new order. A re-seeded bracket keeps the rounds it has: a recorded round
+that this release would pair differently is read as it was recorded and
+reported as paired by hand
 ([Rounds the engine would have paired otherwise](#rounds-the-engine-would-have-paired-otherwise)),
-and its later rounds are folded by the new order from what was played.
+and its later rounds are folded by the new order from what was played. A
+single elimination bracket on a fixed path and a double elimination
+bracket are paired as 0.2.x paired them, so they are still at version 1,
+their fingerprints are the strings 0.2.x wrote, and a state 0.2.x stamped
+for them is accepted as it is. (A withdrawal from such a bracket after its
+first round was the one thing 0.2.x paired otherwise: it drew the bracket
+again from the participants left, which could bring back an entrant who had
+lost, or offered round 1 again where no round 1 could be recorded. This
+release gives the tie away instead, and reads such a state that way. A
+stored state that already holds a round 0.2.x redrew is accepted under its
+stamp as well: the redrawn round is reported as manual and stands as
+recorded, and the next round is paired from it by the rules of this
+release, which can differ from what 0.2.x would have paired next.)
+
+A state that was never stamped says nothing about its engine, and is paired
+by whatever engine is given it, stamped or not: a Swiss stage started
+under 0.2.x and carried on unstamped gets its next round by the new order
+without a word. `getRecordedRounds()` is where that shows: a round that
+0.2.x paired and this release would have paired otherwise is reported as
+manual, with this release's round beside it.
 
 | Engine | Part of the fingerprint when not at the default | Not part of it |
 | --- | --- | --- |
-| `SwissPairingEngine` | The standings rules a round is paired from: the ranking scale (default 3/1/0), the tiebreakers in order (default none) | `plannedRounds`, the constraints, the randomizer |
+| `SwissPairingEngine` | The standings rules a round is paired from: the ranking scale (default 3/1/0), the tiebreakers in order (default none); `resultsFree` (default off); the `seed` (default none) | `plannedRounds`, the constraints, a `Randomizer` |
 | `SingleEliminationEngine` | `legsPerTie` (default 1), `reseedEachRound` (default off), `thirdPlace` (default off); in a re-seeded bracket also the standings rules, as for Swiss | `grandFinalReset`; the standings calculator of a bracket on a fixed path |
 | `DoubleEliminationEngine` | `legsPerTie` (default 1), `grandFinalReset` (default on) | The standings calculator; `reseedEachRound` and `thirdPlace`, which the engine refuses |
 
@@ -2805,9 +2937,11 @@ re-seeded orders the outcome and pairs nothing.
 **What it cannot cover.** A fingerprint describes what the library can
 describe, and these limits follow from that:
 
-- The constraints and the randomizer of a Swiss engine change pairings and
-  are not part of the fingerprint: a closure and a seed have no name.
-  Restore them with the state, as you do today.
+- The constraints and a `Randomizer` of a Swiss engine change pairings and
+  are not part of the fingerprint: a closure and the state of a
+  `Randomizer` have no name. Restore them with the state, as you do today.
+  A seed has one, and is part of it: give the engine a seed rather than a
+  `Randomizer` where the stamp is to cover the draw.
 - A `RankingStrategy` of your own is stated as "custom". The engine tells it
   from every `WinDrawLossRanking` scale and not from another strategy of
   your own. A subclass of `StandingsCalculator` is stated as "custom" too,
@@ -2831,14 +2965,32 @@ string that does not begin with it, and call
 All four engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
 `getOutcome()`) refuse a state stamped with another fingerprint, with an
 `InvalidConfigurationException`. Its message, and the list `differences` in
-its context, say where the two differ: the format, or each option with its
-value on either side. That text is for a person and may change; the context
+its context, say where the two differ: the format, each option with its
+value on either side, or, where the options agree, the version of the
+rules. That text is for a person and may change; the context
 also holds the two fingerprints as `recorded` and `engine`. To change the
 configuration on purpose in mid-stage, stamp the state again:
 `$state->withEngineFingerprint($newEngine->getFingerprint())`; passing
 `null` removes the stamp.
 
-The engines implement `Stage\FingerprintedEngine`. `getFingerprint()`
+**When you hold the history, not the state.** A state built with
+`StageState::fromHistory()` carries no stamp. Keep the fingerprint where
+you keep the stage (a column beside its configuration), written once when
+the stage starts, and stamp every state you build from the rows with it:
+`StageState::fromHistory(...)->withEngineFingerprint($storedFingerprint)`.
+The engine you build from your configuration on each request then refuses
+the state if your configuration, or a release you upgraded to, would pair
+it by other rules. The fingerprint stays an opaque string to compare: it
+is not a description to build an engine from, because the engine has parts
+it cannot describe (constraints, a ranking strategy or calculator of your
+own), and your configuration is where the engine is built from already.
+What the engine can check of the history itself it reports, and does not
+refuse: `getRecordedRounds()` shows, beside each recorded round, the round
+this engine would have paired there, so a round paired by other rules shows
+as manual. A round drawn by hand is allowed, which is why that is a report
+and the stamp is the refusal ([ADR 0015](adr/0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)).
+
+The library's engines implement `Stage\FingerprintedEngine`. `getFingerprint()`
 is not part of `StageEngineInterface`, so that an engine written against
 that interface keeps working; code that holds a `StageEngineInterface`
 tests for it before it stamps:
@@ -3244,11 +3396,11 @@ every bracket.
   That is with a bye worth a win, the default: the ranking strategy says
   what a bye is worth ([Byes in a table](#byes-in-a-table)), and with a
   bye worth nothing the entrants who sat out rank below the winners of
-  the round. Crediting a bye needs that value: a re-seeded bracket whose
-  field is not a power of two, which therefore has byes, is refused under
-  a ranking strategy that does not say what a bye is worth (it is no
-  `RankingStrategyWithByeValue`; reason `IncompatibleOptions`), from the
-  first call on, before a round is paired.
+  the round. Under a ranking strategy that does not say what a bye is
+  worth (it is no `RankingStrategyWithByeValue`) a bye is credited with
+  nothing, here and in the table of the outcome
+  ([Who won the bracket](#who-won-the-bracket)), and the entrant list
+  orders the survivors who are level.
 - `legsPerTie: 2` plays every tie over two mirrored legs (annotated with
   `tie_leg` metadata). Whoever wins more legs advances; when the legs are
   level, the aggregate is **yours** to resolve — away goals, extra time,
@@ -3298,7 +3450,11 @@ The table is ordered by the bracket first and by the records second:
   [third-place tie](#a-third-place-tie) puts the two of the semifinals in a
   tier each, so the places of that bracket are 1, 2, 3, 4, then four.
 - Inside a tier the standings calculator orders the entrants from their
-  records: ranking value, tiebreakers, score difference, scores-for.
+  records: ranking value, tiebreakers, score difference, scores-for. The
+  ranking value credits each bye of the bracket (below), and a
+  [tiebreaker between the tied participants](#between-the-tied-participants)
+  forms its tied sets inside the tier: an event against an entrant of
+  another tier counts in none of its values.
 - Where that leaves two of them level, their position in the entrant list
   decides, and `getTiedSets()` reports them. A tied set never crosses a
   tier.
@@ -3390,40 +3546,62 @@ Won the tie: Heidi
 Scores: 2 for, 2 against
 ```
 
-**A bye.** A bye is not an event, so it is no win in a record. A
-participant who has a bye and wins the bracket has the same points as the
-participant it beat in the final, who played a round more:
+**A bye.** A bye is not an event, so it is no win in a record: wins and
+losses count results, and `getByes()` counts the byes beside them. The
+ranking value credits each bye with what the ranking strategy says a bye
+is worth ([Byes in a table](#byes-in-a-table); a win, by default), once for
+each leg of a tie, as the ranking a re-seeded bracket folds its rounds
+from does. An entrant who had a bye is therefore not placed below an
+entrant of its tier who won a tie where it sat out. A bye is what the
+bracket view shows as one: a walkover (an opponent who withdrew) is none,
+and counts only where the application records an awarded result for it.
+Six entrants:
+Alice and Bob, in positions 1 and 2, have the byes of the first round, and
+Alice loses her semifinal:
 
 ```php
-$bob = $participants[1];
+[$alice, $bob, $carol] = $participants;
 
-// Three entrants: Heidi, in position 1, has the bye of the first round
-$byeState = StageState::start([$heidi, $alice, $bob]);
+$byeState = StageState::start(array_slice($participants, 0, 6));
 while (!$engine->isComplete($byeState)) {
     $pairing = $engine->pairNextRound($byeState);
     $byeState = $byeState->withRoundPaired($pairing);
+
+    // The first-named entrant wins every tie, except that Alice loses hers
     $byeState = $byeState->withAdditionalResults(array_map(
-        fn ($event) => new Result($event, $event->getParticipants()[0]),
+        function ($event) use ($alice) {
+            [$first, $second] = $event->getParticipants();
+
+            return new Result($event, $first->getId() === $alice->getId() ? $second : $first);
+        },
         $pairing->getEvents()
     ));
 }
 
 $byeOutcome = $engine->getOutcome($byeState);
+$byeTable = $byeOutcome->getStandings();
 
-foreach (array_slice($byeOutcome->getStandings()->getEntries(), 0, 2) as $entry) {
-    echo "{$entry->getParticipant()->getLabel()} ({$entry->getWins()}-{$entry->getLosses()})\n";
+foreach ($byeTable->getEntries() as $position => $entry) {
+    echo "{$entry->getParticipant()->getLabel()} ({$entry->getWins()}-{$entry->getLosses()}, "
+        . "{$entry->getByes()} bye): {$entry->getRankingValue()}, tier {$byeTable->getTiers()[$position]}\n";
 }
 echo 'Won the bracket: ' . MatchOutcomeSelector::winners()->select($byeOutcome)[0]->getLabel() . "\n";
 ```
 
 ```text
-Heidi (1-0)
-Alice (1-1)
-Won the bracket: Heidi
+Dave (3-0, 0 bye): 9, tier 0
+Bob (1-1, 1 bye): 6, tier 1
+Alice (0-1, 1 bye): 3, tier 2
+Carol (1-1, 0 bye): 3, tier 2
+Erin (0-1, 0 bye): 0, tier 3
+Frank (0-1, 0 bye): 0, tier 3
+Won the bracket: Dave
 ```
 
-Heidi and Alice both have three points from one win, and the bracket puts
-Heidi first.
+Alice and Carol went out in the semifinals. Alice's bye is worth the win
+Carol earned in the quarter-final, so the two are level on 3 points, and
+the entrant list puts Alice, in position 1, first. Bob is above them
+whatever the records say: the bracket placed him.
 
 Use `MatchOutcomeSelector` to read who advances from one knockout round,
 which the table of a whole bracket does not say, and the standings for the
@@ -4226,7 +4404,7 @@ Every later round follows from the round as recorded:
 
 | Engine | After a manual round |
 | --- | --- |
-| `SwissPairingEngine` | The next round is paired from the table of the results and avoids the pairs that were played. An engine that holds a `Randomizer` has no derivation to show (`getDerivation()` is null, `isManual()` false): what it drew at the time is not part of the state |
+| `SwissPairingEngine` | The next round is paired from the table of the results and avoids the pairs that were played. An engine that holds a `Randomizer` has no derivation to show (`getDerivation()` is null, `isManual()` false): what it drew at the time is not part of the state. A seeded engine has one: it draws each round from the seed and the round number |
 | `SingleEliminationEngine` | The entrants who advanced from the recorded ties are the next round. On a fixed path a tie stands where the earlier of its two entrants stood in the bracket; a re-seeded bracket folds them by the table as it always does. A last round recorded without its [third-place tie](#a-third-place-tie) decides places 1 and 2 only |
 | `DoubleEliminationEngine` | The same, stage by stage. The later stages take their entrants by place (which dropper meets which survivor), so a recorded stage must leave as many places as the stage has: one that leaves more or fewer entrants in the bracket is refused (`RecordedRoundMismatch`) |
 
@@ -4266,9 +4444,11 @@ What `isManual()` promises, and what it does not:
   with its options and its standings rules. A round paired by an engine
   with other options, or by an earlier release with another pairing order,
   is manual to this one.
-- **It has nothing to say where the engine draws.** A Swiss engine that
-  holds a `Randomizer` has no derivation, and neither has an engine whose
-  search finds no pairing for the round.
+- **It has nothing to say where the engine draws from a sequence.** A
+  Swiss engine that holds a `Randomizer` has no derivation, and neither has
+  an engine whose search finds no pairing for the round. A seeded Swiss
+  engine has one: it draws each round from the seed and the round number
+  alone (see [A seeded draw](#swiss-tournaments)).
 - **A round is read as recorded either way.** The flag changes nothing the
   engine does next.
 
@@ -4305,7 +4485,12 @@ echo $first->getLabel() . ' v ' . $second->getLabel() . "\n"; // Ada v Bo
 - **A tie that is not paired yet** gets no event. The entrant who advances
   is among the byes of the round the engine pairs, and so is the entrant
   who takes the third place from a third-place tie the other has left; a
-  round in which no tie is left to play takes no round number.
+  round in which no tie is left to play takes no round number. That
+  listing says only that the round has no event for it: the tie is
+  uncontested (a walkover), not a bye, and no table of the bracket and
+  no outcome counts it as one ([Byes in a table](#byes-in-a-table)).
+  Record an [awarded result](#awarded-results) for the tie where your
+  competition counts a walkover as a win.
 - **Results stand.** A tie with a complete result is decided by it,
   whoever withdraws afterwards: an entrant who won and then withdrew went
   on, and it is its next tie that is not played.
@@ -7357,13 +7542,14 @@ records with its reasons:
   stage state without its adjustments, and a level tie settled by a decider
   as one that nobody settled.
 
-`format_version` is not the `v2` inside an engine fingerprint
+`format_version` is not the `v1` or `v2` inside an engine fingerprint
 ([Recording Which Engine Pairs a State](#recording-which-engine-pairs-a-state))
 or the `v1` in front of an outcome fingerprint
-([Outcome Fingerprints](#outcome-fingerprints)). Those version the scheme
-each fingerprint is built by, and each changes without the other: 0.3.0
-moved the engine fingerprint scheme from `v1` to `v2`, and the stage state
-that holds a stamp is still format version 1. An outcome fingerprint does
+([Outcome Fingerprints](#outcome-fingerprints)). The first is the version
+of the rules an engine pairs a configuration by, the second the version of
+the scheme an outcome fingerprint is built by, and each changes without the
+form: 0.3.0 raised the version of the Swiss rules from `v1` to `v2`, and the
+stage state that holds a stamp is still format version 1. An outcome fingerprint does
 not cover `format_version`, so adding the key changed no fingerprint.
 
 ### Keys a Form Does Not Have
@@ -8192,9 +8378,14 @@ Three things to know beside that:
 - A pot draw takes its seed as an option and keeps no state between calls
   (see [The seed and determinism](#the-seed-and-determinism)). So does a
   pre-drawn Swiss schedule when its options have a seed
-  (`new SwissOptions(rounds: 3, seed: 2026)`): the scheduler builds a new
-  `Randomizer` from it on every call, and is refused a seed if it also
-  holds a `Randomizer` (see [Swiss Tournaments](#swiss-tournaments)).
+  (`new SwissOptions(rounds: 3, seed: 2026)`): the scheduler builds new
+  `Randomizer` objects from it on every call, and is refused a seed if it
+  also holds a `Randomizer` (see [Swiss Tournaments](#swiss-tournaments)).
+  And so does a `SwissPairingEngine` built with a seed
+  (`new SwissPairingEngine(seed: 2026)`): it builds the `Randomizer` of a
+  round from the seed and the round number on every call, so the same
+  state gives the same round, on one engine or on many, and is refused a
+  seed together with a `Randomizer`.
 
 ## Real-World Examples
 

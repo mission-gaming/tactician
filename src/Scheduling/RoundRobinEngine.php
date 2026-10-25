@@ -173,6 +173,8 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * Not part of it: the constraints, which change the fixtures and have
      * no name (keeping them the same is the caller's to do, as for the Swiss
      * engine), and the standings calculator, from which nothing is paired.
+     *
+     * The version of the rules is 1: the format is new in 0.3.0 (ADR 0015).
      */
     #[Override]
     public function getFingerprint(): string
@@ -180,7 +182,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
         $strategy = $this->options->strategy;
         $roleAssignment = $this->options->roleAssignment;
 
-        return EngineFingerprint::of('round-robin')
+        return EngineFingerprint::of('round-robin', 1)
             ->with('legs', $this->options->legs, 1)
             ->with('leg-strategy', match ($strategy::class) {
                 MirroredLegStrategy::class => 'mirrored',

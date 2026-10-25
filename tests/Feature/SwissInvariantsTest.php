@@ -98,12 +98,16 @@ function swissInvariantsRun(string $variant, int $size, int $rounds, int $seed, 
  * An engine that pairs as the real one does and then changes the round.
  *
  * @param Closure(RoundPairing, StageState): RoundPairing $tamper
+ *
+ * @throws InvalidConfigurationException Not thrown: the engine has no seed
  */
 function swissInvariantsTamperedEngine(int $rounds, Closure $tamper): SwissPairingEngine
 {
     return new readonly class ($rounds, $tamper) extends SwissPairingEngine {
         /**
          * @param Closure(RoundPairing, StageState): RoundPairing $tamper
+         *
+         * @throws InvalidConfigurationException Not thrown: the engine has no seed
          */
         public function __construct(int $rounds, private Closure $tamper)
         {

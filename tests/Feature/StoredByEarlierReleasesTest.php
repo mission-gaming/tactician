@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
@@ -14,8 +16,6 @@ use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
-use MissionGaming\Tactician\Stage\FingerprintedEngine;
-use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 
@@ -221,23 +221,23 @@ describe('every form as 0.2.3 wrote it', function (): void {
     });
 });
 
-// The format version and the fingerprint scheme are two versions. 0.3.0
-// changed the scheme (`tactician:v2:`) and left the stage state form at
-// version 1, so a state 0.2.3 stamped is read as it always was, stamp
-// included, and it is the engine that refuses the stamp until the
-// application has decided that the stage goes on (ADR 0005, "The
-// fingerprints are not format versions").
+// The format version and the version of an engine's rules are two
+// versions. 0.3.0 raised the version of the Swiss rules (`tactician:v2:swiss`)
+// and kept the stage state form at version 1, so a state 0.2.3 stamped is
+// read as it always was, stamp included, and it is the engine that refuses
+// the stamp until the application has decided that the stage goes on (ADR
+// 0005, "The fingerprints are not format versions"). A bracket on a fixed
+// path is paired as 0.2.3 paired it, so the version of its rules is the
+// one 0.2.3 wrote and its stamp is accepted (ADR 0015).
 describe('a stage state that 0.2.3 stamped', function (): void {
-    it('loads with its stamp, which the engine of this release refuses until it is stamped again', function (
-        string $name,
-        FingerprintedEngine&StageEngineInterface $engine
-    ): void {
-        $state = readStoredCase(formsWrittenByZeroTwoThree()[$name]);
+    it('loads with its stamp, which the Swiss engine of this release refuses until it is stamped again', function (): void {
+        $engine = new SwissPairingEngine();
+        $state = readStoredCase(formsWrittenByZeroTwoThree()['state swiss stamped']);
         assert($state instanceof StageState);
 
         $stamp = $state->getEngineFingerprint();
-        expect($stamp)->toStartWith('tactician:v1:')
-            ->and(str_replace('tactician:v1:', 'tactician:v2:', (string) $stamp))->toBe($engine->getFingerprint())
+        expect($stamp)->toBe('tactician:v1:swiss')
+            ->and($engine->getFingerprint())->toBe('tactician:v2:swiss')
             ->and($state->toArray()['format_version'])->toBe(1);
 
         try {
@@ -251,13 +251,76 @@ describe('a stage state that 0.2.3 stamped', function (): void {
         $stampedAgain = $state->withEngineFingerprint($engine->getFingerprint());
         expect($engine->isComplete($stampedAgain))->toBeBool()
             ->and($stampedAgain->toArray()['format_version'])->toBe(1);
-    })->with([
-        'Swiss' => ['state swiss stamped', new SwissPairingEngine()],
-        'single elimination over two legs' => [
-            'state single elim stamped two-legged',
-            new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
-        ],
-    ]);
+    });
+
+    it('loads with its stamp, which the engine of a bracket on a fixed path accepts as it is', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        $state = readStoredCase(formsWrittenByZeroTwoThree()['state single elim stamped two-legged']);
+        assert($state instanceof StageState);
+
+        expect($state->getEngineFingerprint())->toBe('tactician:v1:single-elimination;legs-per-tie=2')
+            ->and($engine->getFingerprint())->toBe($state->getEngineFingerprint())
+            ->and($engine->isComplete($state))->toBe($engine->isComplete($state->withEngineFingerprint(null)))
+            ->and($engine->getReadiness($state))->toEqual($engine->getReadiness($state->withEngineFingerprint(null)))
+            ->and($state->toArray()['format_version'])->toBe(1);
+
+        // Played on, as 0.2.3 would have played it: the first-named of each
+        // semifinal wins both legs, and the final is the final 0.2.3 paired
+        $played = $state->withAdditionalResults(array_map(
+            static function (Event $event): Result {
+                $first = $event->getParticipants()[0]->getId();
+                $winner = in_array($first, ['p1', 'p2'], true) ? $event->getParticipants()[0] : $event->getParticipants()[1];
+
+                return new Result($event, $winner);
+            },
+            $state->getEventsWithoutResult()
+        ));
+        $final = $engine->pairNextRound($played);
+
+        expect(array_map(
+            static fn(Event $event): string => implode(' v ', array_map(
+                static fn(Participant $participant): string => $participant->getId(),
+                $event->getParticipants()
+            )),
+            $final->getEvents()
+        ))->toBe(['p1 v p2', 'p2 v p1']);
+    });
+
+    // Written by the v0.2.3 tag (a replay of the tag in a process of its
+    // own; the fixture file above holds no such stage): a two-legged
+    // bracket of six whose entrant p6 won its first tie against p3 and then
+    // withdrew. 0.2.3 drew the semifinals again from the participants left
+    // and put p3 back, against p2, and that round was recorded with its
+    // results. This release keeps the stamp of the bracket (ADR 0015), so
+    // the state is accepted, and the redrawn round is what it reports.
+    it('accepts a stamped bracket with a round 0.2.3 redrew after a withdrawal, and reports the round as manual', function (): void {
+        $stored = <<<'JSON'
+            {"participants":[{"id":"p1","label":"Entrant 1","seed":null,"metadata":[]},{"id":"p2","label":"Entrant 2","seed":null,"metadata":[]},{"id":"p3","label":"Entrant 3","seed":null,"metadata":[]},{"id":"p4","label":"Entrant 4","seed":null,"metadata":[]},{"id":"p5","label":"Entrant 5","seed":null,"metadata":[]},{"id":"p6","label":"Entrant 6","seed":null,"metadata":[]}],"active":["p1","p2","p3","p4","p5"],"rounds":[{"round":1,"label":"quarterfinal","events":[{"participants":["p4","p5"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":1}},{"participants":["p5","p4"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":2}},{"participants":["p3","p6"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":1}},{"participants":["p6","p3"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":2}}],"byes":["p1","p2"]},{"round":2,"label":"semifinal","events":[{"participants":["p1","p5"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":1}},{"participants":["p5","p1"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":2}},{"participants":["p2","p3"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":1}},{"participants":["p3","p2"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":2}}],"byes":[]}],"results":[{"event":{"participants":["p4","p5"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":1}},"winner":"p5","scores":{"p5":2,"p4":0},"metadata":[]},{"event":{"participants":["p5","p4"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":2}},"winner":"p5","scores":{"p5":2,"p4":0},"metadata":[]},{"event":{"participants":["p3","p6"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":1}},"winner":"p6","scores":{"p6":2,"p3":0},"metadata":[]},{"event":{"participants":["p6","p3"],"round":{"number":1,"metadata":{"label":"quarterfinal"}},"metadata":{"tie_leg":2}},"winner":"p6","scores":{"p6":2,"p3":0},"metadata":[]},{"event":{"participants":["p1","p5"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":1}},"winner":"p5","scores":{"p5":2,"p1":0},"metadata":[]},{"event":{"participants":["p5","p1"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":2}},"winner":"p5","scores":{"p5":2,"p1":0},"metadata":[]},{"event":{"participants":["p2","p3"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":1}},"winner":"p3","scores":{"p3":2,"p2":0},"metadata":[]},{"event":{"participants":["p3","p2"],"round":{"number":2,"metadata":{"label":"semifinal"}},"metadata":{"tie_leg":2}},"winner":"p3","scores":{"p3":2,"p2":0},"metadata":[]}],"engine_fingerprint":"tactician:v1:single-elimination;legs-per-tie=2"}
+            JSON;
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        $state = StageState::fromJson($stored);
+
+        expect($state->getEngineFingerprint())->toBe($engine->getFingerprint());
+
+        $recorded = $engine->getRecordedRounds($state);
+        expect($recorded[1]->getRoundNumber())->toBe(2)
+            ->and($recorded[1]->isManual())->toBeTrue();
+
+        // The recorded semifinals stand as recorded: p3 beat p2, so the
+        // final is p5 against p3, where this release would have given p2
+        // the tie p6 left
+        expect(array_map(
+            static fn(Event $event): string => implode(' v ', array_map(
+                static fn(Participant $participant): string => $participant->getId(),
+                $event->getParticipants()
+            )),
+            $engine->pairNextRound($state)->getEvents()
+        ))->toBe(['p5 v p3', 'p3 v p5'])
+            ->and(array_map(
+                static fn(Participant $participant): string => $participant->getId(),
+                $recorded[1]->getDerivation()?->getByes() ?? []
+            ))->toBe(['p2']);
+    });
 
     it('is every stored case with a stamp of the library', function (): void {
         $stamped = [];

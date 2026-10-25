@@ -15,6 +15,8 @@ use MissionGaming\Tactician\Exceptions\RejectedDecisionReason;
 use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\PairKey;
+use ReflectionException;
+use ReflectionProperty;
 
 /**
  * Calculates an ordered standings table from recorded results.
@@ -336,11 +338,27 @@ readonly class StandingsCalculator
      * decision orders entries that are level once everything here is
      * counted, so it is applied to the table this returns, last.
      *
+     * Given tiers, the table has them (Standings::getTiers()): a tier is a
+     * criterion that orders the table before any figure, as the round an
+     * entrant went out in orders the table of a bracket. The entries are in
+     * tier order, the figures order them inside a tier, and nothing moves
+     * an entry from one tier to another. A tied set of a tiebreaker between
+     * the tied participants is formed inside a tier: participants of
+     * different tiers are never one set, so an event against a participant
+     * of another tier counts in no value of that kind, also where the two
+     * are level on every figure. A participant the tiers do not name is in
+     * a tier after every tier given, with the others they do not name.
+     * Without tiers the table is ordered by its figures alone.
+     *
      * A subclass is always calculated the second way, through its own
      * calculate(), withByesCredited() and withAdjustments(): one that
      * orders a table by rules of its own is asked as it was before this
      * method existed, and with a tiebreaker of one of the two kinds it is
-     * refused the byes and adjustments those methods refuse.
+     * refused the byes and adjustments those methods refuse. It is given
+     * its tiers after calculate() (an entry keeps the order calculate()
+     * gave it inside its tier), and is refused them when it has a
+     * tiebreaker between the tied participants, whose sets its calculate()
+     * forms over the whole table.
      *
      * @param array<Participant> $participants Everyone the table lists, in any order
      * @param array<Result> $results The recorded results, in any order
@@ -348,30 +366,42 @@ readonly class StandingsCalculator
      *                                     entry in the table, and a count below 1, is ignored
      * @param array<Adjustment> $adjustments Every adjustment of the participants of the table
      * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
-     *                           the legs of a tie where a bye stands for a tie of several legs
+     *                           the legs of a tie where a bye stands for a tie of several legs. 0
+     *                           counts each bye (StandingEntry::getByes()) and credits it with
+     *                           nothing, under any ranking strategy: a bracket does so under one
+     *                           that does not say what a bye is worth
+     * @param array<int|string, int> $tiers The tier of each participant by ID, lower first; an ID
+     *                                      with no entry in the table is ignored. Empty: a table
+     *                                      without tiers
      *
      * @throws InvalidInputException When a result's event has a participant who is not among
      *                               the given ones, two results are of one event, an
      *                               adjustment names a participant that is not among the
      *                               given ones, or the amounts for one participant add up to
      *                               more than a float holds
-     * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
-     *                                       does not say what a bye is worth (it is no
-     *                                       RankingStrategyWithByeValue; reason
-     *                                       `IncompatibleOptions`)
+     * @throws InvalidConfigurationException When there is a bye to credit with a value
+     *                                       ($creditsPerBye above 0) and the ranking strategy does
+     *                                       not say what a bye is worth (it is no
+     *                                       RankingStrategyWithByeValue), or the calculator is a
+     *                                       subclass with a tiebreaker between the tied
+     *                                       participants and is given tiers (reason
+     *                                       `IncompatibleOptions` for both)
      */
     public function calculateWith(
         array $participants,
         array $results,
         array $byes = [],
         array $adjustments = [],
-        int $creditsPerBye = 1
+        int $creditsPerBye = 1,
+        array $tiers = []
     ): Standings {
         // A subclass is asked through the three methods it may override,
         // and nothing of this class is read before they are
         if (static::class !== self::class || !$this->isCalculatedInOneGo(true)) {
+            $table = $this->calculate($participants, $results);
+
             return $this->withAdjustments(
-                $this->withByesCredited($this->calculate($participants, $results), $byes, $creditsPerBye),
+                $this->withByesCredited($tiers === [] ? $table : $this->inTiers($table, $tiers), $byes, $creditsPerBye),
                 $adjustments
             );
         }
@@ -396,7 +426,96 @@ readonly class StandingsCalculator
             }
         }
 
-        return $this->inOrderOfTheChain($participantsById, $results, $baseEntries, $creditedEntries, $entries);
+        return $this->inOrderOfTheChain(
+            $participantsById,
+            $results,
+            $baseEntries,
+            $creditedEntries,
+            $entries,
+            $tiers === [] ? [] : self::tierOfEach(array_keys($participantsById), $tiers)
+        );
+    }
+
+    /**
+     * The tier of each of the given participants: the one given, and for
+     * a participant given none, the tier after the last given.
+     *
+     * @param array<int|string> $ids
+     * @param array<int|string, int> $tiers
+     *
+     * @return array<string, int> By participant ID
+     */
+    private static function tierOfEach(array $ids, array $tiers): array
+    {
+        $named = [];
+        foreach ($ids as $id) {
+            if (isset($tiers[$id])) {
+                $named[(string) $id] = $tiers[$id];
+            }
+        }
+
+        $unnamed = $named === [] ? 0 : max($named) + 1;
+        $tierOf = [];
+        foreach ($ids as $id) {
+            $tierOf[(string) $id] = $named[(string) $id] ?? $unnamed;
+        }
+
+        return $tierOf;
+    }
+
+    /**
+     * Whether the tiebreakers of a calculator can be read: a subclass whose
+     * constructor does not call the one it inherits has none set, and
+     * reading them would be an Error. Such a calculator orders its tables
+     * by its own calculate(), and has no tiebreaker of any kind to refuse.
+     */
+    private static function hasTiebreakersToRead(self $calculator): bool
+    {
+        try {
+            return (new ReflectionProperty(self::class, 'tiebreakers'))->isInitialized($calculator);
+        } catch (ReflectionException) {
+            // Not thrown: the class declares the property
+            return true;
+        }
+    }
+
+    /**
+     * The given table with tiers: each entry in its tier, and in the order
+     * the table has it inside the tier (see calculateWith()).
+     *
+     * @param array<int|string, int> $tiers By participant ID
+     *
+     * @throws InvalidConfigurationException When a tiebreaker of the calculator is computed between
+     *                                       the tied participants (reason `IncompatibleOptions`)
+     */
+    private function inTiers(Standings $table, array $tiers): Standings
+    {
+        if (self::hasTiebreakersToRead($this) && $this->isCalculatedInOneGo(false)) {
+            throw new InvalidConfigurationException(
+                'A subclass of StandingsCalculator calculates a table through its own calculate(), which forms the tied'
+                    . ' sets of a tiebreaker between the tied participants over the whole table and not inside a tier.'
+                    . ' Calculate a table with tiers with StandingsCalculator itself, or without a tiebreaker of that kind',
+                ['calculator' => static::class, 'tiebreakers' => $this->tiebreakerNames()],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+
+        $entries = array_values($table->getEntries());
+        $tierOf = self::tierOfEach(
+            array_map(static fn(StandingEntry $entry): string => $entry->getParticipant()->getId(), $entries),
+            $tiers
+        );
+
+        $rows = [];
+        foreach ($entries as $index => $entry) {
+            $rows[] = [$tierOf[$entry->getParticipant()->getId()], $index, $entry];
+        }
+        usort($rows, static fn(array $first, array $second): int => [$first[0], $first[1]] <=> [$second[0], $second[1]]);
+
+        return new Standings(
+            array_map(static fn(array $row): StandingEntry => $row[2], $rows),
+            array_map(static fn(array $row): int => $row[0], $rows)
+        );
     }
 
     /**
@@ -434,6 +553,8 @@ readonly class StandingsCalculator
      * @param array<string, StandingEntry> $baseEntries The entries of the results alone
      * @param array<string, StandingEntry> $creditedEntries Those with the byes credited
      * @param array<string, StandingEntry> $entries Those with the adjustments applied as well
+     * @param array<string, int> $tierOf The tier of every participant by ID; empty for a table
+     *                                   without tiers
      *
      * @throws InvalidInputException Not thrown here: the results were checked against the
      *                               participants before
@@ -443,7 +564,8 @@ readonly class StandingsCalculator
         array $results,
         array $baseEntries,
         array $creditedEntries,
-        array $entries
+        array $entries,
+        array $tierOf = []
     ): Standings {
         if ($this->tiebreakers !== []) {
             // What a tiebreaker between the tied participants only is handed
@@ -457,7 +579,11 @@ readonly class StandingsCalculator
             /** @var array<string, array<string, float>> $values */
             $values = [];
             foreach ($entries as $id => $entry) {
-                $figures[$id] = [$entry->getRankingValue()];
+                // The tier is the first figure a tied set is read from:
+                // participants of two tiers are never one set
+                $figures[$id] = $tierOf === []
+                    ? [$entry->getRankingValue()]
+                    : [(float) $tierOf[$id], $entry->getRankingValue()];
                 $values[$id] = [];
             }
 
@@ -496,7 +622,12 @@ readonly class StandingsCalculator
         $tiebreakerNames = $this->tiebreakerNames();
 
         $ordered = array_values($entries);
-        usort($ordered, static function (StandingEntry $a, StandingEntry $b) use ($tiebreakerNames): int {
+        usort($ordered, static function (StandingEntry $a, StandingEntry $b) use ($tiebreakerNames, $tierOf): int {
+            $comparison = ($tierOf[$a->getParticipant()->getId()] ?? 0) <=> ($tierOf[$b->getParticipant()->getId()] ?? 0);
+            if ($comparison !== 0) {
+                return $comparison;
+            }
+
             $comparison = EntryOrder::compareFigures($a, $b, $tiebreakerNames);
             if ($comparison !== 0) {
                 return $comparison;
@@ -520,7 +651,12 @@ readonly class StandingsCalculator
             return EntryOrder::compareIds($a->getParticipant()->getId(), $b->getParticipant()->getId());
         });
 
-        return new Standings($ordered);
+        return new Standings(
+            $ordered,
+            $tierOf === []
+                ? []
+                : array_map(static fn(StandingEntry $entry): int => $tierOf[$entry->getParticipant()->getId()], $ordered)
+        );
     }
 
     /**
@@ -811,10 +947,14 @@ readonly class StandingsCalculator
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
      *                                     entry in the table is ignored
      * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
-     *                           the legs of a tie where a bye stands for a tie of several legs
+     *                           the legs of a tie where a bye stands for a tie of several legs. 0
+     *                           counts each bye (StandingEntry::getByes()) and credits it with
+     *                           nothing, under any ranking strategy: a bracket does so under one
+     *                           that does not say what a bye is worth
      *
-     * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
-     *                                       does not say what a bye is worth (it is no
+     * @throws InvalidConfigurationException When there is a bye to credit with a value
+     *                                       ($creditsPerBye above 0) and the ranking strategy does
+     *                                       not say what a bye is worth (it is no
      *                                       RankingStrategyWithByeValue), or a tiebreaker of the
      *                                       calculator reads byes or is computed between the
      *                                       tied participants (reason `IncompatibleOptions` for
@@ -858,11 +998,19 @@ readonly class StandingsCalculator
      * The entry with the given number of byes more, each credited with
      * what the ranking strategy says a bye is worth.
      *
-     * @throws InvalidConfigurationException When the ranking strategy does not say what a bye is
-     *                                       worth (reason `IncompatibleOptions`)
+     * Credited no times, a bye is counted and adds nothing, and the
+     * ranking strategy is not read.
+     *
+     * @throws InvalidConfigurationException When the bye is credited at least once and the ranking
+     *                                       strategy does not say what a bye is worth (reason
+     *                                       `IncompatibleOptions`)
      */
     private function creditByes(StandingEntry $entry, int $count, int $creditsPerBye): StandingEntry
     {
+        if ($creditsPerBye < 1) {
+            return $entry->withByes($entry->getByes() + $count, $entry->getEarnedRankingValue());
+        }
+
         if (!$this->rankingStrategy instanceof RankingStrategyWithByeValue) {
             throw new InvalidConfigurationException(
                 'Crediting a bye requires a ranking strategy that says what a bye is worth (RankingStrategyWithByeValue);'

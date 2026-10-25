@@ -289,10 +289,10 @@ R3 [losers round 3]: ospreys-swifts
   Where it stands: Ospreys through
 
 == Final standings ==
-1. ospreys played=5 wins=4 draws=0 losses=1 value=12 for=0 against=0
-2. harriers played=4 wins=2 draws=0 losses=2 value=6 for=0 against=0
-3. kestrels played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
-4. swifts played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+1. ospreys played=5 wins=4 draws=0 losses=1 value=18 for=0 against=0
+2. harriers played=4 wins=2 draws=0 losses=2 value=9 for=0 against=0
+3. kestrels played=3 wins=1 draws=0 losses=2 value=6 for=0 against=0
+4. swifts played=3 wins=1 draws=0 losses=2 value=6 for=0 against=0
 5. merlins played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
 
 == Re-seeded, before the first round ==

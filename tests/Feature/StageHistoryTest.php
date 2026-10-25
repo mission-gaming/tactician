@@ -44,6 +44,8 @@ use Random\Randomizer;
 // 3. A recorded round the engine would have paired otherwise is accepted
 //    and reported as manual; a history that breaks a hard rule is refused
 //    with a reason.
+// 4. A seeded Swiss engine draws each round from the seed and the round
+//    number (tests/Feature/SwissSeededRoundsTest.php says more).
 // 5. A withdrawal from a live bracket sends the opponent on without an
 //    event, and draws nothing again.
 // 6. The next round of an unfinished round is refused, with the events that
@@ -82,6 +84,8 @@ function historyEngines(): array
 {
     return [
         'Swiss' => new SwissPairingEngine(plannedRounds: 3),
+        // Rule 4: each round drawn from the seed and its number alone
+        'Swiss, seeded' => new SwissPairingEngine(plannedRounds: 3, seed: 57),
         'single elimination' => new SingleEliminationEngine(),
         'single elimination over two legs' => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
         'single elimination, re-seeded' => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
@@ -1677,7 +1681,10 @@ describe('a withdrawal from a live bracket', function (): void {
         expect($legs)->toHaveCount(2)
             ->and($reading[1])->toBe($reading[0])
             ->and($reading[0]['complete'])->toBeTrue()
-            ->and($reading[0]['standings'][0])->toBe(['h1 0', 'h2 0', 'h3 0']);
+            // h1 went on three times without a tie (its bye, the winners
+            // final and the grand final, which had nobody to meet it), each
+            // credited as a win of a two-legged tie: 3 x 2 x 3 points
+            ->and($reading[0]['standings'][0])->toBe(['h1 18', 'h2 0', 'h3 0']);
     });
 
     // A state stored before the entrant list was kept (0.2.x, and 0.3.0
