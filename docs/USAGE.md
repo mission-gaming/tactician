@@ -69,7 +69,7 @@ anything else that competes.
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
 | **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
 | **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
-| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`, `BracketQualifiersSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
 | **Selection yield** | How many participants a progression selector hands on, as the selector states it before any outcome exists (`ProgressionSelector::getYield()`, a `SelectionYield`): a fixed count, a count per pool, a count per pool plus a count across the pools, the winners or the losers of the last round of the stage before, or a number only the outcome gives. `CompositionValidator` counts a chain with it. See [Multi-Stage Tournaments](#ahead-of-time-composition-validation). |
 | **Best of a rank** | The best few of the entrants that hold one rank in their pools, compared with each other across the pools and listed best first (`BestOfRankSelector`): the two best of those placed third. See [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
 | **Qualifiers placed for a bracket** | The selected ranks of every pool and the best few of a lower rank, in an order in which no two entrants of one pool meet in the first round of a bracket (`BracketQualifiersSelector`). See [Qualifiers placed for a bracket](#qualifiers-placed-for-a-bracket). |
@@ -7318,7 +7318,7 @@ records with its reasons:
 - **The key is written once to an array, at its top.** The participants and
   events inside a schedule, the round inside an event, the rounds,
   results and adjustments inside a stage state, the award and the decider
-  inside a result, the decisions inside a rank selector and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
+  inside a result, the decisions inside a rank selector, the two selections inside a bracket qualifiers selector and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
   A part serialized by itself (`$participant->toArray()`) is the top of its
   own array and has the key.
 - **An array without the key is version 1.** Version 1 is the form 0.2.x

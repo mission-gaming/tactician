@@ -33,8 +33,8 @@ of that form. `toJson()` and `jsonSerialize()` write the same array.
 **One version to an array.** A form held inside another is written without
 the key: the participants and events of a schedule, the round of an event,
 the rounds, results and adjustments of a stage state, the award and the
-decider of a result, the decisions of a rank selector, the records of a
-repack outcome.
+decider of a result, the decisions of a rank selector, the two selections
+of a bracket qualifiers selector, the records of a repack outcome.
 The array that is stored states one version, at its top, and what it holds
 is read under that version. A part serialized by itself, with its own
 `toArray()`, is the top of its own array and carries the key. A reader
