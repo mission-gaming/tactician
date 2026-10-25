@@ -613,6 +613,37 @@ describe('a withdrawal from a league', function (): void {
         expect(leagueEvents($engine->pairNextRound($state)->getEvents()))
             ->toBe(leagueEvents(leagueSchedule($remaining, null, null, null)->getEventsByRound()[1]));
     });
+
+    // An adjustment made before the draw (a deduction carried over from a
+    // season before, say) to an entrant who then withdraws before the first
+    // round: the participant is out of the draw, and the adjustment is still
+    // recorded on the state. The league is drawn from those who remain, and
+    // the table shows the adjustment as every engine's table does, after the
+    // entrants where results do not separate them; so does the state stored
+    // and read back. (A history cannot hold such an adjustment:
+    // fromHistory() refuses one for a participant out of the draw.)
+    it('draws the league from those who remain when an entrant given an adjustment withdraws before the first round', function (): void {
+        $engine = new RoundRobinEngine();
+        [, $p2] = $field = leagueField(5);
+        $remaining = array_values(array_filter($field, static fn(Participant $entrant): bool => $entrant !== $p2));
+        $draw = leagueSchedule($remaining, null, null, null)->getEventsByRound();
+
+        $byVerbs = StageState::start($field)->withAdjustment(new Adjustment('p2', -3.0))->withoutParticipant($p2);
+        $first = $engine->pairNextRound($byVerbs);
+        $byVerbs = $byVerbs->withRoundPlayed($first, array_map(static fn(Event $event): Result => new Result($event), $first->getEvents()));
+
+        foreach ([$byVerbs, StageState::fromJson($byVerbs->toJson())] as $state) {
+            $entries = $engine->getStandings($state)->getEntries();
+
+            expect(leagueEvents($first->getEvents()))->toBe(leagueEvents($draw[1]))
+                ->and(leagueEvents($engine->pairNextRound($state)->getEvents()))->toBe(leagueEvents($draw[2]))
+                ->and(leagueIds($state->getEntrants()))->toBe(leagueIds($remaining))
+                ->and($engine->getRecordedRounds($state)[0]->isManual())->toBeFalse()
+                ->and($entries)->toHaveCount(5)
+                ->and($entries[4]->getParticipant()->getId())->toBe('p2')
+                ->and($entries[4]->getRankingValue())->toBe(-3.0);
+        }
+    });
 });
 
 describe('a league that plays on while a fixture is postponed', function (): void {

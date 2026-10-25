@@ -29,6 +29,7 @@ use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use Override;
@@ -427,8 +428,10 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * recorded byes and the adjustments
      * (StandingsCalculator::calculateWith()), every entrant in it, the
      * withdrawn included, and entries that results do not separate in the
-     * order of the entrant list. An event without a result counts for
-     * nobody.
+     * order of the entrant list. A participant given an adjustment who then
+     * withdrew before the draw is in no round and still has its adjustment:
+     * it is in the table too, after the entrants where results are level.
+     * An event without a result counts for nobody.
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
      *                                       fingerprint, names a participant outside its entrant
@@ -452,11 +455,43 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      */
     private function table(StageState $state): Standings
     {
-        $field = $this->field($state);
+        $listed = $this->tableList($state);
 
         return $this->standingsCalculator
-            ->calculateWith($field, $state->getResults(), $state->getByeCounts(), $state->getAdjustments())
-            ->withTiedSetsOrderedBy($field);
+            ->calculateWith($listed, $state->getResults(), $state->getByeCounts(), $state->getAdjustments())
+            ->withTiedSetsOrderedBy($listed);
+    }
+
+    /**
+     * The participants of the table, in the order that decides where
+     * results do not: the entrant list, then every other participant the
+     * state has seen, in the order of their IDs (the total order the
+     * standings calculator falls back on). The only such participant is
+     * one given an adjustment who withdrew before the draw: it is in no
+     * round, and its adjustment is in the table, as in every engine's.
+     *
+     * @return list<Participant>
+     *
+     * @throws InvalidConfigurationException For every case field() names
+     */
+    private function tableList(StageState $state): array
+    {
+        $field = $this->field($state);
+        $listed = [];
+        foreach ($field as $entrant) {
+            $listed[$entrant->getId()] = true;
+        }
+
+        $others = array_values(array_filter(
+            $state->getAllSeenParticipants(),
+            static fn(Participant $participant): bool => !isset($listed[$participant->getId()])
+        ));
+        usort(
+            $others,
+            static fn(Participant $first, Participant $second): int => EntryOrder::compareIds($first->getId(), $second->getId())
+        );
+
+        return [...$field, ...$others];
     }
 
     /**
@@ -525,17 +560,20 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
     /**
      * The entrant list the league is drawn from: StageState::getEntrants().
      *
-     * A state that names a participant outside that list cannot say where
-     * the participant was drawn, and the schedule could not be drawn again
-     * as it was: a round recorded with a participant who is no entrant, or
-     * data stored before the entrant list was kept (0.2.x) in which a
-     * participant has withdrawn. It is refused, and so is a state with a
-     * recorded event that does not have two participants.
+     * A state whose rounds or results name a participant outside that list
+     * cannot say where the participant was drawn, and the schedule could
+     * not be drawn again as it was: a round recorded with a participant who
+     * is no entrant, or data stored before the entrant list was kept (0.2.x)
+     * in which a participant has withdrawn. It is refused, and so is a state
+     * with a recorded event that does not have two participants. A
+     * participant named by an adjustment alone, who withdrew before the
+     * draw, was drawn nowhere and is not refused (see tableList()).
      *
      * @return list<Participant>
      *
-     * @throws InvalidConfigurationException When the state names a participant that is not in the list,
-     *                                       or holds an event of other than two participants
+     * @throws InvalidConfigurationException When a round or a result names a participant that is not
+     *                                       in the list, or the state holds an event of other than two
+     *                                       participants
      */
     private function field(StageState $state): array
     {
@@ -545,13 +583,23 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
             $listed[$entrant->getId()] = true;
         }
 
-        foreach ($state->getAllSeenParticipants() as $seen) {
-            if (!isset($listed[$seen->getId()])) {
+        $named = [];
+        foreach ($state->getRoundsPlayed() as $pairing) {
+            foreach ($pairing->getEvents() as $event) {
+                $named[] = $event->getParticipants();
+            }
+            $named[] = $pairing->getByes();
+        }
+        foreach ($state->getResults() as $result) {
+            $named[] = $result->getEvent()->getParticipants();
+        }
+        foreach (array_merge(...$named) as $participant) {
+            if (!isset($listed[$participant->getId()])) {
                 throw new InvalidConfigurationException(
-                    "The stage names participant {$seen->getId()}, who is not in its entrant list: the league cannot be drawn"
-                        . ' again from the list it was drawn from. Build the state with every entrant, the withdrawn'
+                    "The stage names participant {$participant->getId()}, who is not in its entrant list: the league cannot be"
+                        . ' drawn again from the list it was drawn from. Build the state with every entrant, the withdrawn'
                         . ' included (StageState::fromHistory())',
-                    ['participant' => $seen->getId()],
+                    ['participant' => $participant->getId()],
                     reason: InvalidConfigurationReason::RecordedRoundMismatch
                 );
             }
