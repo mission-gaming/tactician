@@ -27,19 +27,30 @@ namespace MissionGaming\Tactician\Stage;
  *   and agree on every option that shapes which rounds the format has or
  *   how they are paired. Nothing else is part of it.
  * - An option at its default value is left out. That is the rule by
- *   which an option is added within a scheme: an engine that gains an
+ *   which an option is added: an engine that gains an
  *   option keeps the fingerprint of every configuration that does not use
  *   the option, a state stamped before the option existed is still
  *   accepted, and the default of an option that is part of a fingerprint
  *   is not changed.
- * - It follows the rule for experimental API, and nothing more. A patch
- *   release keeps the fingerprint of every configuration, because states
- *   are stored with it; like any output, one that was itself wrong may be
- *   corrected, as an "Output change (fix)" of the changelog. A 0.x minor
- *   release may change the scheme; the changelog then has a migration
- *   note saying what a stored stamp is replaced with. The string states
- *   the version of its scheme (`tactician:v2:`), so that a later scheme
- *   can be told apart.
+ * - A patch release keeps the fingerprint of every configuration, because
+ *   states are stored with it; like any output, one that was itself wrong
+ *   may be corrected, as an "Output change (fix)" of the changelog.
+ * - It states the version of the rules that pair its configuration. A
+ *   minor release that pairs a configuration differently from the same
+ *   recorded state raises that version for that configuration and for no
+ *   other, with a migration note in the changelog; the fingerprint of every
+ *   other configuration stays as it was, so a change to one engine does not
+ *   invalidate the stamps of the others (ADR 0015). In 0.3.0 Swiss and a
+ *   re-seeded single elimination bracket are at version 2, a bracket on a
+ *   fixed path and a double elimination bracket at 1, the strings 0.2.x
+ *   wrote for them.
+ * - It describes, it does not rebuild: it is not a description to build an
+ *   engine from, and an engine built from the application's own
+ *   configuration compares its fingerprint with the stamp. A state built
+ *   from an application's rows (StageState::fromHistory()) carries no
+ *   stamp; stamp it with the fingerprint the application keeps beside the
+ *   stage. What an engine can check of a history itself it reports
+ *   (HistoryReadingEngine::getRecordedRounds()) and does not refuse.
  *
  * Fingerprints that begin with `tactician:` are the library's. Give an
  * engine of your own a string that does not.

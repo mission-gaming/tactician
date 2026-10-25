@@ -449,7 +449,12 @@ describe('Golden baseline', function (): void {
             $bySeed[$seed] = implode("\n", $sections["{$field} {$seed}"]);
         }
 
-        expect(array_unique($bySeed))->toHaveCount(4);
+        foreach (['seed option 1', 'seed option 42', 'seed option 1337'] as $seed) {
+            expect($sections)->toHaveKey("{$field} {$seed}");
+            $bySeed[$seed] = implode("\n", $sections["{$field} {$seed}"]);
+        }
+
+        expect(array_unique($bySeed))->toHaveCount(7);
     })->with(['n=8 rounds=3', 'n=9 rounds=4']);
 
     // Read from the stored file alone: the sections are there, each has the

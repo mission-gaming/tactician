@@ -155,9 +155,11 @@ the last one, which is about the library as a whole.
   a freshly seeded one gives the same output for the same input. Nothing in
   the library makes an unseeded one. A scheduler that holds a randomizer draws
   from it on every call, so its second call continues the sequence and returns
-  a different schedule. A pot draw, a pre-drawn Swiss schedule and the
-  shuffled leg strategy also take an integer seed, which is plain data and
-  gives the same output on every call.
+  a different schedule. A pot draw, a pre-drawn Swiss schedule, the Swiss
+  engine and the shuffled leg strategy also take an integer seed, which is
+  plain data and gives the same output on every call; the Swiss engine draws
+  each round from the seed and the round number, so a stage rebuilt from
+  stored rows pairs its next round as the stage played round by round.
   [Deterministic randomization](docs/USAGE.md#deterministic-randomization)
 - **Serialization**: `Schedule`, `StageState` and `ScheduledSchedule`
   round-trip JSON, and the value objects convert to and from arrays.

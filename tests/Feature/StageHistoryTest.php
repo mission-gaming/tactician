@@ -42,6 +42,8 @@ use Random\Randomizer;
 // 3. A recorded round the engine would have paired otherwise is accepted
 //    and reported as manual; a history that breaks a hard rule is refused
 //    with a reason.
+// 4. A seeded Swiss engine draws each round from the seed and the round
+//    number (tests/Feature/SwissSeededRoundsTest.php says more).
 // 5. A withdrawal from a live bracket sends the opponent on without an
 //    event, and draws nothing again.
 // 6. The next round of an unfinished round is refused, with the events that
@@ -80,6 +82,8 @@ function historyEngines(): array
 {
     return [
         'Swiss' => new SwissPairingEngine(plannedRounds: 3),
+        // Rule 4: each round drawn from the seed and its number alone
+        'Swiss, seeded' => new SwissPairingEngine(plannedRounds: 3, seed: 57),
         'single elimination' => new SingleEliminationEngine(),
         'single elimination over two legs' => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
         'single elimination, re-seeded' => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
