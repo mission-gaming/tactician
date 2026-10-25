@@ -21,9 +21,12 @@ use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\TieResolution;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\EntryOrder;
-use MissionGaming\Tactician\Standings\StandingEntry;
+use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\TiedParticipantsTiebreaker;
+use ReflectionException;
+use ReflectionProperty;
 
 /**
  * Shared bracket mechanics for the elimination presets: positional fold
@@ -283,6 +286,99 @@ trait EliminationBracketSupport
     }
 
     /**
+     * How many times a table of the bracket credits each bye with the
+     * value of a bye: once for each leg of the tie it stands for, where
+     * the ranking strategy says what a bye is worth
+     * (RankingStrategyWithByeValue), and no times where it does not, so
+     * that the bye is counted (StandingEntry::getByes()) and adds nothing
+     * (StandingsCalculator::calculateWith()). Every table of a bracket is
+     * calculated with the same number: the ranking a re-seeded round is
+     * folded from and the placement table
+     * (docs/adr/0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md).
+     *
+     * A subclass of the calculator whose constructor does not call the one
+     * it inherits has no ranking strategy set, and so none that says what
+     * a bye is worth: nothing is read from it.
+     */
+    private function creditsPerBye(StandingsCalculator $calculator, int $legsPerTie): int
+    {
+        try {
+            if (!(new ReflectionProperty(StandingsCalculator::class, 'rankingStrategy'))->isInitialized($calculator)) {
+                return 0;
+            }
+        } catch (ReflectionException) {
+            // Not thrown: the class declares the property
+        }
+
+        return $calculator->getRankingStrategy() instanceof RankingStrategyWithByeValue ? $legsPerTie : 0;
+    }
+
+    /**
+     * The byes of the bracket by participant ID, for its outcome
+     * (StageOutcome::getByes()): the nodes of the bracket view with the
+     * status BracketNodeStatus::Bye, which are the byes its table counts.
+     * They are not read from the byes the recorded rounds list, which
+     * also list an entrant whose opponent withdrew (a walkover) and leave
+     * out a stage that took no round number.
+     *
+     * @return array<string, int>
+     */
+    private function byeCountsOf(BracketReading $reading): array
+    {
+        $counts = [];
+        foreach ($reading->byes as $id => $count) {
+            $counts[(string) $id] = $count;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Refuse a calculator that cannot form the tied sets of the table of
+     * the bracket.
+     *
+     * The table of every bracket has tiers, and a tiebreaker between the
+     * tied participants forms its tied sets inside a tier
+     * (StandingsCalculator::calculateWith()). A subclass of the calculator
+     * forms them over the whole table in its own calculate(), and the
+     * calculator refuses it tiers. The engine says all of that before a
+     * round is paired, so the bracket is refused then, on every call, and
+     * not once it has been played to its end and its table is asked for.
+     *
+     * @throws InvalidConfigurationException When the calculator is a subclass of StandingsCalculator
+     *                                       with a tiebreaker between the tied participants
+     *                                       (reason `IncompatibleOptions`)
+     */
+    private function requireTiedSetsInsideATier(StandingsCalculator $calculator): void
+    {
+        if ($calculator::class === StandingsCalculator::class) {
+            return;
+        }
+
+        // A subclass whose constructor does not call the one it inherits
+        // has no tiebreakers set, and so none of the kind: nothing is read
+        try {
+            if (!(new ReflectionProperty(StandingsCalculator::class, 'tiebreakers'))->isInitialized($calculator)) {
+                return;
+            }
+        } catch (ReflectionException) {
+            // Not thrown: the class declares the property
+        }
+
+        foreach ($calculator->getTiebreakers() as $tiebreaker) {
+            if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
+                throw new InvalidConfigurationException(
+                    'The table of a bracket has tiers, and a tiebreaker between the tied participants forms its tied sets'
+                        . ' inside a tier, which a subclass of StandingsCalculator cannot do: its own calculate() forms them'
+                        . ' over the whole table. Use StandingsCalculator itself, or a chain without a tiebreaker of that kind',
+                    ['calculator' => $calculator::class, 'tiebreaker' => $tiebreaker->getName()],
+                    reason: InvalidConfigurationReason::IncompatibleOptions
+                );
+            }
+        }
+    }
+
+    /**
      * The table of a finished bracket, in placement order.
      *
      * The bracket decides the tiers: the entrant who advanced from the
@@ -294,6 +390,21 @@ trait EliminationBracketSupport
      * leaves two of them level, the position in the entrant list decides.
      * Participants the bracket did not place share a last tier.
      *
+     * The calculator is given the tiers (StandingsCalculator::calculateWith()),
+     * so a tiebreaker between the tied participants forms its tied sets
+     * inside a tier: an event against an entrant of another tier counts in
+     * none of its values.
+     *
+     * Each bye of the bracket (a node of the bracket view with the status
+     * BracketNodeStatus::Bye: an entrant who stood alone and went on) is
+     * counted and credited as the ranking a re-seeded bracket folds its
+     * rounds from credits it (see creditsPerBye()): one rule for every
+     * table of a bracket
+     * (docs/adr/0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md).
+     * A walkover (an uncontested tie, which an entrant withdrew from) is
+     * no bye and is credited with nothing; an application that wants it to
+     * count records an awarded result for it.
+     *
      * The adjustments of the stage are in the ranking values, and each
      * entry shows its own as a figure. Like every record, an adjustment
      * orders entrants inside a tier and moves nobody from one tier to
@@ -301,34 +412,40 @@ trait EliminationBracketSupport
      *
      * @param array<Participant> $entrants Every participant of the stage, in list order
      * @param array<Result> $results The results the records are computed from
-     * @param array<int|string, int> $placement The tier of each placed participant by ID, 0 best
+     * @param BracketReading $reading The bracket as read: its placement (the tier of each placed
+     *                                participant by ID, 0 best) and its byes
+     * @param int $legsPerTie How many times a bye is credited: the legs of the tie it stands for
      * @param array<Adjustment> $adjustments The adjustments recorded on the stage state
      *
-     * @throws InvalidConfigurationException Not thrown here: the table is given no bye, which is
-     *                                       all the calculator refuses
+     * @throws InvalidConfigurationException When the calculator is a subclass with a tiebreaker
+     *                                       between the tied participants (reason
+     *                                       `IncompatibleOptions`)
      */
     private function placementStandings(
         StandingsCalculator $calculator,
         array $entrants,
         array $results,
-        array $placement,
+        BracketReading $reading,
+        int $legsPerTie,
         array $adjustments = []
     ): Standings {
-        $table = $calculator
-            ->calculateWith($entrants, $results, [], $adjustments)
-            ->withTiedSetsOrderedBy($entrants);
-
+        $placement = $reading->placement;
         $unplaced = $placement === [] ? 0 : max($placement) + 1;
-        $rows = [];
-        foreach (array_values($table->getEntries()) as $index => $entry) {
-            $rows[] = [$placement[$entry->getParticipant()->getId()] ?? $unplaced, $index, $entry];
+        $tiers = [];
+        foreach ($entrants as $entrant) {
+            $tiers[$entrant->getId()] = $placement[$entrant->getId()] ?? $unplaced;
         }
-        usort($rows, static fn(array $first, array $second): int => [$first[0], $first[1]] <=> [$second[0], $second[1]]);
 
-        return new Standings(
-            array_map(static fn(array $row): StandingEntry => $row[2], $rows),
-            array_map(static fn(array $row): int => $row[0], $rows)
-        );
+        return $calculator
+            ->calculateWith(
+                $entrants,
+                $results,
+                $reading->byes,
+                $adjustments,
+                $reading->byes === [] ? $legsPerTie : $this->creditsPerBye($calculator, $legsPerTie),
+                $tiers
+            )
+            ->withTiedSetsOrderedBy($entrants);
     }
 
     /**
@@ -789,10 +906,11 @@ trait EliminationBracketSupport
      * @param int|null $pairedAt The number of the recorded round the slots were paired for (the
      *                           round itself, or the one this round was skipped before); null
      *                           when the round is read from the state as it stands
-     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, unplayed: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
+     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, byes: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
      *                                                                                                                                                                                                                                                                              `nodes` is what the bracket view shows of each unit, in
      *                                                                                                                                                                                                                                                                              the same order, and `extraNode` of the extra tie;
-     *                                                                                                                                                                                                                                                                              `unplayed` lists who went on without a tie being played;
+     *                                                                                                                                                                                                                                                                              `byes` lists who stood alone and went on, the nodes the
+     *                                                                                                                                                                                                                                                                              bracket view shows as byes (BracketNodeStatus::Bye);
      *                                                                                                                                                                                                                                                                              `unresolved` the events that await a result, and
      *                                                                                                                                                                                                                                                                              `undecided` the events of the ties that have every
      *                                                                                                                                                                                                                                                                              result, are level and await a decider
@@ -843,7 +961,7 @@ trait EliminationBracketSupport
         $extra = null;
         $extraNode = null;
         $inTie = [];
-        $unplayed = [];
+        $byes = [];
         $unresolved = [];
         $uncontested = [];
         $undecided = [];
@@ -915,9 +1033,6 @@ trait EliminationBracketSupport
                     $uncontested[] = $event;
                 }
             }
-            if ($settled['uncontested'] && $settled['winner'] instanceof Participant) {
-                $unplayed[] = $settled['winner'];
-            }
 
             if ($key === $extraKey || $tie['thirdPlace']) {
                 $extra = $settled;
@@ -950,9 +1065,6 @@ trait EliminationBracketSupport
                         $settled,
                         $this->walkedNode([$first, $second], [], $settled['winner'], $settled['losers'], false, false, $settled['uncontested']),
                     ];
-                    if ($settled['winner'] instanceof Participant) {
-                        $unplayed[] = $settled['winner'];
-                    }
                     continue;
                 }
                 // The round holds no tie between the two and neither has
@@ -985,7 +1097,7 @@ trait EliminationBracketSupport
                     continue;
                 }
                 $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []], $this->walkedNode($entrants, [], $occupant, [], false, false, false)];
-                $unplayed[] = $occupant;
+                $byes[] = $occupant;
             }
             if (!$held) {
                 $rows[] = [2 * $index, $sequence++, ['winner' => null, 'losers' => []], $this->walkedNode($pair, [], null, [], false, false, false)];
@@ -1033,7 +1145,7 @@ trait EliminationBracketSupport
             'extra' => $extra === null ? null : ['winner' => $extra['winner'], 'losers' => $extra['losers']],
             'nodes' => array_map(static fn(array $row): array => $row[3], $rows),
             'extraNode' => $extraNode,
-            'unplayed' => $unplayed,
+            'byes' => $byes,
             'unresolved' => $unresolved,
             'uncontested' => $uncontested,
             'undecided' => $undecided,

@@ -316,7 +316,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $this->standingsCalculator,
             $this->entrantsOf($state),
             $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
-            $reading->placement,
+            $reading,
+            $this->options->legsPerTie,
             $state->getAdjustments()
         );
     }
@@ -338,8 +339,21 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * The records are win/draw/loss records over every result of both
      * brackets. A single-leg event that finished level and was decided by
      * its tie decision counts in them as a win for the participant who
-     * advanced; the legs of a two-legged tie are counted as recorded. The
-     * outcome's results are the results as recorded.
+     * advanced; the legs of a two-legged tie are counted as recorded. A bye
+     * is no win in them (StandingEntry::getByes() counts it): the ranking
+     * value credits each one with what the ranking strategy says a bye is
+     * worth, once for each leg of a tie, and with nothing under a ranking
+     * strategy that does not say (it is no RankingStrategyWithByeValue), as
+     * single elimination does. The byes are the nodes the bracket view
+     * shows as byes (BracketNodeStatus::Bye: an entrant who stood alone and
+     * went on), also in a stage that took no round number (a losers round
+     * whose entrants all stand alone), and the outcome's bye counts are the
+     * same. A walkover (an uncontested tie) is no bye, although the round
+     * lists its advancer among its byes: an application that counts it
+     * records an awarded result for the tie. A tiebreaker between the tied
+     * participants forms its tied sets inside a tier
+     * (StandingsCalculator::calculateWith()). The outcome's results are the
+     * results as recorded.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
@@ -358,11 +372,12 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $this->standingsCalculator,
                 $entrants,
                 $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
-                $reading->placement,
+                $reading,
+                $this->options->legsPerTie,
                 $state->getAdjustments()
             ),
             $state->getResults(),
-            $state->getByeCounts(),
+            $this->byeCountsOf($reading),
             $state->getLastRound(),
             [],
             $entrants,
@@ -418,7 +433,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * finished: recorded with every tie settled, or with no tie to play.
      *
      * @throws InvalidConfigurationException When a tie is broken, a recorded stage does not fit
-     *                                       the stage it is read as, or the state is stamped
+     *                                       the stage it is read as, the calculator cannot form
+     *                                       the tied sets of the table, or the state is stamped
      *                                       with another engine's fingerprint
      */
     private function resolveState(StageState $state, bool $capture = false): BracketReading
@@ -427,6 +443,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
+        $this->requireTiedSetsInsideATier($this->standingsCalculator);
 
         // The bracket is read as it stood when it was over: a withdrawal
         // after its last tie was decided takes nothing back (see
@@ -782,6 +799,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             null,
             $pairedAt
         );
+        foreach ($read['byes'] as $advanced) {
+            $reading->byes[$advanced->getId()] = ($reading->byes[$advanced->getId()] ?? 0) + 1;
+        }
 
         if ($reading->capture) {
             $reading->walked[] = [

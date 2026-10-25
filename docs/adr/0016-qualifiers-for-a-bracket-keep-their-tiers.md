@@ -1,4 +1,4 @@
-# 0014. Qualifiers for a bracket keep their tiers
+# 0016. Qualifiers for a bracket keep their tiers
 
 Status: accepted
 

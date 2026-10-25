@@ -121,7 +121,7 @@ and an accepted order is the order of the entrant list, as
   `BracketQualifiersSelector` places the two selections together and its
   yield lets composition validation report, from the pools a
   `StageTransition` declares, the one case no placement can keep apart
-  ([0014](0014-qualifiers-for-a-bracket-keep-their-tiers.md)).
+  ([0016](0016-qualifiers-for-a-bracket-keep-their-tiers.md)).
 - `tests/Feature/BestOfRankSelectionTest.php` holds each method to an
   oracle that adds the records up itself and compares fractions by
   cross-multiplication, over generated pools.
