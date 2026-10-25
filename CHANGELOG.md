@@ -989,7 +989,7 @@ entry on the engine fingerprint.
     gives the same round for the same state; a `ShuffledLegStrategy` that holds a randomizer
     is refused (`IncompatibleOptions`). The fingerprint is
     `tactician:v1:round-robin`, version 1 of the rules of a new format
-    ([ADR 0015](docs/adr/0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)),
+    (ADR 0015),
     with the options and the seed that are not at their default (`legs`,
     `leg-strategy`, `leg-strategy-seed`, `role-assignment`, `backtracking`,
     `seed`); the constraints and the standings calculator are not part of
