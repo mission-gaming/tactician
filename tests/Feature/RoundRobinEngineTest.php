@@ -351,8 +351,11 @@ describe('a league paired round by round', function (): void {
 
         foreach ([
             fn() => $engine->pairNextRound($state),
+            fn() => $engine->pairNextRoundOnIncompleteResults($state),
             fn() => $engine->isComplete($state),
+            fn() => $engine->getOutcome($state),
             fn() => $engine->getReadiness($state),
+            fn() => $engine->getRecordedRounds($state),
             fn() => $engine->getPlan($state),
         ] as $call) {
             expect(leagueRefusal($call)->getReason())->toBe(InvalidConfigurationReason::TooFewParticipants);

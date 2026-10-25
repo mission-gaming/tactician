@@ -377,7 +377,9 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * @throws InvalidConfigurationException When the state is stamped with another engine's
      *                                       fingerprint, or names a participant outside its entrant
      *                                       list or holds an event of other than two participants
-     *                                       (`RecordedRoundMismatch`)
+     *                                       (`RecordedRoundMismatch`), and when the scheduler refuses
+     *                                       the entrants or the options (fewer than 2 entrants,
+     *                                       `TooFewParticipants`), as every call of the engine does
      */
     #[Override]
     public function getRecordedRounds(StageState $state): array
@@ -387,7 +389,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
 
         try {
             $schedule = $this->schedule($field);
-        } catch (IncompleteScheduleException|InvalidConfigurationException) {
+        } catch (IncompleteScheduleException) {
             $schedule = null;
         }
 
