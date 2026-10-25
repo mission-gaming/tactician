@@ -200,7 +200,19 @@ describe('a seeded Swiss engine', function (): void {
             [$last, $pairing] = $steps[count($steps) - 1];
             $state = seededSwissRebuilt($last->withRoundPaired($pairing), $entrants, $order);
 
-            foreach ((new SwissPairingEngine(plannedRounds: $planned, seed: $seed))->getRecordedRounds($state) as $recorded) {
+            // Asked twice on one engine, as a long-lived engine is: the
+            // second reading draws nothing the first one used up
+            $engine = new SwissPairingEngine(plannedRounds: $planned, seed: $seed);
+            $first = $engine->getRecordedRounds($state);
+            expect(array_map(
+                static fn(RecordedRound $recorded): ?array => $recorded->getDerivation()?->toArray(),
+                $engine->getRecordedRounds($state)
+            ))->toBe(array_map(
+                static fn(RecordedRound $recorded): ?array => $recorded->getDerivation()?->toArray(),
+                $first
+            ));
+
+            foreach ($first as $recorded) {
                 expect($recorded)->toBeInstanceOf(RecordedRound::class)
                     ->and($recorded->isManual())->toBeFalse()
                     ->and($recorded->getDerivation()?->toArray())->toBe($recorded->getPairing()->toArray());
@@ -293,4 +305,46 @@ describe('a seeded Swiss engine', function (): void {
 
         expect($schedule->getEvents())->toEqual($events);
     })->with([[8, 3, 2026], [9, 4, 1], [12, 5, -3], [16, 6, 99]]);
+
+    // Where the first draw reaches a round with no pairing, draw k (from the
+    // second on) is the stage of an engine seeded with the (k - 1)th integer
+    // of a Xoshiro256StarStar sequence from the seed advanced by one long
+    // jump, as SwissScheduler::redrawSequence() documents. The seeds are
+    // ones whose first draws fail (found by running the engine): 30 needs
+    // two draws at 8 participants and 6 rounds, 18 needs three, and 19
+    // needs four at 10 and 9.
+    it('draws a seeded schedule again from the seeds the long-jumped sequence of its seed gives', function (int $size, int $rounds, int $seed, int $draws): void {
+        $sequenceEngine = new Xoshiro256StarStar($seed);
+        $sequenceEngine->jumpLong();
+        $sequence = new Randomizer($sequenceEngine);
+
+        $seedOfDraw = $seed;
+        $stage = null;
+        for ($draw = 1; $draw <= $draws; ++$draw) {
+            if ($draw > 1) {
+                $seedOfDraw = $sequence->getInt(PHP_INT_MIN, PHP_INT_MAX);
+            }
+
+            $engine = new SwissPairingEngine(plannedRounds: $rounds, resultsFree: true, seed: $seedOfDraw);
+            $state = StageState::start(seededSwissField($size));
+            $events = [];
+            try {
+                while (!$engine->isComplete($state)) {
+                    $pairing = $engine->pairNextRound($state);
+                    $events = [...$events, ...$pairing->getEvents()];
+                    $state = $state->withRoundPaired($pairing);
+                }
+                $stage = $events;
+            } catch (NoValidPairingException) {
+                $stage = null;
+            }
+
+            // Every draw before the last reaches a round with no pairing
+            expect($stage === null)->toBe($draw < $draws, "draw {$draw} of seed {$seed}");
+        }
+
+        $schedule = (new SwissScheduler())->schedule(seededSwissField($size), new SwissOptions($rounds, $seed));
+
+        expect($schedule->getEvents())->toEqual($stage);
+    })->with([[8, 6, 30, 2], [8, 6, 18, 3], [10, 9, 19, 4]]);
 });
