@@ -3768,6 +3768,18 @@ entry on the engine fingerprint.
   outright and would lower the limit of a CI run. Nothing a consumer
   installs changes.
 
+- The suite passes on PHP 8.4.27 and 8.5.12. From those releases PHP's
+  date parser rejects a string of nothing but white space ("Empty string"),
+  which it read as `now` before (php/php-src@aaa8707), and a test that
+  holds every clock-dependent string to being one PHP accepts failed on
+  them. Such a string is rejected by the library on every PHP version, as
+  before, with the same exception and reason (`UnparseableTime` from a
+  timeline, blackout or session grid, `InvalidInputException` for a
+  kickoff); from those releases the previous exception is PHP's
+  `DateMalformedStringException`, as for any string PHP cannot parse. The
+  white-space strings are now a corpus of their own, tested on what PHP
+  makes of them. Test suite only; the library is unchanged.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
