@@ -67,9 +67,9 @@ class SwissScheduler implements SchedulerInterface
 
     /**
      * How many times a schedule is drawn through the engine before the
-     * scheduler stops drawing. At the largest round counts up to about one
-     * draw in four reaches a round with no pairing, so twenty draws all doing so
-     * is not expected in practice; the number bounds the work, and the
+     * scheduler stops drawing. At the largest round counts up to about
+     * three draws in ten reach a round with no pairing, so twenty draws all
+     * doing so is not expected in practice; the number bounds the work, and the
      * rotation is what makes the result certain.
      */
     private const int DRAWS = 20;
@@ -128,9 +128,10 @@ class SwissScheduler implements SchedulerInterface
         $this->clearViolations();
 
         $seed = $this->seedOf($options);
-        $randomizer = $seed === null ? $this->randomizer : null;
+        // With a seed: where the seeds of the later draws come from
+        $redraws = $seed === null ? null : self::redrawSequence($seed);
         // Where the later draws and the rotation draw from
-        $sequence = $seed === null ? $randomizer : self::redrawSequence($seed);
+        $sequence = $redraws ?? $this->randomizer;
         $participants = array_values($participants);
         $plan = new SwissPlan($participants, $rounds);
 
@@ -141,10 +142,12 @@ class SwissScheduler implements SchedulerInterface
         $draws = $sequence === null ? 1 : self::DRAWS;
         $drawn = ['events' => [], 'byes' => [], 'failure' => null];
         for ($draw = 1; $draw <= $draws; ++$draw) {
-            $seedOfDraw = $seed === null || $sequence === null
-                ? null
-                : ($draw === 1 ? $seed : $sequence->getInt(PHP_INT_MIN, PHP_INT_MAX));
-            $drawn = $this->drawWithEngine($participants, $rounds, $randomizer, $seedOfDraw);
+            if ($redraws === null) {
+                $drawn = $this->drawWithEngine($participants, $rounds, $this->randomizer, null);
+            } else {
+                $seedOfDraw = $draw === 1 ? $seed : $redraws->getInt(PHP_INT_MIN, PHP_INT_MAX);
+                $drawn = $this->drawWithEngine($participants, $rounds, null, $seedOfDraw);
+            }
             if ($drawn['failure'] === null) {
                 break;
             }

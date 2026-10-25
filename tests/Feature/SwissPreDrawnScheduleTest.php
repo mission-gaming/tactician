@@ -128,7 +128,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
     });
 
     // The round counts at which a single draw fails for roughly one seed
-    // in eight to one in four (the first draw of 32 of these 200 seeds at
+    // in eight to three in ten (the first draw of 32 of these 200 seeds at
     // 6 participants and 4 rounds, of 27 at 8 and 6, of 54 at 10 and 9, of
     // 58 at 12 and 11; none needs more than five draws), and the largest
     // count of a field of odd size: 200 seeds each.
