@@ -2883,8 +2883,9 @@ again from the participants left, which could bring back an entrant who had
 lost, or offered round 1 again where no round 1 could be recorded. This
 release gives the tie away instead, and reads such a state that way. A
 stored state that already holds a round 0.2.x redrew is accepted under its
-stamp as well: the redrawn round is reported as manual, and the next round
-follows the bracket, not the redraw.)
+stamp as well: the redrawn round is reported as manual and stands as
+recorded, and the next round is paired from it by the rules of this
+release, which can differ from what 0.2.x would have paired next.)
 
 A state that was never stamped says nothing about its engine, and is paired
 by whatever engine is given it, stamped or not: a Swiss stage started

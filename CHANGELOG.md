@@ -2971,8 +2971,9 @@ entry on the engine fingerprint.
     instead and reads such a state that way. A round 0.2.x redrew that way
     could be recorded, and a stored state that holds one is accepted under
     its stamp too: `getRecordedRounds()` reports the redrawn round as
-    manual, and the next round follows the bracket as 0.3.0 reads it, not
-    the redraw (ADR 0015). Check such a stage before carrying it on.
+    manual, the recorded rounds stand, and the next round is paired from
+    them by the rules of 0.3.0, which can differ from what 0.2.x would
+    have paired next (ADR 0015). Check such a stage before carrying it on.
   - *Swiss*: the recorded rounds stand, and the next round is paired by the
     new order (list position between level participants, and the table
     order among participants whose points include a bye). Stamp it again

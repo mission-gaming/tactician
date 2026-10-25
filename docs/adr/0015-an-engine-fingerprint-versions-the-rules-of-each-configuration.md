@@ -90,8 +90,9 @@ tie), and that round could be recorded. A state stamped by 0.2.x that
 holds such a round is accepted by 0.3.0 under its `v1` stamp:
 `getRecordedRounds()` reports the redrawn round as manual (and the rounds
 before it too, because 0.2.x kept no place in its list for the entrant who
-withdrew), and the next round follows the bracket as 0.3.0 reads it, not
-the redraw. That is the price of keeping the
+withdrew), the recorded rounds stand as recorded, and the next round is
+paired from them by the rules of 0.3.0, which can give another round than
+0.2.x would have paired next. That is the price of keeping the
 stamps of every other bracket valid: a version raised for the whole
 configuration would refuse all of them, to protect stages that 0.2.x had
 already paired against its own bracket.
