@@ -504,6 +504,8 @@ describe('engine fingerprints', function (): void {
         'Swiss with a seed' => [fn() => new SwissPairingEngine(seed: 2026), 'tactician:v2:swiss;seed=2026'],
         'Swiss with a negative seed' => [fn() => new SwissPairingEngine(seed: -7), 'tactician:v2:swiss;seed=-7'],
         'Swiss with the seed 0' => [fn() => new SwissPairingEngine(seed: 0), 'tactician:v2:swiss;seed=0'],
+        'Swiss with the lowest seed' => [fn() => new SwissPairingEngine(seed: PHP_INT_MIN), 'tactician:v2:swiss;seed=-9223372036854775808'],
+        'Swiss with the highest seed' => [fn() => new SwissPairingEngine(seed: PHP_INT_MAX), 'tactician:v2:swiss;seed=9223372036854775807'],
         'Swiss in results-free mode with a seed' => [
             fn() => new SwissPairingEngine(resultsFree: true, seed: 2026),
             'tactician:v2:swiss;results-free=yes;seed=2026',
