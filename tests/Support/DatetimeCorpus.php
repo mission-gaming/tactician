@@ -12,14 +12,15 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
 /**
  * Datetime strings for the tests of what plain-data configuration accepts.
  *
- * Four corpora. Two are accepted: the absolute one is generated from
+ * Five corpora. Two are accepted: the absolute one is generated from
  * numbers, so each string comes with the fields that were written into it
  * and a test can compare what was parsed with what was written, without
  * asking PHP what the string means; the other holds an offset from a stated
- * date, with the fields that offset gives from that date. Two are rejected:
- * strings that are relative to the current time or leave the date or its
- * year out, and strings that write a date, a time or a weekday that is not
- * the one PHP reads.
+ * date, with the fields that offset gives from that date. Three are
+ * rejected: strings that are relative to the current time or leave the date
+ * or its year out, strings of nothing but white space, which PHP reads as
+ * the current time or rejects depending on its version, and strings that
+ * write a date, a time or a weekday that is not the one PHP reads.
  *
  * The class is loaded in a child process too (under another default
  * timezone), which is why the corpora live here and not in a test file.
@@ -133,6 +134,9 @@ final class DatetimeCorpus
      * Strings PHP would resolve against the current time: relative to it,
      * or with no date, or with a date that leaves its year out.
      *
+     * Every one is a string PHP accepts on every version the library
+     * supports. A string of nothing but white space is not: see blank().
+     *
      * @return list<string>
      */
     public static function clockDependent(): array
@@ -140,8 +144,6 @@ final class DatetimeCorpus
         $corpus = [
             // The reproduction of the report this guards
             '', 'now', 'tomorrow', '+1 week', 'next monday 20:00',
-            // Nothing but white space
-            ' ', "\t", "\n",
             // Keywords alone
             'today', 'yesterday', 'midnight', 'noon', 'NOW', 'Tomorrow',
             // A time of day without a date
@@ -166,6 +168,24 @@ final class DatetimeCorpus
     }
 
     /**
+     * Strings of nothing but white space, which PHP reads as `now` or
+     * rejects, depending on its version.
+     *
+     * Up to PHP 8.4.26 and 8.5.11 the parser read one without an error, as
+     * `now`. From 8.4.27 and 8.5.12 on it reports "Empty string" for it and
+     * the `DateTimeImmutable` constructor throws: php/php-src@aaa8707
+     * regenerated the parser from its source, which skips leading white
+     * space to the end of the string. The empty string itself is in
+     * clockDependent(): PHP reads it as `now` on every version.
+     *
+     * @return list<string>
+     */
+    public static function blank(): array
+    {
+        return [' ', "\t", "\n", " \t\r\n "];
+    }
+
+    /**
      * Strings that state a date in full and are still not the instant PHP
      * reads from them: a date or a time that does not exist, which PHP
      * rolls over, and a weekday name that is not the weekday of the date,
@@ -185,7 +205,7 @@ final class DatetimeCorpus
     }
 
     /**
-     * What `ZonedTime::parse()` makes of every string of the four corpora
+     * What `ZonedTime::parse()` makes of every string of the corpora
      * in the given timezone: the instant in UTC, or the reason it was
      * rejected.
      *
@@ -200,6 +220,7 @@ final class DatetimeCorpus
             ...array_map(fn(array $entry): string => $entry['value'], self::absolute()),
             ...array_map(fn(array $entry): string => $entry['value'], self::offsetFromAStatedDate()),
             ...self::clockDependent(),
+            ...self::blank(),
             ...self::notTheInstantWritten(),
         ];
 

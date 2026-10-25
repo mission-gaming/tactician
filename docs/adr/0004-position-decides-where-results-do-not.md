@@ -109,7 +109,9 @@ Two consequences of "the table of a stage" belong to the same decision:
   its table is then in the calculator's fallback order.
 - The order is part of the output. The pairings of a stage in progress can
   differ from those an earlier release would have made, which is why the
-  engine fingerprint scheme changed with this decision (`tactician:v2:`).
+  version of the rules in the engine fingerprint of a Swiss stage and of a
+  re-seeded bracket went to 2 with this decision (`tactician:v2:`; see
+  [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)).
 - An application that wants a different final order (a play-off, a drawing
   of lots) applies it to the entrant list it passes to the next stage, as
   before. (Since [0008](0008-a-decision-orders-level-entries-and-never-a-result.md)

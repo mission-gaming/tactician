@@ -1164,8 +1164,9 @@ final readonly class StageState
      * FingerprintedEngine for what a fingerprint covers and for how long
      * one is kept: an option at its default is not part of it, so an
      * engine that gains an option still accepts the states stamped before;
-     * a patch release keeps every fingerprint, and a 0.x minor release may
-     * change the scheme, with a migration note). Their fingerprints begin
+     * a patch release keeps every fingerprint, and a minor release raises
+     * the version of the rules of exactly the configurations it pairs
+     * differently, with a migration note). Their fingerprints begin
      * with `tactician:`; any non-empty string that does not will do for
      * an engine of your own.
      *
@@ -1438,10 +1439,10 @@ final readonly class StageState
      * says how the array is to be read and is written once, here: the
      * participants, rounds, results and adjustments inside carry none. It is another
      * thing than the `v2` inside an engine fingerprint, which is the
-     * version of the scheme the stamp is written in; the stamp is one
-     * string value of this form, and either version can change without
-     * the other, as the scheme did in 0.3.0 while this form stayed at
-     * version 1.
+     * version of the rules the engine pairs its configuration by; the
+     * stamp is one string value of this form, and either version can
+     * change without the other, as the Swiss rules did in 0.3.0 while this
+     * form stayed at version 1.
      *
      * @return array{format_version: int, participants: array<int, array{id: string, label?: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}, decider?: array{participants: list<string>, label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null, after_round?: int}>, entrants?: list<string>, withdrawals?: list<array{participant: string, after_round: int}>}
      */

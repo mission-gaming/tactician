@@ -24,6 +24,7 @@ there is not repeated here.
 | [0012](0012-a-withdrawal-states-its-round.md) | A withdrawal states its round (amended: an adjustment does too) |
 | [0013](0013-a-finished-bracket-keeps-its-winner.md) | A finished bracket keeps its winner |
 | [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md) | A bracket's table forms its tied sets inside a tier and credits its byes (amends 0009 and 0010) |
+| [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md) | An engine fingerprint versions the rules of each configuration |
 | [0016](0016-qualifiers-for-a-bracket-keep-their-tiers.md) | Qualifiers for a bracket keep their tiers |
 
 ## Adding a record

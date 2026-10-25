@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Stage;
 
+use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Standings\ByeTreatment;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\TiebreakerInterface;
@@ -12,39 +13,47 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 
 /**
  * The one place that writes and reads the fingerprints of the library's
- * engines (see FingerprintedEngine for the contract they follow).
+ * engines (see FingerprintedEngine for the contract they follow, and ADR
+ * 0015 for why it has this form).
  *
- * An engine names its format, then states every option that shapes its
- * rounds together with that option's default:
+ * An engine names its format and the version of the rules that pair its
+ * configuration, then states every option that shapes its rounds together
+ * with that option's default:
  *
- *     EngineFingerprint::of('single-elimination')
+ *     EngineFingerprint::of('single-elimination', 1)
  *         ->with('legs-per-tie', $options->legsPerTie, 1)
  *         ->with('reseed-each-round', $options->reseedEachRound, false)
  *         ->toString();
  *
  * with() leaves out an option whose value is its default. That is what
- * keeps stored stamps valid when an option is added within a scheme: an
- * engine that gains an option adds one with() call, and every
- * configuration that leaves the new option alone has the fingerprint it
- * had before. A new option must therefore be given here with the value
- * that reproduces the behaviour before it existed as its default, and a
- * default, once released, is not changed within a scheme: changing it
- * would change what every stored stamp without the option means.
+ * keeps stored stamps valid when an option is added: an engine that gains
+ * an option adds one with() call, and every configuration that leaves the
+ * new option alone has the fingerprint it had before. A new option must
+ * therefore be given here with the value that reproduces the behaviour
+ * before it existed as its default, and a default, once released, is not
+ * changed: changing it would change what every stored stamp without the
+ * option means.
  *
- * The string is `tactician:v2:` followed by the format and one
- * `;name=value` per stated option, ordered by name so that the order of
- * the with() calls means nothing. `tactician:` separates the library's
- * fingerprints from the strings an application gives its own engines.
- * `v2` is the version of this scheme, so that a stamp of another scheme
- * can be told from one written by this one. A patch release does not
- * change the scheme; a 0.x minor release may, with a migration note in
- * the changelog (see FingerprintedEngine). A change of scheme changes
- * VERSION with it: a string that kept `v2` and meant something else
- * would be read, option by option, as a stamp of this scheme, and a
- * changed default would be accepted without a word.
- * A string value is percent-encoded, so no value can be read as a
+ * The version of the rules is the engine's to state, per configuration. It
+ * starts at 1 and is raised, in a minor release, for exactly the
+ * configurations that the release pairs differently from the same
+ * recorded state; every other configuration keeps its string, so a state
+ * it stamped before is still accepted. 0.3.0 raised it to 2 for Swiss and
+ * for a re-seeded single elimination bracket (ADR 0004); a single
+ * elimination bracket on a fixed path and a double elimination bracket
+ * pair as 0.2.x paired them and are at 1, which is what 0.2.x wrote for
+ * them. A version is never lowered: a stamp of a higher version than the
+ * engine's is one a later release wrote.
+ *
+ * The string is `tactician:v`, the version of the rules, `:`, the format,
+ * and one `;name=value` per stated option, ordered by name so that the
+ * order of the with() calls means nothing. `tactician:` separates the
+ * library's fingerprints from the strings an application gives its own
+ * engines. A string value is percent-encoded, so no value can be read as a
  * separator, and two configurations have the same string only when every
- * stated option is the same.
+ * stated option is the same. This spelling is the one 0.2.x wrote (where
+ * the version was one number for every format), and it is not changed:
+ * a different spelling would change every string at once.
  *
  * Format and option names are literals of this library, in lower case with
  * hyphens; they are not encoded.
@@ -58,38 +67,31 @@ final readonly class EngineFingerprint
 {
     private const string PREFIX = 'tactician:';
 
-    private const string VERSION = 'v2';
-
     /**
-     * The versions of earlier schemes, so that a stamp of one of them can
-     * be named as that in the error an engine raises.
-     *
-     * `v1` is the scheme of 0.2.x. 0.3.0 replaced it because the same
-     * recorded state is paired differently from 0.3.0 on: a Swiss round
-     * and a re-seeded bracket round order level participants by their
-     * position in the participant list, where 0.2.x ordered them by the
-     * seed attribute, the label and the ID, and a re-seeded bracket
-     * credits a bye. A `v1` stamp says the state was paired under the
-     * earlier rules, so it is not read as a stamp of this scheme.
-     *
-     * @var list<string>
-     */
-    private const array EARLIER_VERSIONS = ['v1'];
-
-    /**
+     * @param positive-int $rules The version of the rules that pair the configuration
      * @param array<string, string> $options Encoded values of the options that are not at their default, by name
      */
     private function __construct(
         private string $format,
+        private int $rules,
         private array $options = []
     ) {}
 
     /**
-     * Begin the fingerprint of a format ('swiss', 'single-elimination').
+     * Begin the fingerprint of a format ('swiss', 'single-elimination'),
+     * paired by the given version of its rules.
+     *
+     * @param int $rules At least 1; see the class docblock for when it is raised
+     *
+     * @throws InvariantViolationException When the version is below 1 (a defect of the engine)
      */
-    public static function of(string $format): self
+    public static function of(string $format, int $rules): self
     {
-        return new self($format);
+        if ($rules < 1) {
+            throw new InvariantViolationException('The version of the rules of a format is at least 1');
+        }
+
+        return new self($format, $rules);
     }
 
     /**
@@ -113,7 +115,7 @@ final readonly class EngineFingerprint
             ksort($options, SORT_STRING);
         }
 
-        return new self($this->format, $options);
+        return new self($this->format, $this->rules, $options);
     }
 
     /**
@@ -204,7 +206,7 @@ final readonly class EngineFingerprint
      */
     public function toString(): string
     {
-        $fingerprint = self::PREFIX . self::VERSION . ':' . $this->format;
+        $fingerprint = self::PREFIX . 'v' . $this->rules . ':' . $this->format;
         foreach ($this->options as $option => $value) {
             $fingerprint .= ';' . $option . '=' . $value;
         }
@@ -213,23 +215,24 @@ final readonly class EngineFingerprint
     }
 
     /**
-     * Read a fingerprint this class wrote; null for any other string: an
-     * application's own stamp, one of a scheme this version does not
-     * know, and one that has the prefix and is not spelled as toString()
-     * spells it (options out of order, an option twice, an option without
-     * a value). The last keeps a string that was put together by hand from
-     * being compared option by option as though an engine had written it.
+     * Read a fingerprint this class wrote, of any version of the rules;
+     * null for any other string: an application's own stamp, and one that
+     * has the prefix and is not spelled as toString() spells it (a version
+     * that is not a whole number from 1 without leading zeros, options out
+     * of order, an option twice, an option without a value). The last
+     * keeps a string that was put together by hand from being compared
+     * option by option as though an engine had written it.
      */
     public static function parse(string $fingerprint): ?self
     {
-        $head = self::PREFIX . self::VERSION . ':';
-        if (!str_starts_with($fingerprint, $head)) {
+        if (preg_match('/^tactician:v([1-9][0-9]{0,8}):(.*)$/s', $fingerprint, $match) !== 1) {
             return null;
         }
 
-        $parts = explode(';', substr($fingerprint, strlen($head)));
+        $rules = (int) $match[1];
+        $parts = explode(';', $match[2]);
         $format = array_shift($parts);
-        if ($format === '') {
+        if ($format === '' || $rules < 1) {
             return null;
         }
 
@@ -243,7 +246,7 @@ final readonly class EngineFingerprint
         }
         ksort($options, SORT_STRING);
 
-        $parsed = new self($format, $options);
+        $parsed = new self($format, $rules, $options);
 
         return $parsed->toString() === $fingerprint ? $parsed : null;
     }
@@ -251,9 +254,10 @@ final readonly class EngineFingerprint
     /**
      * Say in words where two fingerprints differ, for the error an engine
      * raises on a state stamped with another one: the format when it is
-     * another format, otherwise each option that differs with its value on
-     * either side. An option absent from a fingerprint is at its default
-     * there.
+     * another format; otherwise each option that differs, with its value
+     * on either side (an option absent from a fingerprint is at its
+     * default there); and where no option differs, the version of the
+     * rules, naming the release that wrote the stamp as earlier or later.
      *
      * The wording is for a person to read. It is not parsed by anything
      * and may change.
@@ -273,8 +277,6 @@ final readonly class EngineFingerprint
             return [match (true) {
                 $stamp !== null => 'the state is stamped by one of the library\'s engines and this engine is not one',
                 $own === null => 'the stamp is not this engine\'s',
-                self::isOfEarlierScheme($recorded) => 'the stamp was written by an earlier release of the library, whose engines'
-                    . ' paired by other rules; see the changelog of the release that changed the scheme',
                 str_starts_with($recorded, self::PREFIX) => 'the stamp begins with the library\'s prefix and is not one this version of the library writes',
                 default => 'the stamp was not written by one of the library\'s engines',
             }];
@@ -300,20 +302,20 @@ final readonly class EngineFingerprint
             }
         }
 
-        // Never empty here: parse() reads only what toString() writes, so
-        // two strings that differ differ in their format or in an option.
-        return $differences;
-    }
-
-    private static function isOfEarlierScheme(string $fingerprint): bool
-    {
-        foreach (self::EARLIER_VERSIONS as $version) {
-            if (str_starts_with($fingerprint, self::PREFIX . $version . ':')) {
-                return true;
-            }
+        // The version of the rules is stated per configuration, so where
+        // the options differ the versions may differ with them and say
+        // nothing more. With the same options, another version is another
+        // release.
+        if ($differences !== []) {
+            return $differences;
         }
 
-        return false;
+        return [$stamp->rules < $own->rules
+            ? 'rules: the stamp was written by an earlier release of the library, whose engine paired this'
+                . " configuration by other rules (version {$stamp->rules} of the {$own->format} rules, this engine"
+                . " version {$own->rules}); see the changelog of the release that changed them"
+            : "rules: the stamp was written by a later release of the library (version {$stamp->rules}"
+                . " of the {$own->format} rules, this engine version {$own->rules})"];
     }
 
     /**

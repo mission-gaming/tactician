@@ -935,6 +935,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["bool(false)\nbool(true)\n"],
             [],
         ],
+        'a seeded Swiss engine pairs a rebuilt state as the state built round by round' => [
+            'docs/USAGE.md',
+            '$seededAgain = new SwissPairingEngine(plannedRounds: 4, seed: 2026);',
+            ["bool(true)\nbool(false)\n"],
+            [],
+        ],
         'results-free mode pairs its planned rounds and has a fingerprint of its own' => [
             'docs/USAGE.md',
             '$preDrawn = new SwissPairingEngine(plannedRounds: 2, resultsFree: true);',

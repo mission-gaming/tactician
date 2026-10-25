@@ -509,6 +509,42 @@ describe('the current time', function (): void {
         expect($accepted)->toBe([]);
     });
 
+    // A string of nothing but white space is `now` to PHP up to 8.4.26 and
+    // 8.5.11, and an error from 8.4.27 and 8.5.12 on. It is rejected for the
+    // same reason on both: where PHP reads it from the clock it is not handed
+    // to PHP, and where PHP rejects it PHP's error is the previous exception.
+    it('is never read for a string of nothing but white space, whatever PHP makes of it', function (): void {
+        foreach (DatetimeCorpus::blank() as $value) {
+            // What the check in front of the parser says is what PHP does
+            $malformed = DateTimeString::isMalformed($value);
+            expect($malformed)->toBe(date_create_immutable($value) === false);
+
+            $previous = [];
+            try {
+                ZonedTime::parse($value, 'UTC', 'start');
+                Assert::fail('Accepted ' . var_export($value, true));
+            } catch (InvalidConfigurationException $exception) {
+                expect($exception->getReason())->toBe(InvalidConfigurationReason::UnparseableTime);
+                $previous[] = $exception->getPrevious();
+            }
+
+            try {
+                ScheduledEvent::fromArray(...scheduledEventDataWithKickoff($value));
+                Assert::fail('Accepted the kickoff ' . var_export($value, true));
+            } catch (InvalidInputException $exception) {
+                $previous[] = $exception->getPrevious();
+            }
+
+            foreach ($previous as $exception) {
+                if ($malformed) {
+                    expect($exception)->toBeInstanceOf(DateMalformedStringException::class);
+                } else {
+                    expect($exception)->toBeNull();
+                }
+            }
+        }
+    });
+
     // Part 3. Kiritimati is fourteen hours ahead of UTC and Pago Pago eleven
     // behind: the two are never on the same calendar day, and at every moment
     // at least one of them is on another day than this process. A string
@@ -528,7 +564,7 @@ describe('the current time', function (): void {
 
         // And the verdicts are the two the corpora are named for
         $rejected = array_filter($here, fn(string $verdict): bool => $verdict === 'rejected: unparseable_time');
-        $toReject = array_unique([...DatetimeCorpus::clockDependent(), ...DatetimeCorpus::notTheInstantWritten()]);
+        $toReject = array_unique([...DatetimeCorpus::clockDependent(), ...DatetimeCorpus::blank(), ...DatetimeCorpus::notTheInstantWritten()]);
         $toAccept = array_unique(array_column([...DatetimeCorpus::absolute(), ...DatetimeCorpus::offsetFromAStatedDate()], 'value'));
         expect(count($rejected))->toBe(count($toReject))
             ->and(count($here) - count($rejected))->toBe(count($toAccept));

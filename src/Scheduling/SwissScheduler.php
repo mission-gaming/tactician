@@ -42,18 +42,22 @@ use Random\Randomizer;
  * The source of draws is the seed of the options or the Randomizer given
  * here, and not both. With SwissOptions(seed: ...) the same participants,
  * rounds and seed give the same schedule on every call, also on one
- * scheduler asked twice. A Randomizer has state, so a scheduler that holds
- * one continues its sequence from call to call.
+ * scheduler asked twice: the first draw is the stage that a
+ * SwissPairingEngine in results-free mode with that seed pairs, round n
+ * drawn from the seed and n alone. A Randomizer has state, so a scheduler
+ * that holds one continues its sequence from call to call.
  *
  * Every round count the scheduler accepts is generated when there are no
  * constraints. A round is paired without a look at the rounds to come, so
  * a draw can reach a round that has no pairing without a repeat; the
- * scheduler then draws again (up to DRAWS draws in all, each continuing
- * the same sequence, so the result is still a function of the seed), and
- * when that is not enough, or there is nothing to draw from, it builds the
- * rounds by rotation (drawByRotation()). A schedule that needs none of
- * this is the one the first draw gives. With constraints a schedule may
- * not exist, and the failure of the last draw is reported.
+ * scheduler then draws again (up to DRAWS draws in all; with a seed each
+ * later draw has a seed of its own taken from the seed, see
+ * redrawSequence(), and with a Randomizer each continues its sequence, so
+ * the result is still a function of the seed), and when that is not
+ * enough, or there is nothing to draw from, it builds the rounds by
+ * rotation (drawByRotation()). A schedule that needs none of this is the
+ * one the first draw gives. With constraints a schedule may not exist, and
+ * the failure of the last draw is reported.
  *
  * @experimental
  */
@@ -63,9 +67,9 @@ class SwissScheduler implements SchedulerInterface
 
     /**
      * How many times a schedule is drawn through the engine before the
-     * scheduler stops drawing. At the largest round counts about one draw
-     * in five reaches a round with no pairing, so twenty draws all doing so
-     * is not expected in practice; the number bounds the work, and the
+     * scheduler stops drawing. At the largest round counts up to about
+     * three draws in ten reach a round with no pairing, so twenty draws all
+     * doing so is not expected in practice; the number bounds the work, and the
      * rotation is what makes the result certain.
      */
     private const int DRAWS = 20;
@@ -123,7 +127,11 @@ class SwissScheduler implements SchedulerInterface
         $this->validateInputs($participants, $rounds);
         $this->clearViolations();
 
-        $randomizer = $this->randomizerFor($options);
+        $seed = $this->seedOf($options);
+        // With a seed: where the seeds of the later draws come from
+        $redraws = $seed === null ? null : self::redrawSequence($seed);
+        // Where the later draws and the rotation draw from
+        $sequence = $redraws ?? $this->randomizer;
         $participants = array_values($participants);
         $plan = new SwissPlan($participants, $rounds);
 
@@ -131,10 +139,15 @@ class SwissScheduler implements SchedulerInterface
         // can leave a later round without a pairing. That says nothing
         // about the configuration: another draw of the same field goes
         // through. A draw that needs no redraw is not touched by this.
-        $draws = $randomizer === null ? 1 : self::DRAWS;
+        $draws = $sequence === null ? 1 : self::DRAWS;
         $drawn = ['events' => [], 'byes' => [], 'failure' => null];
         for ($draw = 1; $draw <= $draws; ++$draw) {
-            $drawn = $this->drawWithEngine($participants, $rounds, $randomizer);
+            if ($redraws === null) {
+                $drawn = $this->drawWithEngine($participants, $rounds, $this->randomizer, null);
+            } else {
+                $seedOfDraw = $draw === 1 ? $seed : $redraws->getInt(PHP_INT_MIN, PHP_INT_MAX);
+                $drawn = $this->drawWithEngine($participants, $rounds, null, $seedOfDraw);
+            }
             if ($drawn['failure'] === null) {
                 break;
             }
@@ -156,7 +169,7 @@ class SwissScheduler implements SchedulerInterface
 
             // Without constraints every accepted round count has a
             // schedule, and the rotation builds one outright.
-            $drawn = $this->drawByRotation($participants, $rounds, $randomizer);
+            $drawn = $this->drawByRotation($participants, $rounds, $sequence);
         }
 
         $events = $drawn['events'];
@@ -177,23 +190,16 @@ class SwissScheduler implements SchedulerInterface
     }
 
     /**
-     * The source of the draws of one schedule() call: a randomizer built
-     * from the seed of the options, the one the scheduler holds, or none.
-     *
-     * A randomizer built from a seed is on the Xoshiro256StarStar engine,
-     * which is therefore part of the output for a seed, and is built anew
-     * on every call: that is what makes the call repeatable.
+     * The seed of one schedule() call: the seed of the options, or null
+     * when they have none (the scheduler then draws from the Randomizer it
+     * holds, if any).
      *
      * @throws InvalidConfigurationException When the options have a seed and the scheduler holds
      *                                       a randomizer
      */
-    private function randomizerFor(SwissOptions $options): ?Randomizer
+    private function seedOf(SwissOptions $options): ?int
     {
-        if ($options->seed === null) {
-            return $this->randomizer;
-        }
-
-        if ($this->randomizer !== null) {
+        if ($options->seed !== null && $this->randomizer !== null) {
             throw new InvalidConfigurationException(
                 'A Swiss schedule is drawn from the seed of its options or from the randomizer of the scheduler, not both',
                 ['seed' => $options->seed],
@@ -201,13 +207,34 @@ class SwissScheduler implements SchedulerInterface
             );
         }
 
-        return new Randomizer(new Xoshiro256StarStar($options->seed));
+        return $options->seed;
+    }
+
+    /**
+     * The sequence a seeded call takes the seeds of its later draws from,
+     * and the order of a rotation: a Randomizer on a Xoshiro256StarStar
+     * engine seeded with the seed and advanced by one long jump
+     * (Xoshiro256StarStar::jumpLong(), 2^192 draws), past every part of
+     * the sequence the rounds of the first draw are drawn from (each round
+     * is a jump of 2^128 draws from the last). Draw k, from the second on,
+     * is seeded with the (k - 1)th integer this sequence gives
+     * (Randomizer::getInt() over every integer). It is built anew on every
+     * call, so the engine and the jump are part of the output for a seed.
+     */
+    private static function redrawSequence(int $seed): Randomizer
+    {
+        $engine = new Xoshiro256StarStar($seed);
+        $engine->jumpLong();
+
+        return new Randomizer($engine);
     }
 
     /**
      * Draw the rounds by driving the Swiss engine with no results.
      *
      * @param list<Participant> $participants
+     * @param Randomizer|null $randomizer The randomizer the scheduler holds, for a call without a seed
+     * @param int|null $seed The seed of this draw, for a call with one
      * @return array{events: list<Event>, byes: array<int, string>, failure: NoValidPairingException|null}
      *                                                                                                    The failure is the round that could not
      *                                                                                                    be paired; the events and byes are then
@@ -216,7 +243,7 @@ class SwissScheduler implements SchedulerInterface
      * @throws InvalidConfigurationException When the engine refuses the state (not reached: the
      *                                       inputs are validated before the draw)
      */
-    private function drawWithEngine(array $participants, int $rounds, ?Randomizer $randomizer): array
+    private function drawWithEngine(array $participants, int $rounds, ?Randomizer $randomizer, ?int $seed): array
     {
         $engine = new SwissPairingEngine(
             constraints: $this->constraints,
@@ -224,7 +251,9 @@ class SwissScheduler implements SchedulerInterface
             randomizer: $randomizer,
             // The rounds are recorded without results on purpose, which the
             // engine has to be told: it otherwise waits for them
-            resultsFree: true
+            resultsFree: true,
+            // Never given with a randomizer: one of the two is null
+            seed: $seed
         );
 
         $state = StageState::start($participants);

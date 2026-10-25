@@ -20,9 +20,12 @@ drops the rest.
 
 Two strings in the library already look like versions and are not this one:
 the `v2` inside an engine fingerprint (`tactician:v2:swiss...`,
-`Stage\EngineFingerprint`; 0.2.x wrote `v1`) and the `v1` in front of a
-repack outcome fingerprint (`RepackOutcome::FINGERPRINT_SCHEME`). Each is
-the version of the scheme its own string is built by.
+`Stage\EngineFingerprint`; 0.2.x wrote `v1`), which is the version of the
+rules an engine pairs that configuration by
+([0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)),
+and the `v1` in front of a repack outcome fingerprint
+(`RepackOutcome::FINGERPRINT_SCHEME`), which is the version of the scheme
+that string is built by.
 
 ## Decision
 
@@ -194,16 +197,19 @@ changelog of that release says so.
 **The fingerprints are not format versions.** `format_version` says how an
 array is to be read. An engine fingerprint says which engine, under which
 configuration, may read a stage state; it is one string value of the stage
-state form, and the `v2` inside it versions how that string is composed. An
+state form, and the `v2` inside it is the version of the rules the engine
+pairs that configuration by
+([0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)). An
 outcome fingerprint is a hash whose scheme names the keys it covers, and
-`format_version` is not one of them. Either scheme can move on without any
-form changing, and a form can change without either scheme moving. 0.3.0
-shows the first: it moved the engine fingerprint scheme from `v1` to `v2`
+`format_version` is not one of them. Either can move on without any
+form changing, and a form can change without either moving. 0.3.0
+shows the first: it raised the version of the Swiss rules and of the
+re-seeded single elimination rules from `v1` to `v2`
 ([ADR 0004](0004-position-decides-where-results-do-not.md)), and the stage
 state form is version 1 as it was. A stage state of format version 1 holds
-a stamp of either scheme: the form stores the string and does not interpret
+a stamp of any version: the form stores the string and does not interpret
 it, so a state stamped by 0.2.x loads, and it is the engine that refuses
-the stamp.
+the stamp where its rules changed.
 
 ## Consequences
 
