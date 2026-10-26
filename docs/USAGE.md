@@ -49,7 +49,7 @@ anything else that competes.
 | **Role fall-back** | What the default role assignment of a round robin does where it finds no schedule with balanced roles: the schedule is generated with the roles the generator proposes, exactly as under `RoundParityRoleAssignment`, and its metadata says so under the key `role_fallback`, with the reason (`RoleFallback`): no balanced roles exist in what was searched, a bound stopped the search, or the search was cut short because a schedule was in hand. A schedule with balanced roles has no such key. See [Balanced where possible](#balanced-where-possible). |
 | **Fixed seating** | A seating is one pairing of a round as a role assignment is handed it: two seats, with the first-named participant in the first. A fixed seating is one the role assignment is told to keep as given (`RoleAssignmentContext::isFixed()`): the scheduler put its event to the constraints the other way round, they rejected it, and it asks the role assignment for the roles of the other seatings around it. See [Writing a role assignment](#writing-a-role-assignment). |
 | **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**, except in a **league**, where it is a **rest** and earns nothing. In a bracket a bye is a node of the **bracket view** with the status `Bye` (an entrant who stood alone and went on); the advancer of an **uncontested tie** is listed among the byes of its round but has no bye. See [Byes in a table](#byes-in-a-table). |
-| **Bye value** | What one bye adds to the ranking value of the participant who had it, as the ranking strategy states it (`RankingStrategyWithByeValue::getByeValue()`): the value of a win, of a draw, nothing, or any other amount. `WinDrawLossRanking` values a bye as a win unless told otherwise. The same value orders the next round of a stage and stands in its final table. |
+| **Bye value** | What one bye adds to the ranking value of the participant who had it, as the ranking strategy states it (`RankingStrategyWithByeValue::getByeValue()`): the value of a win, of a draw, nothing, or any other amount. `WinDrawLossRanking` values a bye as a win unless told otherwise. A ranking strategy that does not state one gives a bye no value: a Swiss stage and a bracket count the bye and credit it with nothing. The same value orders the next round of a stage and stands in its final table. |
 | **Bye treatment** | How a tiebreaker computed from opponents counts a bye (`ByeTreatment`): not at all (`Uncounted`, the default), as an opponent worth nothing (`Zero`), or as an opponent with the participant's own ranking value (`OwnRankingValue`); the last two read an opponent's ranking value with the credit of its byes. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
@@ -2414,13 +2414,14 @@ That prints:
   [awarded result](#awarded-results) for the tie.
 - **A ranking strategy of your own says what a bye is worth** by
   implementing `RankingStrategyWithByeValue`. One that does not keeps
-  working wherever no bye is credited. In a Swiss stage a table with a
-  bye to credit is refused under it (`IncompatibleOptions`), because
-  nothing says what sitting out counts for on its scale. A bracket credits
-  each bye with nothing under it, in every one of its tables, and still
-  counts it (`getByes()`): no bracket is refused for its byes.
+  working wherever no bye is credited with a value. A Swiss stage and a
+  bracket credit each bye with nothing under it, in every one of their
+  tables, and still count it (`getByes()`): no stage is refused for its
+  byes, because nothing says what sitting out counts for on its scale and
+  a withdrawal can leave a participant to sit out in any field.
   `StandingsCalculator::calculateWith()` does the same when it is given
-  `$creditsPerBye` 0.
+  `$creditsPerBye` 0, and refuses a bye to credit with a value under such
+  a strategy (`IncompatibleOptions`).
 
 A tiebreaker that adds up the ranking values of opponents has to say what a
 bye is in that sum, and the two the library has take the answer as a
@@ -2499,9 +2500,9 @@ pairs one round at a time from the recorded `StageState`. Participants are
 ordered by standings and paired adjacently (Monrad style), backtracking
 past repeat pairings. Byes rotate to the lowest-placed participant with
 the fewest so far and are credited with what the ranking strategy says a
-bye is worth, the value of a win unless you choose another: in the order
-the next round is paired from, and in the table of the outcome, which is
-the same table.
+bye is worth, the value of a win unless you choose another, and nothing
+under a ranking strategy that does not say: in the order the next round is
+paired from, and in the table of the outcome, which is the same table.
 
 Where no result separates two participants, their position in the list the
 stage was started with decides: the first round pairs position 1 with 2 and
@@ -2616,8 +2617,58 @@ echo "{$byes} byes in the table, {$scoredForByes} points for them\n"; // 3 byes 
 ```
 
 Under a ranking strategy of your own that does not say what a bye is worth
-(it is no `RankingStrategyWithByeValue`), a stage in which a bye is recorded
-is refused (`IncompatibleOptions`). A tiebreaker that reads opponents'
+(it is no `RankingStrategyWithByeValue`), a bye is counted and credited
+with nothing, as a bracket credits it. The stage is never refused for its
+byes, whether its field is odd from the start or a withdrawal makes it odd
+part of the way through. The bye still goes to a participant who has had
+fewer, and the participant who had it is paired among those level with what
+its results earned:
+
+```php
+use MissionGaming\Tactician\Standings\RankingStrategy;
+
+// Three for a win, one for a draw; nothing is said of a bye
+$threePerWin = new class implements RankingStrategy {
+    public function rank(Participant $participant, array $results): float
+    {
+        $value = 0.0;
+        foreach ($results as $result) {
+            $value += $result->isWinFor($participant) ? 3.0 : ($result->isDraw() ? 1.0 : 0.0);
+        }
+
+        return $value;
+    }
+};
+$noByeValue = new SwissPairingEngine(
+    standingsCalculator: new StandingsCalculator($threePerWin),
+    plannedRounds: 3
+);
+
+// Four start; one withdraws after round 1, and three are left
+$stage = StageState::start(array_slice($participants, 0, 4));
+for ($roundOfThree = 1; $roundOfThree <= 3; ++$roundOfThree) {
+    $threeAndABye = $noByeValue->pairNextRound($stage);
+    $stage = $stage->withRoundPaired($threeAndABye);
+    $stage = $stage->withAdditionalResults(array_map(
+        fn ($event) => new Result($event, $event->getParticipants()[0]),
+        $threeAndABye->getEvents()
+    ));
+    if ($roundOfThree === 1) {
+        $stage = $stage->withoutParticipant($participants[3]);
+    }
+}
+
+// Alice and Bob each sat a round out, and the bye added nothing:
+// Alice: 3 points, byes 1
+// Bob: 3 points, byes 1
+// Carol: 3 points, byes 0
+// Dave: 3 points, byes 0
+foreach ($noByeValue->getOutcome($stage)->getStandings() as $entry) {
+    echo "{$entry->getParticipant()->getLabel()}: {$entry->getRankingValue()} points, byes {$entry->getByes()}\n";
+}
+```
+
+A tiebreaker that reads opponents'
 ranking values (Buchholz, Sonneborn–Berger) leaves byes out unless it is
 given a `ByeTreatment`: by default an opponent counts for the value of its
 results, without its byes.

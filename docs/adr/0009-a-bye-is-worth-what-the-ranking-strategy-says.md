@@ -3,7 +3,8 @@
 Status: accepted; amended by [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md),
 which credits the byes of a bracket in its placement table too, and in a
 bracket credits a bye with nothing, and refuses nothing, under a strategy
-without a bye value; narrowed by [0017](0017-a-league-rest-earns-nothing.md),
+without a bye value, and by [0019](0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md),
+which does the same in a Swiss stage; narrowed by [0017](0017-a-league-rest-earns-nothing.md),
 under which the round a participant of a league rests is counted and
 credited with nothing
 

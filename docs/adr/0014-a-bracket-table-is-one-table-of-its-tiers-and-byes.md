@@ -5,6 +5,8 @@ Status: accepted. Amends
 brackets: a strategy without a bye value credits a bye with nothing, and
 is refused nothing) and
 [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md).
+Its rule for a strategy without a bye value is extended to Swiss by
+[0019](0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md).
 
 ## Context
 
