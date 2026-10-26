@@ -490,7 +490,7 @@ readonly class StandingsCalculator
      */
     private function inTiers(Standings $table, array $tiers): Standings
     {
-        if (self::hasTiebreakersToRead($this) && $this->isCalculatedInOneGo(false)) {
+        if ($this->isCalculatedInOneGo(false)) {
             throw new InvalidConfigurationException(
                 'A subclass of StandingsCalculator calculates a table through its own calculate(), which forms the tied'
                     . ' sets of a tiebreaker between the tied participants over the whole table and not inside a tier.'
@@ -524,10 +524,16 @@ readonly class StandingsCalculator
      * (TiedParticipantsTiebreaker), or, when asked for, on the byes
      * (TiebreakerWithByeTreatment with a treatment other than Uncounted).
      * A table with such a tiebreaker cannot have byes or adjustments
-     * applied to it after it was calculated.
+     * applied to it after it was calculated. A subclass whose constructor
+     * does not call the one it inherits has no tiebreaker set, and so none
+     * of the kind (see hasTiebreakersToRead()).
      */
     private function isCalculatedInOneGo(bool $forByes): bool
     {
+        if (!self::hasTiebreakersToRead($this)) {
+            return false;
+        }
+
         foreach ($this->tiebreakers as $tiebreaker) {
             if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
                 return true;
@@ -1294,10 +1300,18 @@ readonly class StandingsCalculator
     }
 
     /**
+     * The names of the tiebreakers, in order; none for a subclass whose
+     * constructor does not call the one it inherits (see
+     * hasTiebreakersToRead()).
+     *
      * @return list<string>
      */
     private function tiebreakerNames(): array
     {
+        if (!self::hasTiebreakersToRead($this)) {
+            return [];
+        }
+
         return array_values(array_map(
             static fn(TiebreakerInterface $tiebreaker): string => $tiebreaker->getName(),
             $this->tiebreakers

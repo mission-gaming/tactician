@@ -1276,7 +1276,10 @@ entry on the engine fingerprint.
   each bye (`StandingEntry::getByes()`) and adds nothing to the ranking
   value, under any ranking strategy, without reading a bye value. The
   bracket engines calculate their tables so under a ranking strategy that
-  does not say what a bye is worth (ADR 0014).
+  does not say what a bye is worth (ADR 0014). A subclass of the
+  calculator whose constructor does not call the one it inherits has no
+  tiebreakers and no ranking strategy set: a bracket under it counts its
+  byes and credits them with nothing.
 - **The value of a bye is the caller's choice.** A ranking strategy says
   what one bye adds to a ranking value by implementing the optional
   interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).
