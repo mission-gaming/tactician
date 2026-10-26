@@ -3764,9 +3764,11 @@ entry on the engine fingerprint.
   data stored by 0.2.x, without a format version, whose verbs recorded
   such a state. It was already a state the engines misread, and loading it
   would hand an engine that state again. The stage state form keeps
-  format version 1: no key and no meaning changes, and a value that was
-  never a sound state is refused, which ADR 0005 treats as input that was
-  never valid. This is decided in ADR 0018
+  format version 1: no key and no meaning changes, and nothing `toArray()`
+  writes changes, so a new version would mark no difference in the data;
+  data stored by 0.2.x is read as version 1 and refused all the same. 0.2.x
+  documented that its verbs accepted such a round, so this is a deliberate
+  break, not a check added to input that was never valid. This is decided in ADR 0018
   (`docs/adr/0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md`),
   which amends point 8 of ADR 0007. Of the 0.2.3 fixtures, the stage state
   of the case `state swiss round gap by hand` (rounds 1 and 3) is the one

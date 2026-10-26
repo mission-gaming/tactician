@@ -58,9 +58,14 @@ The stage state form takes no new format version. Under
 [0005](0005-serialized-forms-carry-a-format-version.md), a form changes when
 a key is added, removed or renamed, or a value takes another type or another
 meaning. None of that happens here. The keys are the same, and a round number
-means what it meant. What changes is that a value that was never a sound
-state is now refused, which 0005 treats as input that was never valid and
-was read without a check. The changelog lists the case, as 0005 asks.
+means what it meant. What changes is which values are accepted: a round
+that leaves one out is refused. 0.2.x documented that its verbs accepted
+such a round, so this is not input that was read without a check, the case
+0005 names. It is a deliberate break, and a new version would not soften it:
+nothing `toArray()` writes changes, so a new version would mark no
+difference in the data, and a state stored by 0.2.x, which has no version,
+would be read as version 1 and refused all the same. The changelog lists
+the case as a breaking change.
 
 ## Consequences
 
