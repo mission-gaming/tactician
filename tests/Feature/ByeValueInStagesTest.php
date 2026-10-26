@@ -17,6 +17,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
 use MissionGaming\Tactician\Standings\ByeTreatment;
+use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
@@ -27,7 +28,37 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 // The Swiss tests drive a stage in which the better-placed participant wins
 // every event, and keep a table of their own beside it: wins times the value
 // of a win plus byes times the value of a bye, level participants in list
-// order. Nothing of that table is read from the library.
+// order. Nothing of that table is read from the library. A ranking strategy
+// that does not say what a bye is worth is one more case, with a bye worth
+// nothing (ADR 0019).
+
+/**
+ * A calculator on the 3/1/0 scale: a WinDrawLossRanking with the given value
+ * of a bye, or, for null, a strategy of the application's that scores the
+ * same and does not say what a bye is worth (it is no
+ * RankingStrategyWithByeValue).
+ *
+ * @param list<MissionGaming\Tactician\Standings\TiebreakerInterface> $tiebreakers
+ */
+function byeStageCalculator(?float $byeValue, array $tiebreakers = []): StandingsCalculator
+{
+    if ($byeValue !== null) {
+        return new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue($byeValue), $tiebreakers);
+    }
+
+    return new StandingsCalculator(new readonly class implements RankingStrategy {
+        #[Override]
+        public function rank(Participant $participant, array $results): float
+        {
+            $value = 0.0;
+            foreach ($results as $result) {
+                $value += $result->isWinFor($participant) ? 3.0 : ($result->isDraw() ? 1.0 : 0.0);
+            }
+
+            return $value;
+        }
+    }, $tiebreakers);
+}
 
 /**
  * @return list<Participant>
@@ -91,19 +122,18 @@ describe('a Swiss stage in which the better-placed participant wins every event'
     // them other odd fields and other values.
     it('pairs every round from the table of the round before and ends with that table, for every value of a bye', function (
         int $size,
-        float $byeValue
+        ?float $byeValue
     ): void {
         $field = byeStageField($size);
-        $engine = new SwissPairingEngine(
-            standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue($byeValue)),
-            plannedRounds: 3
-        );
+        $engine = new SwissPairingEngine(standingsCalculator: byeStageCalculator($byeValue), plannedRounds: 3);
+        // A strategy that does not say what a bye is worth credits it with nothing
+        $credit = $byeValue ?? 0.0;
 
         $state = StageState::start($field);
         $wins = $byes = [];
 
         for ($round = 1; $round <= 3; ++$round) {
-            $order = byeStageOrder($field, $wins, $byes, $byeValue);
+            $order = byeStageOrder($field, $wins, $byes, $credit);
             $place = array_flip($order);
             $pairing = $engine->pairNextRound($state);
 
@@ -142,7 +172,7 @@ describe('a Swiss stage in which the better-placed participant wins every event'
         assert($table !== null);
 
         expect(array_map(static fn($entry): string => $entry->getParticipant()->getId(), $table->getEntries()))
-            ->toBe(byeStageOrder($field, $wins, $byes, $byeValue));
+            ->toBe(byeStageOrder($field, $wins, $byes, $credit));
 
         foreach ($table->getEntries() as $entry) {
             $id = $entry->getParticipant()->getId();
@@ -151,13 +181,13 @@ describe('a Swiss stage in which the better-placed participant wins every event'
                 ->and($entry->getByes())->toBe($byes[$id] ?? 0, $id)
                 ->and($entry->getPlayed())->toBe(3 - ($byes[$id] ?? 0), $id)
                 ->and($entry->getPlayed())->toBe($entry->getWins() + $entry->getLosses())
-                ->and($entry->getRankingValue())->toBe(($wins[$id] ?? 0) * 3.0 + ($byes[$id] ?? 0) * $byeValue, $id);
+                ->and($entry->getRankingValue())->toBe(($wins[$id] ?? 0) * 3.0 + ($byes[$id] ?? 0) * $credit, $id);
         }
 
         // Every round had a bye, and with a bye valued at zero the table
         // shows them and scores none
         expect(array_sum($byes))->toBe(3);
-        if ($byeValue === 0.0) {
+        if ($credit === 0.0) {
             foreach ($table->getEntries() as $entry) {
                 expect($entry->getRankingValue())->toBe($entry->getWins() * 3.0);
             }
@@ -171,19 +201,20 @@ describe('a Swiss stage in which the better-placed participant wins every event'
         'seven, a bye valued at zero' => [7, 0.0],
         'nine, a bye valued as a draw' => [9, 1.0],
         'nine, a bye valued at zero' => [9, 0.0],
+        'five, a strategy without a bye value' => [5, null],
+        'seven, a strategy without a bye value' => [7, null],
+        'nine, a strategy without a bye value' => [9, null],
+        'eleven, a strategy without a bye value' => [11, null],
     ]);
 
     // After round 1 the participant who sat out is level with the winners
     // when a bye is a win, and with the losers when it is worth nothing.
     it('ranks the participant who sat out with the winners or with the losers, by the value of a bye', function (
-        float $byeValue,
+        ?float $byeValue,
         array $expected
     ): void {
         $field = byeStageField(5);
-        $engine = new SwissPairingEngine(
-            standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue($byeValue)),
-            plannedRounds: 1
-        );
+        $engine = new SwissPairingEngine(standingsCalculator: byeStageCalculator($byeValue), plannedRounds: 1);
         $opening = $engine->pairNextRound(StageState::start($field));
 
         // Round 1 pairs position 1 with 2 and 3 with 4, and position 5 sits out
@@ -212,6 +243,7 @@ describe('a Swiss stage in which the better-placed participant wins every event'
         'as a draw: between the winners and the losers' => [1.0, ['p1', 'p3', 'p5', 'p2', 'p4']],
         'as nothing: level with the two losers, after them in list order' => [0.0, ['p1', 'p3', 'p2', 'p4', 'p5']],
         'above a win: first' => [4.0, ['p5', 'p1', 'p3', 'p2', 'p4']],
+        'under a strategy without a bye value: as nothing' => [null, ['p1', 'p3', 'p2', 'p4', 'p5']],
     ]);
 
     // The pairing order and the outcome are one table also where a
@@ -219,13 +251,10 @@ describe('a Swiss stage in which the better-placed participant wins every event'
     // is the table round r + 1 is paired from.
     it('pairs the next round from the table an outcome of the rounds so far shows, with a tiebreaker that reads byes', function (
         ByeTreatment $treatment,
-        float $byeValue
+        ?float $byeValue
     ): void {
         $field = byeStageField(7);
-        $calculator = new StandingsCalculator(
-            WinDrawLossRanking::threeOneZero()->withByeValue($byeValue),
-            [new BuchholzTiebreaker($treatment)]
-        );
+        $calculator = byeStageCalculator($byeValue, [new BuchholzTiebreaker($treatment)]);
         $pairs = new SwissPairingEngine(standingsCalculator: $calculator, plannedRounds: 5);
 
         $state = StageState::start($field);
@@ -259,6 +288,9 @@ describe('a Swiss stage in which the better-placed participant wins every event'
         [ByeTreatment::OwnRankingValue, 3.0],
         [ByeTreatment::OwnRankingValue, 1.0],
         [ByeTreatment::Zero, 0.0],
+        [ByeTreatment::Uncounted, null],
+        [ByeTreatment::Zero, null],
+        [ByeTreatment::OwnRankingValue, null],
     ]);
 });
 
@@ -286,7 +318,7 @@ describe('a ranking strategy of the application that says what a bye is worth', 
         }
     };
 
-    it('has its byes credited in a Swiss stage, which a strategy that does not say is refused', function () use ($twoPerWin): void {
+    it('has its byes credited in a Swiss stage, where a strategy that does not say credits them with nothing', function () use ($twoPerWin): void {
         $field = byeStageField(5);
         $engine = new SwissPairingEngine(standingsCalculator: new StandingsCalculator($twoPerWin), plannedRounds: 2);
 

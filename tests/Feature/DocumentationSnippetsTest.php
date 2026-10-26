@@ -508,6 +508,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["3 byes in the table, 0 points for them\n"],
             [],
         ],
+        'a Swiss stage under a strategy without a bye value, made odd by a withdrawal' => [
+            'docs/USAGE.md',
+            '$noByeValue = new SwissPairingEngine(',
+            ["Alice: 3 points, byes 1\nBob: 3 points, byes 1\nCarol: 3 points, byes 0\nDave: 3 points, byes 0\n"],
+            [],
+        ],
         'adjustments beside what was earned' => [
             'docs/USAGE.md',
             '$adjusted = $calculator->withAdjustments($standings, $adjustments);',

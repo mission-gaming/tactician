@@ -1275,8 +1275,11 @@ entry on the engine fingerprint.
   `StandingsCalculator::calculateWith()` and `withByesCredited()` counts
   each bye (`StandingEntry::getByes()`) and adds nothing to the ranking
   value, under any ranking strategy, without reading a bye value. The
-  bracket engines calculate their tables so under a ranking strategy that
-  does not say what a bye is worth (ADR 0014).
+  bracket engines and the Swiss engine calculate their tables so under a
+  ranking strategy that does not say what a bye is worth (ADR 0014,
+  ADR 0019). A subclass of the calculator whose constructor does not call
+  the one it inherits has no tiebreakers and no ranking strategy set: a
+  bracket under it counts its byes and credits them with nothing.
 - **The value of a bye is the caller's choice.** A ranking strategy says
   what one bye adds to a ranking value by implementing the optional
   interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).
@@ -1290,8 +1293,11 @@ entry on the engine fingerprint.
   re-seeded bracket credit a bye with that value, in the one table they
   read for the order a round is paired from and for the outcome, so the
   two cannot value a bye differently. A ranking strategy of your own that
-  implements the interface is no longer refused a stage with a bye; one
-  that does not is refused as before, and the message names the interface.
+  implements the interface has its byes credited with its value; under
+  one that does not, a Swiss stage and a bracket count each bye and credit
+  it with nothing (see the entry on byes under **Changed**), and only
+  `StandingsCalculator` itself, asked to credit a bye with a value, refuses
+  the table, with a message that names the interface.
   An engine fingerprint states the value (`bye-value`) only when it is not
   the value of a win, so every stamp written before is unchanged. With the
   defaults no table, pairing or fingerprint changes; no golden fixture
@@ -3181,26 +3187,48 @@ entry on the engine fingerprint.
   refused. An event of a bracket round between two entrants neither of
   whom is in the round, or with an entrant who is in another tie of that
   round, is read by nothing, as before.
-- **Breaking: a Swiss stage that has a bye needs a ranking strategy that
-  says what a bye is worth; a bracket credits it with nothing.** Crediting
-  a bye needs a value for it (`RankingStrategyWithByeValue`, new;
-  `WinDrawLossRanking` is one). A bracket under a `RankingStrategy` without
-  one counts each bye (`StandingEntry::getByes()`) and credits it with
-  nothing, in the ranking a re-seeded round is folded from and in the
-  table of the outcome alike, and is refused nothing (ADR 0014): a
-  withdrawal can leave an entrant standing alone in a bracket of any size,
-  so no refusal before the first round could cover every bye. What to
-  change for a bye to count in a bracket: implement
-  `RankingStrategyWithByeValue` on the strategy, or use a
-  `WinDrawLossRanking`. The Swiss engine refuses later, as it did: it pairs a round that
-  has a bye and refuses to pair the round after it (the message now begins
-  "Crediting a bye requires a ranking strategy that says what a bye is
-  worth"), and
-  `SwissPairingEngine::getOutcome()` raises it too, where it used to return
-  a table without the bye. A Swiss stage whose only bye is in its last
-  round (one planned round, or a withdrawal before the last) therefore has
-  no outcome on such a scale: build its table with your own calculator
-  from the state's results.
+- **A bye under a ranking strategy that does not say what it is worth is
+  counted and credited with nothing, in a Swiss stage and a bracket
+  alike.** Crediting a bye with a value needs one
+  (`RankingStrategyWithByeValue`, new; `WinDrawLossRanking` is one). A
+  Swiss stage or a bracket under a `RankingStrategy` without one counts
+  each bye (`StandingEntry::getByes()`) and credits it with nothing, in the
+  order a round is paired from (the ranking a re-seeded round is folded
+  from) and in the table of the outcome alike, and is refused nothing
+  (ADR 0014 for brackets, ADR 0019 for Swiss): a withdrawal can leave a
+  participant to sit out in a field of any size, so no refusal before the
+  first round could cover every bye. 0.2.x paired a Swiss round that has
+  a bye under such a strategy and refused to pair the round after it
+  ("Swiss bye crediting requires a win/draw/loss ranking strategy"); that
+  round is now paired, with the participant who had the bye in the score
+  group of what its results earned, and the bye still goes to a
+  participant who has had fewer. The table of the outcome credits the
+  byes with nothing, as the table of 0.2.x did, and counts them in
+  `getByes()` (#186). What to change for a
+  bye to count: implement `RankingStrategyWithByeValue` on the strategy,
+  or use a `WinDrawLossRanking`.
+
+  Measured over 10,800 Swiss stages driven with random results (fields of
+  3 to 20, ten seeds each, up to seven rounds, with no withdrawal, one
+  withdrawal after round 1 to 3, or random withdrawals; with and without a
+  Buchholz tiebreaker that reads byes, with and without a seed), 2,160 per
+  ranking strategy: under a strategy without a bye value 1,706 of 2,160
+  stages were refused before (1,656 at a pairing, 50 at the outcome, where
+  the only bye was in the last round), every field of odd size and 626 of
+  the 720 fields of even size a withdrawal made odd; none is refused now,
+  and 1,897 are paired to their last round (the other 263 reach a round
+  with no pairing without a repeat, as the same stages do under a
+  `WinDrawLossRanking` with a bye worth nothing, which pairs all 2,160
+  exactly as such a strategy now does). The 428 stages that were not
+  refused are paired and ranked as before. Under the four strategies with
+  a bye value (`WinDrawLossRanking` with its default bye value, a bye worth
+  nothing, a bye worth a draw, and a strategy of the application's) none
+  of the 8,640 stages changed. No golden fixture changed. The fingerprint
+  of a Swiss engine does not change: no state it paired before is paired
+  differently, since every state with a bye under such a strategy was
+  refused. `SwissPairingEngine::getRecordedRounds()` now gives a
+  derivation for a round after a bye under such a strategy, where it gave
+  none.
 - **Signatures.** Additive, and source-compatible for callers: the
   optional parameters named under **Added** (`Standings::__construct()`,
   `StandingEntry::__construct()`, `StageOutcome::__construct()`,

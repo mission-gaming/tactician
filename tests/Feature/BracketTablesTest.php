@@ -256,6 +256,35 @@ describe('a tiebreaker between the tied participants in the table of a bracket',
         expect($engine->getOutcome($state)?->getStandings()->getTiers())->toHaveCount(4);
     })->with(['single elimination', 'double elimination']);
 
+    // The same calculator in a bracket of six, which has byes: it has no
+    // ranking strategy set either, so no bye value, and each bye is counted
+    // and credited with nothing (ADR 0014), as under any strategy that does
+    // not say what a bye is worth
+    it('counts the byes of a bracket whose calculator has no tiebreakers or ranking strategy to read', function (string $format): void {
+        $subclass = new readonly class extends StandingsCalculator {
+            #[Override]
+            public function calculate(array $participants, array $results): Standings
+            {
+                return (new StandingsCalculator())->calculate($participants, $results);
+            }
+        };
+        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
+        $engine = $format === 'single elimination'
+            ? new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator)
+            : new DoubleEliminationEngine(new EliminationOptions(), $calculator);
+
+        $state = bracketTablePlayed($engine, bracketTableField(6), 3);
+        $outcome = $engine->getOutcome($state);
+        expect($outcome)->not->toBeNull();
+
+        $byes = 0;
+        foreach ($outcome?->getStandings() ?? [] as $entry) {
+            $byes += $entry->getByes();
+            expect($entry->getRankingValue())->toBe($entry->getRankingValueOfResults(), $entry->getParticipant()->getId());
+        }
+        expect($byes)->toBeGreaterThan(0);
+    })->with(['single elimination', 'double elimination']);
+
     it('plays a bracket with a subclass of the calculator without such a tiebreaker', function (StageEngineInterface $engine): void {
         $state = bracketTablePlayed($engine, bracketTableField(6), 7);
 

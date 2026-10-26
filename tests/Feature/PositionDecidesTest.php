@@ -7,7 +7,6 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
@@ -462,7 +461,9 @@ describe('a bye in a Swiss stage', function (): void {
         }
     })->with([[5], [7], [9], [11]])->with([[1], [2], [3], [4], [5]]);
 
-    it('is refused in the table, as it is in pairing, on a scale that has no value for a win', function (): void {
+    // Under a strategy that does not say what a bye is worth the bye is
+    // counted and credited with nothing (ADR 0019), in the table as in pairing
+    it('counts a bye and credits it with nothing in the table, as in pairing, on a scale that says nothing of a bye', function (): void {
         $engine = new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
                 #[Override]
@@ -475,17 +476,18 @@ describe('a bye in a Swiss stage', function (): void {
             resultsFree: true
         );
         $state = StageState::start(positionField(3, 1));
-        $state = $state->withRoundPlayed($engine->pairNextRound($state), []);
+        $opening = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($opening, []);
 
-        try {
-            $engine->getOutcome($state);
-        } catch (InvalidConfigurationException $exception) {
-            expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions);
+        $outcome = $engine->getOutcome($state);
+        assert($outcome !== null);
+        $sittingOut = $opening->getByes()[0];
+        $entry = $outcome->getStandings()->getEntryFor($sittingOut);
 
-            return;
-        }
-
-        throw new LogicException('A bye was credited on a scale with no value for a win.');
+        expect($entry?->getByes())->toBe(1)
+            ->and($entry?->getRankingValue())->toBe(0.0)
+            // Level with the two who played, and last of them in list order
+            ->and($outcome->getStandings()->getEntries()[2]->getParticipant()->getId())->toBe($sittingOut->getId());
     });
 });
 

@@ -22,10 +22,13 @@ namespace MissionGaming\Tactician\Standings;
  * value of a bye is the same in both.
  *
  * The interface is optional. A RankingStrategy that does not implement it
- * keeps working wherever no bye is credited; where one is, the calculator
- * refuses the table, because nothing says what a bye is worth on that
- * scale (reason `IncompatibleOptions`). WinDrawLossRanking implements it,
- * with the value of a win as its default.
+ * keeps working wherever no bye is credited with a value. The engines then
+ * count each bye and credit it with nothing: a Swiss stage, a bracket and
+ * a league are never refused for their byes. The calculator, asked to
+ * credit a bye with a value under such a strategy, refuses the table,
+ * because nothing says what a bye is worth on that scale (reason
+ * `IncompatibleOptions`). WinDrawLossRanking implements it, with the
+ * value of a win as its default.
  *
  * @experimental
  */
