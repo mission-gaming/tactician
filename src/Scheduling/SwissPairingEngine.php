@@ -36,8 +36,6 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
-use ReflectionException;
-use ReflectionProperty;
 
 /**
  * Pairs Swiss rounds incrementally from the recorded stage state.
@@ -825,21 +823,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * calculated with it, so the order a round is paired from and the
      * outcome credit a bye alike
      * (docs/adr/0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md).
-     *
-     * A subclass of the calculator whose constructor does not call the one
-     * it inherits has no ranking strategy set, and so none that says what
-     * a bye is worth: nothing is read from it.
      */
     private function creditsPerBye(): int
     {
-        try {
-            if (!(new ReflectionProperty(StandingsCalculator::class, 'rankingStrategy'))->isInitialized($this->standingsCalculator)) {
-                return 0;
-            }
-        } catch (ReflectionException) {
-            // Not thrown: the class declares the property
-        }
-
         return $this->standingsCalculator->getRankingStrategy() instanceof RankingStrategyWithByeValue ? 1 : 0;
     }
 
