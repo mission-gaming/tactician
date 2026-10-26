@@ -1538,7 +1538,31 @@ entry on the engine fingerprint.
     purpose. The pairing it returns is marked:
     `RoundPairing::isPairedOnIncompleteResults()`, a fifth constructor
     argument of `RoundPairing` (default `false`), written to plain data as
-    `paired_on_incomplete_results` only when it is set.
+    `paired_on_incomplete_results` only when it is set. The mark carries
+    the events that awaited a result when the round was paired:
+    `RoundPairing::getUnresolvedWhenPaired()`, a sixth constructor
+    argument (default `[]`; a list that is not empty marks the round),
+    written to plain data as `unresolved_when_paired` (the events in the
+    form of `events`) only when it is not empty. `fromArray()` refuses the
+    list without the mark, and `StageState::withRoundPlayed()` and
+    `fromHistory()` refuse a listed event that no earlier round holds
+    (`EventNotInRound`, or `EventWithoutRoundNumber` for an event without
+    a round number). The round-robin engine's
+    `pairNextRoundOnIncompleteResults()` lists them too.
+  - **Fix to the above, before any release: a round paired early is no
+    longer reported as manual once the missing result arrives** (#191).
+    `getRecordedRounds()` of the Swiss engine derived such a round from
+    every result of the earlier rounds, the late one included, so the round
+    the engine had paired was reported as manual whenever the late result
+    changed the score groups. The derivation is now read without the
+    results of the events the round lists as awaiting one, which is the
+    table it was paired from. A round drawn by hand and marked is still
+    compared, and is manual where it differs from the engine's round. A
+    marked round that lists no event (an application's row that kept the
+    mark alone) has no derivation in a Swiss stage: which results were in
+    is not known. No released version is affected; both keys are optional
+    keys of version 1 of the round pairing form, since nothing of this
+    release is tagged.
   - **Results-free mode**: `new SwissPairingEngine(resultsFree: true)`, a
     fifth constructor argument (default `false`), is the engine for rounds
     recorded without results on purpose. `SwissScheduler` pairs in it. It
@@ -1598,8 +1622,8 @@ entry on the engine fingerprint.
     had advanced to is uncontested).
   - `StageState::getEventsWithoutResult(): list<Event>` lists the recorded
     events that have no result.
-  - `paired_on_incomplete_results`, `entrants`, `withdrawals` and the
-    `after_round` of an adjustment are optional keys of version 1 of their
+  - `paired_on_incomplete_results`, `unresolved_when_paired`, `entrants`,
+    `withdrawals` and the `after_round` of an adjustment are optional keys of version 1 of their
     forms: an array without them is read as before, and a state that needs
     none of them is written with the keys it always had, so no golden wire
     fixture changed and data stored by 0.2.x loads as it did.

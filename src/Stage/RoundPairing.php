@@ -25,10 +25,16 @@ final readonly class RoundPairing
 
     private ?RoundLabel $roundLabel;
 
+    private bool $pairedOnIncompleteResults;
+
+    /** @var list<Event> */
+    private array $unresolvedWhenPaired;
+
     /**
      * Nothing is checked here. StageState::withRoundPlayed() checks, when
      * the pairing is recorded, that every event carries this round
-     * number.
+     * number, and that every event of $unresolvedWhenPaired is an event of
+     * a round recorded before it.
      *
      * @param int $roundNumber 1-based round number
      * @param RoundLabel|string|null $label The round label: as typed data, which the elimination
@@ -39,14 +45,23 @@ final readonly class RoundPairing
      * @param array<Participant> $byes Participants advancing or sitting out without playing
      * @param bool $pairedOnIncompleteResults Whether the round was paired, on purpose, while an
      *                                        event of an earlier round still awaited its result
+     * @param array<Event> $unresolvedWhenPaired The events of earlier rounds that awaited a
+     *                                           result when the round was paired (see
+     *                                           getUnresolvedWhenPaired()); a list that is not
+     *                                           empty marks the round whatever
+     *                                           $pairedOnIncompleteResults says
      */
     public function __construct(
         private int $roundNumber,
         RoundLabel|string|null $label,
         private array $events,
         private array $byes = [],
-        private bool $pairedOnIncompleteResults = false
+        bool $pairedOnIncompleteResults = false,
+        array $unresolvedWhenPaired = []
     ) {
+        $this->unresolvedWhenPaired = array_values($unresolvedWhenPaired);
+        $this->pairedOnIncompleteResults = $pairedOnIncompleteResults || $this->unresolvedWhenPaired !== [];
+
         if ($label instanceof RoundLabel) {
             $this->label = $label->toString();
             $this->roundLabel = $label;
@@ -66,11 +81,39 @@ final readonly class RoundPairing
      * the round, so that the table the round was paired from can be told
      * from the table the results give once they are all in. An application
      * that rebuilds its rounds from its own rows keeps the mark with them
-     * and passes it here.
+     * and passes it here, with the events getUnresolvedWhenPaired() lists.
      */
     public function isPairedOnIncompleteResults(): bool
     {
         return $this->pairedOnIncompleteResults;
+    }
+
+    /**
+     * The events of earlier rounds that awaited a result when the round
+     * was paired, in the order given (an engine gives them in play order);
+     * empty for a round that was not paired early.
+     *
+     * The engine that pairs a round early lists them with the mark
+     * (isPairedOnIncompleteResults()). They are what tells the table the
+     * round was paired from: the results of the rounds before it, without
+     * the results of these events, which may have arrived since. The Swiss
+     * engine reads the round it would have paired there from that table
+     * (RecordedRound::getDerivation()), so a round it paired early is not
+     * reported as manual once the late results are in. A marked round that
+     * lists no event says that a result was missing and not which: the
+     * Swiss engine has no derivation for it. The round-robin engine pairs
+     * the same round whatever the results, and reads neither.
+     *
+     * The events are the events of the earlier rounds, which
+     * StageState::withRoundPlayed() checks when the round is recorded;
+     * whether they have a result by then is not checked, since one may
+     * have arrived between the pairing and the recording.
+     *
+     * @return list<Event>
+     */
+    public function getUnresolvedWhenPaired(): array
+    {
+        return $this->unresolvedWhenPaired;
     }
 
     /**
@@ -146,19 +189,23 @@ final readonly class RoundPairing
      * registry to rehydrate. The first key is `format_version`, the
      * version of this form (1); the events are written without one. The
      * key `paired_on_incomplete_results` is written, as true, only for a
-     * round that carries that mark (see isPairedOnIncompleteResults()), so
+     * round that carries that mark (see isPairedOnIncompleteResults()), and
+     * the key `unresolved_when_paired`, the events getUnresolvedWhenPaired()
+     * lists in the form of `events`, only for a round that lists one, so
      * every other round has the keys it has always had.
      *
-     * @return array{format_version: int, round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>, paired_on_incomplete_results?: true}
+     * @return array{format_version: int, round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>, paired_on_incomplete_results?: true, unresolved_when_paired?: list<array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>}
      */
     public function toArray(): array
     {
-        $events = [];
-        foreach ($this->events as $key => $event) {
+        $form = static function (Event $event): array {
             $data = $event->toArray();
             unset($data[PlainData::VERSION_KEY]);
-            $events[$key] = $data;
-        }
+
+            return $data;
+        };
+
+        $events = array_map($form, $this->events);
 
         $data = [
             PlainData::VERSION_KEY => PlainData::VERSION,
@@ -171,15 +218,20 @@ final readonly class RoundPairing
         if ($this->pairedOnIncompleteResults) {
             $data['paired_on_incomplete_results'] = true;
         }
+        if ($this->unresolvedWhenPaired !== []) {
+            $data['unresolved_when_paired'] = array_map($form, $this->unresolvedWhenPaired);
+        }
 
         return $data;
     }
 
     /**
      * Recreate a pairing from its array representation, as toArray()
-     * gives it. `round` is required; `label`, `events`, `byes` and
-     * `paired_on_incomplete_results` may be left out. Any other key is
-     * refused.
+     * gives it. `round` is required; `label`, `events`, `byes`,
+     * `paired_on_incomplete_results` and `unresolved_when_paired` may be
+     * left out. A list under `unresolved_when_paired` that is not empty is
+     * refused unless `paired_on_incomplete_results` is true, as toArray()
+     * writes it. Any other key is refused.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
@@ -192,7 +244,7 @@ final readonly class RoundPairing
     {
         PlainData::checkFields(
             $data,
-            ['round', 'label', 'events', 'byes', 'paired_on_incomplete_results'],
+            ['round', 'label', 'events', 'byes', 'paired_on_incomplete_results', 'unresolved_when_paired'],
             'round pairing data'
         );
 
@@ -211,17 +263,13 @@ final readonly class RoundPairing
             throw new InvalidInputException('Round pairing label must be a string or null');
         }
 
-        $eventsData = $data['events'] ?? [];
-        if (!is_array($eventsData)) {
-            throw new InvalidInputException('Round pairing events must be an array');
-        }
-        $events = [];
-        foreach ($eventsData as $eventData) {
-            if (!is_array($eventData)) {
-                throw new InvalidInputException('Each round pairing event must be an array');
-            }
-            /** @var array<string, mixed> $eventData */
-            $events[] = Event::fromArray($eventData, $participantsById);
+        $events = self::eventsFromArray($data['events'] ?? [], 'events', $participantsById);
+        $unresolvedWhenPaired = self::eventsFromArray($data['unresolved_when_paired'] ?? [], 'unresolved_when_paired', $participantsById);
+        if ($unresolvedWhenPaired !== [] && !$pairedOnIncompleteResults) {
+            throw new InvalidInputException(
+                'Round pairing unresolved_when_paired lists the events that awaited a result when the round was paired,'
+                    . ' and requires paired_on_incomplete_results to be true'
+            );
         }
 
         $byeIds = $data['byes'] ?? [];
@@ -238,6 +286,32 @@ final readonly class RoundPairing
             $byes[] = $participantsById[$byeId];
         }
 
-        return new self($roundNumber, $label, $events, $byes, $pairedOnIncompleteResults);
+        return new self($roundNumber, $label, $events, $byes, $pairedOnIncompleteResults, $unresolvedWhenPaired);
+    }
+
+    /**
+     * Read a list of events in the form toArray() writes them.
+     *
+     * @param array<string, Participant> $participantsById
+     *
+     * @return list<Event>
+     *
+     * @throws InvalidInputException When the list or an event of it is malformed
+     */
+    private static function eventsFromArray(mixed $eventsData, string $key, array $participantsById): array
+    {
+        if (!is_array($eventsData)) {
+            throw new InvalidInputException("Round pairing {$key} must be an array");
+        }
+        $events = [];
+        foreach ($eventsData as $eventData) {
+            if (!is_array($eventData)) {
+                throw new InvalidInputException("Each round pairing {$key} entry must be an array");
+            }
+            /** @var array<string, mixed> $eventData */
+            $events[] = Event::fromArray($eventData, $participantsById);
+        }
+
+        return $events;
     }
 }

@@ -959,6 +959,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["bool(false)\nbool(true)\n"],
             [],
         ],
+        'a Swiss round paired early is not manual once the missing result arrives' => [
+            'docs/USAGE.md',
+            '$missing = $firstRound->getEvents()[1];',
+            ["bool(true)\nbool(false)\n"],
+            [],
+        ],
         'a seeded Swiss engine pairs a rebuilt state as the state built round by round' => [
             'docs/USAGE.md',
             '$seededAgain = new SwissPairingEngine(plannedRounds: 4, seed: 2026);',

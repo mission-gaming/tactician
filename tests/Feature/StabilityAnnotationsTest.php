@@ -175,6 +175,7 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             'Stage\\CrossPoolOrder',
             'Stage\\CrossPoolRanking',
             'Stage\EngineFingerprint',
+            'Stage\EventKey',
             'Stage\PairKey',
             'Stage\SelectionTies',
             'Stage\TieResolution',

@@ -52,7 +52,8 @@ round-robin options, `seed` in Swiss options, `ties`, `comparison` and
 `decisions` in a rank range selector, `third_place` in elimination options,
 `award` and `decider` in a result, `adjustments`, `entrants` and
 `withdrawals` in a stage state, `after_round` in an adjustment,
-`paired_on_incomplete_results` in a round pairing, `bye` in a
+`paired_on_incomplete_results` and `unresolved_when_paired` in a round
+pairing, `bye` in a
 win-draw-loss ranking, `objectives` in repack options and `entrants` in a
 scheduled schedule). Each of those
 may be left out and is then read

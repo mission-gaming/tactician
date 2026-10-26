@@ -278,7 +278,7 @@ final readonly class StageState
                 $requireEntrant($participant, 'in a result', $event->getRound()?->getNumber());
             }
 
-            $key = $state->eventKey($event);
+            $key = EventKey::of($event);
             if (isset($resultEvents[$key])) {
                 throw new InvalidConfigurationException(
                     'The history holds two results for one event',
@@ -419,7 +419,7 @@ final readonly class StageState
                 array_values($event->getParticipants())
             );
             $tie = PairKey::of(...$ids);
-            $key = $this->eventKey($event);
+            $key = EventKey::of($event);
 
             foreach ($event->getParticipants() as $participant) {
                 $requireEntrant($participant, 'in an event', $number);
@@ -484,8 +484,10 @@ final readonly class StageState
      *
      * @throws InvalidConfigurationException When withRoundPlayed() refuses the pairing (a round
      *                                       number below 1, `ValueOutOfRange`; out of sequence,
-     *                                       `RoundOutOfSequence`; an event of another round,
-     *                                       `EventNotInRound` or `EventWithoutRoundNumber`)
+     *                                       `RoundOutOfSequence`; an event of another round, or an
+     *                                       event the pairing says awaited a result that no earlier
+     *                                       round holds, `EventNotInRound` or
+     *                                       `EventWithoutRoundNumber`)
      */
     public function withRoundPaired(RoundPairing $pairing): self
     {
@@ -518,10 +520,15 @@ final readonly class StageState
      * @param array<Result> $results
      * @throws InvalidConfigurationException When the pairing's round number is below 1
      *                                       (`ValueOutOfRange`), the pairing does not follow the
-     *                                       recorded rounds (`RoundOutOfSequence`), or an event or result
+     *                                       recorded rounds (`RoundOutOfSequence`), an event or result
      *                                       belongs to a different round or is not in the pairing
      *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
-     *                                       event carries no round number at all)
+     *                                       event carries no round number at all), or an event the
+     *                                       pairing says awaited a result when it was paired
+     *                                       (RoundPairing::getUnresolvedWhenPaired()) is in no
+     *                                       recorded round (`EventNotInRound`, or
+     *                                       `EventWithoutRoundNumber` for one without a round
+     *                                       number)
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
@@ -556,6 +563,7 @@ final readonly class StageState
         }
 
         $this->assertResultsBelongTo($pairing, $results);
+        $this->assertUnresolvedWhenPairedRecorded($pairing);
 
         // The first round says who was in the draw: of those who withdrew
         // before it was recorded, the ones it names keep their place, and
@@ -593,6 +601,51 @@ final readonly class StageState
     }
 
     /**
+     * The events a round says awaited a result when it was paired
+     * (RoundPairing::getUnresolvedWhenPaired()) must be events of the
+     * rounds recorded before it: the Swiss engine reads the table the round
+     * was paired from without their results, and an event that no round
+     * holds would leave out nothing. Whether they have a result now is not
+     * asked: it may have arrived since.
+     *
+     * @throws InvalidConfigurationException When a listed event is in no recorded round
+     *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when it
+     *                                       carries no round number, as no recorded event does)
+     */
+    private function assertUnresolvedWhenPairedRecorded(RoundPairing $pairing): void
+    {
+        if ($pairing->getUnresolvedWhenPaired() === []) {
+            return;
+        }
+
+        $recorded = [];
+        foreach ($this->roundsPlayed as $earlier) {
+            foreach ($earlier->getEvents() as $event) {
+                $recorded[EventKey::of($event)] = true;
+            }
+        }
+
+        foreach ($pairing->getUnresolvedWhenPaired() as $event) {
+            if (!isset($recorded[EventKey::of($event)])) {
+                throw new InvalidConfigurationException(
+                    'The round says that an event awaited a result when it was paired, and no earlier round holds that event',
+                    [
+                        'pairing_round' => $pairing->getRoundNumber(),
+                        'event_round' => $event->getRound()?->getNumber(),
+                        'participants' => array_map(
+                            static fn(Participant $participant): string => $participant->getId(),
+                            array_values($event->getParticipants())
+                        ),
+                    ],
+                    reason: $event->getRound() === null
+                        ? InvalidConfigurationReason::EventWithoutRoundNumber
+                        : InvalidConfigurationReason::EventNotInRound
+                );
+            }
+        }
+    }
+
+    /**
      * Every result must reference one of the pairing's events — accepting
      * results for unrelated events would silently corrupt engine replay.
      *
@@ -603,7 +656,7 @@ final readonly class StageState
     {
         $pairingEventKeys = [];
         foreach ($pairing->getEvents() as $event) {
-            $pairingEventKeys[$this->eventKey($event)] = true;
+            $pairingEventKeys[EventKey::of($event)] = true;
         }
 
         foreach ($results as $result) {
@@ -618,26 +671,14 @@ final readonly class StageState
                 );
             }
 
-            if (!isset($pairingEventKeys[$this->eventKey($result->getEvent())])) {
+            if (!isset($pairingEventKeys[EventKey::of($result->getEvent())])) {
                 throw new InvalidConfigurationException(
                     'Result references an event that is not part of the pairing being recorded',
-                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => $this->eventKey($result->getEvent())],
+                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => EventKey::of($result->getEvent())],
                     reason: InvalidConfigurationReason::EventNotInRound
                 );
             }
         }
-    }
-
-    /**
-     * Identify an event by round, participants, and tie leg — object
-     * identity does not survive serialization round-trips.
-     */
-    private function eventKey(Event $event): string
-    {
-        $ids = array_map(fn(Participant $participant) => $participant->getId(), $event->getParticipants());
-        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
-
-        return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }
 
     /**
@@ -754,13 +795,13 @@ final readonly class StageState
         }
 
         $event = $result->getEvent();
-        $eventKey = $this->eventKey($event);
+        $eventKey = EventKey::of($event);
         $round = $event->getRound()?->getNumber();
 
         $results = [];
         $replaced = false;
         foreach ($this->results as $recorded) {
-            if ($this->eventKey($recorded->getEvent()) !== $eventKey) {
+            if (EventKey::of($recorded->getEvent()) !== $eventKey) {
                 $results[] = $recorded;
                 continue;
             }
@@ -1014,13 +1055,13 @@ final readonly class StageState
     {
         $resolved = [];
         foreach ($this->results as $result) {
-            $resolved[$this->eventKey($result->getEvent())] = true;
+            $resolved[EventKey::of($result->getEvent())] = true;
         }
 
         $events = [];
         foreach ($this->roundsPlayed as $pairing) {
             foreach ($pairing->getEvents() as $event) {
-                if (!isset($resolved[$this->eventKey($event)])) {
+                if (!isset($resolved[EventKey::of($event)])) {
                     $events[] = $event;
                 }
             }
@@ -1423,7 +1464,8 @@ final readonly class StageState
      * result carries an `award` key only when it is awarded and a
      * `decider` key only when it carries the decision of a level tie, and
      * a round a `paired_on_incomplete_results` key only when it carries
-     * that mark.
+     * that mark and an `unresolved_when_paired` key only when it lists the
+     * events that awaited a result when it was paired.
      * The `entrants` key, the IDs of the entrant list in its order (see
      * getEntrants()), is present only when an entrant has withdrawn and
      * kept its place: `active` is then that list without the withdrawn,

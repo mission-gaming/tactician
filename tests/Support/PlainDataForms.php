@@ -574,16 +574,21 @@ final class PlainDataForms
             'round pairing' => [
                 'class' => RoundPairing::class,
                 'kind' => self::DATA,
-                'keys' => ['round', 'label', 'events', 'byes', 'paired_on_incomplete_results'],
+                'keys' => ['round', 'label', 'events', 'byes', 'paired_on_incomplete_results', 'unresolved_when_paired'],
                 'sample' => [
-                    'round' => 1,
+                    'round' => 2,
                     'label' => 'semifinal',
-                    'events' => [$event],
+                    'events' => [['participants' => ['a', 'b'], 'round' => ['number' => 2, 'metadata' => []], 'metadata' => ['court' => 2]]],
                     'byes' => ['c'],
                     'paired_on_incomplete_results' => true,
+                    'unresolved_when_paired' => [$event],
                 ],
                 'read' => static fn(array $data, array $registry): object => RoundPairing::fromArray(self::stringKeyed($data), $registry),
-                'generate' => static fn(Randomizer $random, array $field): object => self::pairing($random, $field, $random->getInt(1, 30)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $number = $random->getInt(1, 30);
+
+                    return self::pairing($random, $field, $number, self::earlierEvents($random, $field, $number));
+                },
             ],
             'schedule' => [
                 'class' => Schedule::class,
@@ -1015,11 +1020,15 @@ final class PlainDataForms
     /**
      * A pairing of one round: the field paired off in a shuffled order,
      * some of it left with a bye. Now and then a pair meets over two legs,
-     * which is two events of one round told apart by `tie_leg`.
+     * which is two events of one round told apart by `tie_leg`. Now and
+     * then it is marked as paired before the results were all in: with
+     * some of the given events of earlier rounds as those that awaited one,
+     * or, as an application's row may have it, with none.
      *
      * @param array<Participant> $field
+     * @param list<Event> $earlier Events of earlier rounds, which the round may say awaited a result
      */
-    private static function pairing(Randomizer $random, array $field, int $number): RoundPairing
+    private static function pairing(Randomizer $random, array $field, int $number, array $earlier = []): RoundPairing
     {
         $order = $random->shuffleArray($field);
         $round = new Round($number, $random->getInt(0, 1) === 1 ? ['label' => 'round of ' . count($field)] : []);
@@ -1036,14 +1045,43 @@ final class PlainDataForms
             }
         }
 
+        // Now and then a round paired before the results were all in
+        $early = $random->getInt(0, 5) === 0;
+        $unresolved = [];
+        if ($early && $earlier !== [] && $random->getInt(0, 3) !== 0) {
+            $unresolved = array_slice($random->shuffleArray($earlier), 0, $random->getInt(1, count($earlier)));
+        }
+
         return new RoundPairing(
             $number,
             $random->getInt(0, 1) === 1 ? 'label ' . $number : null,
             $events,
             array_slice($order, 2 * $paired),
-            // Now and then a round paired before the results were all in
-            $random->getInt(0, 5) === 0
+            $early,
+            $unresolved
         );
+    }
+
+    /**
+     * Events of the rounds before the given one, as a round pairing may
+     * name them as awaiting a result when it was paired.
+     *
+     * @param array<Participant> $field
+     *
+     * @return list<Event>
+     */
+    private static function earlierEvents(Randomizer $random, array $field, int $number): array
+    {
+        $events = [];
+        for ($i = $number > 1 ? $random->getInt(1, 3) : 0; $i > 0; --$i) {
+            $order = $random->shuffleArray(array_values($field));
+            if (count($order) < 2) {
+                break;
+            }
+            $events[] = new Event([$order[0], $order[1]], new Round($random->getInt(1, $number - 1)));
+        }
+
+        return $events;
     }
 
     /**
@@ -1066,7 +1104,7 @@ final class PlainDataForms
         $number = 0;
         for ($rounds = $random->getInt(0, 4); $rounds > 0; --$rounds) {
             $number += $random->getInt(0, 4) === 0 ? 2 : 1;
-            $pairing = self::pairing($random, $field, $number);
+            $pairing = self::pairing($random, $field, $number, $state->getEventsWithoutResult());
 
             $results = [];
             $later = [];
