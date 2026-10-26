@@ -1128,6 +1128,28 @@ describe('a Swiss round paired before the results are in', function (): void {
             }
         }
 
+        // An event of a later round is no event of an earlier one, though the
+        // history holds it: a round is checked against the rounds before it
+        $later = new Event($this->awaited->getParticipants(), new Round(3));
+        $history = [
+            ...$this->unfinished->getRoundsPlayed(),
+            new RoundPairing(2, null, $early->getEvents(), [], true, [$later]),
+            new RoundPairing(3, null, [$later]),
+        ];
+        expect(fn(): StageState => StageState::fromHistory($this->entrants, $history, $this->unfinished->getResults()))
+            ->toThrow(InvalidConfigurationException::class, 'no earlier round holds that event');
+
+        // An event without a round number is refused as the events of a round are
+        $roundless = new RoundPairing(2, null, $early->getEvents(), [], true, [new Event($this->awaited->getParticipants())]);
+        try {
+            $this->unfinished->withRoundPaired($roundless);
+            $this->fail('An event without a round number was accepted.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::EventWithoutRoundNumber)
+                ->and(array_key_exists('event_round', $exception->getContext()))->toBeTrue()
+                ->and($exception->getContext()['event_round'])->toBeNull();
+        }
+
         // The event it names may have its result by the time the round is recorded
         $resolved = $this->unfinished->withAdditionalResults([new Result($this->awaited, $this->awaited->getParticipants()[0])]);
         expect($resolved->withRoundPaired($early)->getLastRound()?->getUnresolvedWhenPaired())->toBe([$this->awaited]);

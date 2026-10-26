@@ -1546,7 +1546,8 @@ entry on the engine fingerprint.
     form of `events`) only when it is not empty. `fromArray()` refuses the
     list without the mark, and `StageState::withRoundPlayed()` and
     `fromHistory()` refuse a listed event that no earlier round holds
-    (`EventNotInRound`). The round-robin engine's
+    (`EventNotInRound`, or `EventWithoutRoundNumber` for an event without
+    a round number). The round-robin engine's
     `pairNextRoundOnIncompleteResults()` lists them too.
   - **Fix to the above, before any release: a round paired early is no
     longer reported as manual once the missing result arrives** (#191).

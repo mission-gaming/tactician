@@ -484,8 +484,10 @@ final readonly class StageState
      *
      * @throws InvalidConfigurationException When withRoundPlayed() refuses the pairing (a round
      *                                       number below 1, `ValueOutOfRange`; out of sequence,
-     *                                       `RoundOutOfSequence`; an event of another round,
-     *                                       `EventNotInRound` or `EventWithoutRoundNumber`)
+     *                                       `RoundOutOfSequence`; an event of another round, or an
+     *                                       event the pairing says awaited a result that no earlier
+     *                                       round holds, `EventNotInRound` or
+     *                                       `EventWithoutRoundNumber`)
      */
     public function withRoundPaired(RoundPairing $pairing): self
     {
@@ -524,7 +526,9 @@ final readonly class StageState
      *                                       event carries no round number at all), or an event the
      *                                       pairing says awaited a result when it was paired
      *                                       (RoundPairing::getUnresolvedWhenPaired()) is in no
-     *                                       recorded round (`EventNotInRound`)
+     *                                       recorded round (`EventNotInRound`, or
+     *                                       `EventWithoutRoundNumber` for one without a round
+     *                                       number)
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
@@ -605,6 +609,8 @@ final readonly class StageState
      * asked: it may have arrived since.
      *
      * @throws InvalidConfigurationException When a listed event is in no recorded round
+     *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when it
+     *                                       carries no round number, as no recorded event does)
      */
     private function assertUnresolvedWhenPairedRecorded(RoundPairing $pairing): void
     {
@@ -631,7 +637,9 @@ final readonly class StageState
                             array_values($event->getParticipants())
                         ),
                     ],
-                    reason: InvalidConfigurationReason::EventNotInRound
+                    reason: $event->getRound() === null
+                        ? InvalidConfigurationReason::EventWithoutRoundNumber
+                        : InvalidConfigurationReason::EventNotInRound
                 );
             }
         }

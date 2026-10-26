@@ -4366,7 +4366,8 @@ result was missing and not which, and the Swiss engine has no derivation
 for it (`getDerivation()` is null, so it is not reported as manual); the
 round-robin engine reads neither the mark nor the list, since no result
 changes a fixture. A listed event that no earlier round holds is refused
-when the round is recorded (`EventNotInRound`); one that has its result by
+when the round is recorded (`EventNotInRound`, or
+`EventWithoutRoundNumber` for an event without a round number); one that has its result by
 then is not, since the result may have arrived between the pairing and the
 recording. An event that is never played is not left without a result: give
 it an [awarded result](#awarded-results), which is a result. The result
