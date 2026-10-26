@@ -176,32 +176,123 @@ describe('SwissPairingEngine', function (): void {
         expect($round2->getEvents())->toHaveCount(2);
     });
 
-    // Crediting a bye "as a win" is undefined under a non-win/draw/loss
-    // ranking scale, so the engine fails loudly instead of guessing
-    it('rejects bye crediting under a ranking strategy that does not say what a bye is worth', function (): void {
-        $customRanking = new readonly class implements RankingStrategy {
-            /**
-             * @param array<Result> $results
-             */
-            #[Override]
-            public function rank(Participant $participant, array $results): float
-            {
-                return 0.0;
+    // A ranking strategy that does not say what a bye is worth (it is no
+    // RankingStrategyWithByeValue) has the bye counted and credited with
+    // nothing, as a bracket does under it (ADR 0019): the stage is paired on.
+    describe('under a ranking strategy that does not say what a bye is worth', function (): void {
+        beforeEach(function (): void {
+            // Three for a win, one for a draw, and nothing said of a bye
+            $this->threePerWin = new readonly class implements RankingStrategy {
+                /**
+                 * @param array<Result> $results
+                 */
+                #[Override]
+                public function rank(Participant $participant, array $results): float
+                {
+                    $value = 0.0;
+                    foreach ($results as $result) {
+                        $value += $result->isWinFor($participant) ? 3.0 : ($result->isDraw() ? 1.0 : 0.0);
+                    }
+
+                    return $value;
+                }
+            };
+            $this->frank = new Participant('p6', 'Frank');
+            $this->grace = new Participant('p7', 'Grace');
+            $this->seven = [...$this->participants, $this->eve, $this->frank, $this->grace];
+
+            // Round 1: Grace has the bye; Alice, Carol and Eve win
+            $this->afterRoundOne = withSwissRound(StageState::start($this->seven), 1, [
+                new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
+                new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
+                new Result(new Event([$this->eve, $this->frank], new Round(1)), $this->eve),
+            ], [$this->grace]);
+        });
+
+        it('counts the bye and credits it with nothing in the table', function (): void {
+            $engine = new SwissPairingEngine(standingsCalculator: new StandingsCalculator($this->threePerWin));
+            $table = $engine->getStandings($this->afterRoundOne);
+
+            $grace = $table->getEntryFor($this->grace);
+            expect($grace?->getByes())->toBe(1)
+                ->and($grace?->getPlayed())->toBe(0)
+                ->and($grace?->getRankingValue())->toBe(0.0)
+                ->and($grace?->getEarnedRankingValue())->toBe(0.0)
+                // With the losers, after them in list order
+                ->and(array_map(static fn($entry): string => $entry->getParticipant()->getId(), $table->getEntries()))
+                ->toBe(['p1', 'p3', 'p5', 'p2', 'p4', 'p6', 'p7']);
+        });
+
+        it('pairs the participant who sat out among those it is level with, and gives the next bye to one who has had none', function (): void {
+            $engine = new SwissPairingEngine(standingsCalculator: new StandingsCalculator($this->threePerWin));
+
+            $round2 = $engine->pairNextRound($this->afterRoundOne);
+
+            // Grace is last on 0 and has had a bye, so Frank, the lowest
+            // placed without one, sits out; Grace meets Dave among the losers.
+            // A bye worth a win pairs her with Eve instead (the test below).
+            expect($round2->getByes()[0]->getId())->toBe('p6')
+                ->and(swissPairKeys($round2->getEvents()))->toBe(['p1-p3', 'p2-p5', 'p4-p7']);
+        });
+
+        it('pairs a field a withdrawal makes odd, and ends with a table that credits the bye with nothing', function (): void {
+            $engine = new SwissPairingEngine(standingsCalculator: new StandingsCalculator($this->threePerWin), plannedRounds: 3);
+
+            // Four play round 1; Dave then withdraws, which leaves three
+            $state = withSwissRound(StageState::start($this->participants), 1, [
+                new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
+                new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
+            ])->withoutParticipant($this->dave);
+
+            // Bob, the lowest placed of the three, sits round 2 out
+            $round2 = $engine->pairNextRound($state);
+            expect($round2->getByes()[0]->getId())->toBe('p2')
+                ->and(swissPairKeys($round2->getEvents()))->toBe(['p1-p3']);
+            $state = $state->withRoundPlayed($round2, [new Result($round2->getEvents()[0], $this->carol)]);
+
+            // Bob has had his bye: Alice, the lowest placed of the two who
+            // have not, sits round 3 out, and Bob meets Carol
+            $round3 = $engine->pairNextRound($state);
+            expect($round3->getByes()[0]->getId())->toBe('p1')
+                ->and(swissPairKeys($round3->getEvents()))->toBe(['p2-p3']);
+            $state = $state->withRoundPlayed($round3, [new Result($round3->getEvents()[0], $this->bob)]);
+
+            $outcome = $engine->getOutcome($state);
+            expect($outcome)->not->toBeNull();
+            $values = [];
+            foreach ($outcome?->getStandings() ?? [] as $entry) {
+                $values[$entry->getParticipant()->getId()] = [$entry->getRankingValue(), $entry->getByes()];
             }
-        };
 
-        $participants = [...$this->participants, $this->eve];
-        $engine = new SwissPairingEngine(
-            standingsCalculator: new StandingsCalculator($customRanking)
-        );
+            expect($values)->toBe([
+                'p3' => [6.0, 0],
+                'p1' => [3.0, 1],
+                'p2' => [3.0, 1],
+                'p4' => [0.0, 0],
+            ])->and($outcome?->getByes())->toBe(['p2' => 1, 'p1' => 1]);
+        });
 
-        $state = withSwissRound(StageState::start($participants), 1, [
-            new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
-            new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
-        ], [$this->eve]);
+        // A round after a bye has a derivation now, where the engine refused
+        // to pair one before: the rounds it paired are not reported as manual
+        it('derives every recorded round after a bye, and reports none it paired as manual', function (): void {
+            $engine = new SwissPairingEngine(standingsCalculator: new StandingsCalculator($this->threePerWin), plannedRounds: 4);
 
-        expect(fn() => $engine->pairNextRound($state))
-            ->toThrow(InvalidConfigurationException::class, 'a ranking strategy that says what a bye is worth (RankingStrategyWithByeValue)');
+            $state = StageState::start($this->seven);
+            while (!$engine->isComplete($state)) {
+                $pairing = $engine->pairNextRound($state);
+                $state = $state->withRoundPlayed($pairing, array_map(
+                    static fn(Event $event): Result => new Result($event, $event->getParticipants()[1]),
+                    $pairing->getEvents()
+                ));
+            }
+
+            $recorded = $engine->getRecordedRounds($state);
+            expect($recorded)->toHaveCount(4);
+            foreach ($recorded as $round) {
+                expect($round->getDerivation())->not->toBeNull()
+                    ->and($round->isManual())->toBeFalse();
+            }
+        });
     });
 
     it('credits a bye as a win when ordering the next round', function (): void {

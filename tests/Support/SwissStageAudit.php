@@ -40,7 +40,9 @@ use Random\Randomizer;
  *   particular nobody takes a second bye while a participant who has had
  *   none could have taken it.
  * - Score groups: participants are "ordered by standings and paired
- *   adjacently, backtracking past repeat pairings", a bye counting as a win.
+ *   adjacently, backtracking past repeat pairings", a bye counting as a win
+ *   (or as the value of a bye the caller names: nothing, under a ranking
+ *   strategy that does not say what a bye is worth).
  *   So, taking the events in the order the engine lists them, each one holds
  *   a participant from the highest score group still unpaired, and that
  *   participant's opponent has at least as many points as every other
@@ -49,7 +51,9 @@ use Random\Randomizer;
  * - When the engine says there is no valid pairing, there is none: no bye
  *   and set of events covers the active field without a rematch.
  * - The stage is complete after its planned rounds and not before, and its
- *   outcome then ranks everyone it has seen, withdrawn participants included.
+ *   outcome then ranks everyone it has seen, withdrawn participants included,
+ *   each with the byes it had and the points of this class's books: the
+ *   value the rounds were paired by is the value the table ends with.
  *
  * "A complete pairing exists" is a perfect matching in the graph of
  * participants who may still meet. It is decided with the Tutte matrix: the
@@ -68,11 +72,12 @@ final class SwissStageAudit
      * @param list<Participant> $participants The field, in list order
      * @param int $rounds Rounds to drive; the engine must be planned for the same number
      * @param int $seed Seeds the results, the withdrawals and the matching test
-     * @param float $win Points for a win and for a bye
+     * @param float $win Points for a win, and for a bye unless $bye says otherwise
      * @param float $draw Points for a draw
      * @param (Closure(Participant, Participant): bool)|null $mayMeet The pairs a constraint of the engine allows, when it has one
      * @param bool $withdrawals Whether participants withdraw between rounds (never below four active)
      * @param bool $throughJson Whether the state goes through JSON after every round
+     * @param float|null $bye Points for a bye; null for the points of a win
      * @return array{violations: list<string>, transcript: list<string>, rounds: int, failedRound: int|null, byes: int, withdrawn: int}
      * @throws InvalidConfigurationException When the engine refuses the state
      * @throws JsonConversionException When the state does not survive JSON
@@ -86,8 +91,11 @@ final class SwissStageAudit
         float $draw = 1.0,
         ?Closure $mayMeet = null,
         bool $withdrawals = false,
-        bool $throughJson = true
+        bool $throughJson = true,
+        ?float $bye = null
     ): array {
+        $byeValue = $bye ?? $win;
+
         $random = new Randomizer(new Mt19937($seed));
         $matching = new Randomizer(new Mt19937($seed + 7919));
 
@@ -144,7 +152,7 @@ final class SwissStageAudit
             ++$paired;
             $score = [];
             foreach ($field as $index) {
-                $score[$index] = $points[$index] + $byeCounts[$index] * $win;
+                $score[$index] = $points[$index] + $byeCounts[$index] * $byeValue;
             }
 
             if ($pairing->getRoundNumber() !== $round) {
@@ -308,6 +316,21 @@ final class SwissStageAudit
                 $violations[] = "the stage is not reported complete after its {$rounds} rounds";
             } elseif (count($engine->getOutcome($state)?->getStandings()->getEntries() ?? []) !== $count) {
                 $violations[] = 'the outcome does not rank everyone the stage has seen';
+            } else {
+                foreach ($engine->getOutcome($state)?->getStandings()->getEntries() ?? [] as $entry) {
+                    $index = $indexOf[$entry->getParticipant()->getId()] ?? -1;
+                    $expected = ($points[$index] ?? 0.0) + ($byeCounts[$index] ?? 0) * $byeValue;
+                    if ($entry->getByes() !== ($byeCounts[$index] ?? -1) || $entry->getRankingValue() !== $expected) {
+                        $violations[] = sprintf(
+                            'the outcome has %s on %s points with %d bye(s), not on %s with %d',
+                            $entry->getParticipant()->getId(),
+                            $entry->getRankingValue(),
+                            $entry->getByes(),
+                            $expected,
+                            $byeCounts[$index] ?? -1
+                        );
+                    }
+                }
             }
         }
 
