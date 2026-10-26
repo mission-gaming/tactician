@@ -41,8 +41,9 @@ interface HistoryReadingEngine
      * pairs it. The Swiss engine can still find that no pairing exists
      * (NoValidPairingException), which only the search tells, and the
      * round-robin engine that the constraints leave the scheduler no
-     * schedule (IncompleteScheduleException), which only generating it
-     * tells.
+     * schedule (IncompleteScheduleException), or that its round would pair
+     * two participants more often than the league has legs
+     * (`RecordedRoundMismatch`), which only generating it tells.
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the state cannot be read at all
      */

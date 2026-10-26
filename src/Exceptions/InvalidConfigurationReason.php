@@ -305,7 +305,11 @@ enum InvalidConfigurationReason: string
      * round it was made. A round-robin engine refuses a state that names a
      * participant outside its entrant list, from which it could not draw
      * the league again, and one with an event of other than two
-     * participants. A round that only pairs the entrants otherwise
+     * participants; it refuses to pair a round of its schedule that would
+     * pair two participants more often than the league has legs, where the
+     * recorded rounds are not the schedule's (a round drawn by hand took a
+     * meeting from it, or other constraints paired them); the recorded
+     * rounds are still read. A round that only pairs the entrants otherwise
      * than the engine would have is read, and reported as manual.
      */
     case RecordedRoundMismatch = 'recorded_round_mismatch';

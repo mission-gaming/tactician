@@ -4807,7 +4807,15 @@ and the state holds facts only. The engine generates the schedule again
 from the entrant list on every call, so build it the same way for the whole
 stage. The [fingerprint](#recording-which-engine-pairs-a-state) holds the
 options and the seed to that; the constraints have no name, and keeping
-them the same is the caller's to do, as for the Swiss engine. The seed is an
+them the same is the caller's to do, as for the Swiss engine. An engine
+built with other constraints than the ones that paired the recorded rounds
+is not refused by the stamp, and is not silent either: where its schedule
+does not continue the recorded rounds, a round of it pairs a meeting the
+recorded rounds have already played as often as the league has legs, and
+that round is refused (`RecordedRoundMismatch`, as for a round drawn by
+hand below) before the league could end with a meeting played twice and
+another not at all. The recorded rounds it would have paired otherwise
+are reported as manual (`getRecordedRounds()`). The seed is an
 integer, not a `Randomizer`: the scheduler is given
 `new Randomizer(new Xoshiro256StarStar($seed))`, made anew on every call, so
 that every call gives the same round for the same state. For the same reason a
@@ -4942,9 +4950,12 @@ as manual by `getRecordedRounds()`, with the schedule's round beside it
 (`getDerivation()`). Roles, the order of the events, the byes and an event
 of an entrant who had withdrawn before the round are not compared, so a
 round recorded without such a fixture is not manual for that. A round drawn
-by hand moves no later fixture: the later rounds are the schedule's, so a
-pairing it took from a later round is paired again there unless that round
-is recorded by hand as well. An application whose rows hold the fixtures
+by hand moves no later fixture: the later rounds are the schedule's. The
+engine never pairs two participants more often than the league has legs,
+so where a round drawn by hand took a meeting from a later round, that
+later round is refused (`RecordedRoundMismatch`; the context names the
+round, the participants who have met already and the schedule's events of
+the round), and you record it by hand as well. An application whose rows hold the fixtures
 builds the state with `StageState::fromHistory()`, as for any stage (see
 [Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows));
 the rows of a round with a participant who sat it out are its fixtures and

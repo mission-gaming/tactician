@@ -1023,7 +1023,13 @@ entry on the engine fingerprint.
     schedule has it is read as recorded and reported as manual, with the
     schedule's round as its derivation (roles, event order, byes and the
     events of entrants who had withdrawn before the round are not
-    compared). A round drawn by hand moves no later fixture. A state that
+    compared). A round drawn by hand moves no later fixture, and the engine
+    never pairs two participants more often than the league has legs: a
+    round of the schedule that would, because a round drawn by hand took a
+    meeting from it or the recorded rounds were paired under other
+    constraints (which the fingerprint cannot hold), is refused with
+    `RecordedRoundMismatch`, the round, the meetings already played and the
+    schedule's events in its context. A state that
     names a participant outside its entrant list (0.2.x data with a
     withdrawal, which kept no entrant list) is refused with
     `RecordedRoundMismatch`, because the league could not be drawn again.

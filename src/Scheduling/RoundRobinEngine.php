@@ -83,9 +83,15 @@ use Random\Randomizer;
  *   read as its own; a round recorded otherwise (fixtures swapped by hand)
  *   is read as recorded and reported as manual by getRecordedRounds(), with
  *   the scheduler's round beside it. A round recorded by hand moves no later
- *   fixture: the later rounds are those of the schedule, so a pairing a
- *   hand-drawn round took from a later round is paired again there unless
- *   that round is recorded by hand too.
+ *   fixture: the later rounds are those of the schedule. The engine never
+ *   pairs two participants more often than the league has legs, so where a
+ *   hand-drawn round took a pairing from a later round, that later round is
+ *   refused (`RecordedRoundMismatch`, with the schedule's round in the
+ *   context) and is the application's to record by hand too. The same
+ *   refusal is what an engine built with other constraints than the ones
+ *   that paired the recorded rounds runs into: the constraints are not part
+ *   of the fingerprint, and a schedule that does not continue the recorded
+ *   rounds pairs some of their pairings again before the league ends.
  * - The table is the standings calculator's, from the recorded results,
  *   the byes and the adjustments in one call
  *   (StandingsCalculator::calculateWith()), with the entrant list deciding
@@ -245,9 +251,23 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      *
      * @throws UnresolvedRoundException When an event of a recorded round awaits a result (reason
      *                                  `RoundPartiallyResolved`)
+     * The round is refused where it would pair two participants more often
+     * than the league has legs, counting the recorded rounds: a recorded
+     * round drawn by hand took the pairing from it, or the recorded rounds
+     * were paired under other constraints and the schedule does not
+     * continue them. The context names the round, the participants who
+     * have met as often as the league has them meet, and the schedule's
+     * events of the round; the application records the round by hand
+     * (StageState::withRoundPaired()), or builds the engine as the one that
+     * paired the stage.
+     *
+     * @throws UnresolvedRoundException When an event of a recorded round awaits a result (reason
+     *                                  `RoundPartiallyResolved`)
      * @throws InvalidConfigurationException When the rounds of the schedule have all been
-     *                                       recorded (reason `PlannedRoundsPlayed`), and for every
-     *                                       case getPlan() names
+     *                                       recorded (reason `PlannedRoundsPlayed`), when the round
+     *                                       would pair two participants more often than the league
+     *                                       has legs (`RecordedRoundMismatch`), and for every case
+     *                                       getPlan() names
      * @throws IncompleteScheduleException When the constraints leave the scheduler no schedule
      */
     #[Override]
@@ -340,7 +360,9 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * Ready means that no recorded event awaits a result and a round of the
      * schedule is left. The schedule is not generated here, so where
      * constraints leave the scheduler no schedule, pairNextRound() still
-     * refuses (IncompleteScheduleException).
+     * refuses (IncompleteScheduleException), and so it does where its round
+     * would pair two participants more often than the league has legs
+     * (`RecordedRoundMismatch`, see pairNextRound()).
      *
      * @throws InvalidConfigurationException For every case getPlan() names
      */
@@ -530,7 +552,67 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
             );
         }
 
+        $this->refuseMeetingsBeyondTheLegs($state, $pairing);
+
         return $pairing;
+    }
+
+    /**
+     * Refuse a round that would pair two participants more often than the
+     * league has legs, counting the events of the recorded rounds.
+     *
+     * The schedule meets every two entrants once a leg. Where the recorded
+     * rounds already hold a meeting of the round as often as that, they are
+     * not the rounds of this schedule: a round was drawn by hand with a
+     * pairing of a later round, or the stage was paired under constraints
+     * other than this engine's, which the fingerprint cannot tell. Pairing
+     * on would play the meeting again and leave another unplayed, and the
+     * league would end as no round robin.
+     *
+     * @throws InvalidConfigurationException With reason `RecordedRoundMismatch`
+     */
+    private function refuseMeetingsBeyondTheLegs(StageState $state, RoundPairing $pairing): void
+    {
+        $met = [];
+        foreach ($state->getPlayedEvents() as $event) {
+            $key = PairKey::of(...$this->idsOf($event));
+            $met[$key] = ($met[$key] ?? 0) + 1;
+        }
+
+        $again = [];
+        foreach ($pairing->getEvents() as $event) {
+            $ids = $this->idsOf($event);
+            if (($met[PairKey::of(...$ids)] ?? 0) >= $this->options->legs) {
+                $again[] = $ids;
+            }
+        }
+
+        if ($again !== []) {
+            throw new InvalidConfigurationException(
+                "Round {$pairing->getRoundNumber()} of the schedule pairs participants who have met as often as the"
+                    . " league has legs ({$this->options->legs}) in the recorded rounds: those rounds are not the"
+                    . ' rounds of this schedule. Record the round by hand, or build the engine with the options,'
+                    . ' constraints and seed that paired the stage',
+                [
+                    'round' => $pairing->getRoundNumber(),
+                    'legs' => $this->options->legs,
+                    'met_already' => $again,
+                    'scheduled' => array_map($this->idsOf(...), $pairing->getEvents()),
+                ],
+                reason: InvalidConfigurationReason::RecordedRoundMismatch
+            );
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function idsOf(Event $event): array
+    {
+        return array_values(array_map(
+            static fn(Participant $participant): string => $participant->getId(),
+            $event->getParticipants()
+        ));
     }
 
     /**
