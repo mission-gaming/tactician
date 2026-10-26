@@ -1086,7 +1086,7 @@ final class PlainDataForms
 
     /**
      * A stage state recorded the way an application records one: started,
-     * rounds recorded in order (now and then with a gap in the numbers),
+     * rounds recorded in order and numbered 1, 2, 3 (a state refuses a gap),
      * some events with a result and some without, a result added later, a
      * withdrawal, and a stamp or none. Its adjustments are recorded after
      * a round of the stage: the one the state gives them, or an earlier
@@ -1103,7 +1103,7 @@ final class PlainDataForms
 
         $number = 0;
         for ($rounds = $random->getInt(0, 4); $rounds > 0; --$rounds) {
-            $number += $random->getInt(0, 4) === 0 ? 2 : 1;
+            ++$number;
             $pairing = self::pairing($random, $field, $number, $state->getEventsWithoutResult());
 
             $results = [];

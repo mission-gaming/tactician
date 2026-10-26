@@ -407,17 +407,19 @@ describe('SwissPairingEngine', function (): void {
     });
 
     it('derives the next round number from the recorded rounds', function (): void {
-        $state = StageState::start($this->participants)
-            ->withRoundPlayed(new RoundPairing(6, null, [
-                new Event([$this->alice, $this->bob], new Round(6)),
-                new Event([$this->carol, $this->dave], new Round(6)),
+        $state = StageState::start($this->participants);
+        foreach ([1, 2] as $number) {
+            $state = $state->withRoundPlayed(new RoundPairing($number, null, [
+                new Event([$this->alice, $this->bob], new Round($number)),
+                new Event([$this->carol, $this->dave], new Round($number)),
             ]), []);
+        }
 
         $pairing = (new SwissPairingEngine(resultsFree: true))->pairNextRound($state);
 
-        expect($pairing->getRoundNumber())->toBe(7);
+        expect($pairing->getRoundNumber())->toBe(3);
         foreach ($pairing->getEvents() as $event) {
-            expect($event->getRound()?->getNumber())->toBe(7);
+            expect($event->getRound()?->getNumber())->toBe(3);
         }
     });
 

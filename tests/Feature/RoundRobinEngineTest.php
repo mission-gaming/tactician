@@ -618,9 +618,9 @@ describe('a league paired round by round', function (): void {
         }
     });
 
-    // The verbs accept a round with a number above the next one; a round
-    // beyond the last of the schedule is read as recorded, with no
-    // derivation to compare it with, and asks for no further round
+    // The verbs accept the next round after the last of the schedule, paired
+    // by hand; it is read as recorded, with no derivation to compare it
+    // with, and asks for no further round
     it('reads a round recorded beyond the last round of the schedule without a derivation', function (): void {
         $engine = new RoundRobinEngine();
         [$one, $two, $three] = $field = leagueField(3);

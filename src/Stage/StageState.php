@@ -130,11 +130,12 @@ final readonly class StageState
      * The order of the events inside a round is part of the round and is
      * kept; no engine reads a recorded round by it.
      *
-     * Three rules are checked that the verbs do not check, because rows
-     * can state what no engine paired:
+     * The round numbers are 1, 2, 3 and so on, with none left out or
+     * given twice (`RoundOutOfSequence`), as the verbs require; the context
+     * of the refusal lists them under `round_numbers` as well. Two rules
+     * are checked that the verbs do not check, because rows can state what
+     * no engine paired:
      *
-     * - the round numbers are 1, 2, 3 and so on, with none left out or
-     *   given twice (`RoundOutOfSequence`);
      * - every participant of an event, a bye, a result, a withdrawal or an
      *   adjustment is one of the entrants, by ID
      *   (`ParticipantNotAnEntrant`);
@@ -197,8 +198,9 @@ final readonly class StageState
      *                                       where no round is supplied
      *
      * @throws InvalidConfigurationException When two entrants share an ID
-     *                                       (`DuplicateParticipantIds`), one of the three rules
-     *                                       above is broken, an event has two results
+     *                                       (`DuplicateParticipantIds`), the round numbers are not
+     *                                       1, 2, 3 and so on (`RoundOutOfSequence`), one of the
+     *                                       two rules above is broken, an event has two results
      *                                       (`DuplicateResult`), the history holds rounds and a
      *                                       withdrawal that does not say its round
      *                                       (`WithdrawalWithoutRound`, with the participant and
@@ -242,25 +244,23 @@ final readonly class StageState
             static fn(RoundPairing $first, RoundPairing $second): int => $first->getRoundNumber() <=> $second->getRoundNumber()
         );
 
+        // A round numbered below 1 sorts first and is left to
+        // withRoundPlayed(), which refuses it with a reason of its own
+        // (`ValueOutOfRange`) before any order of the rounds is read, so
+        // their order is not checked here then: rounds 0 and 1 would
+        // otherwise be refused as round 1 given after round 1.
+        $sequenced = $rounds === [] || $rounds[0]->getRoundNumber() >= 1;
+
         $positions = [];
         foreach ($rounds as $index => $pairing) {
-            $number = $pairing->getRoundNumber();
-            // A number below 1 is left to withRoundPlayed(), which has a
-            // reason of its own for it.
-            if ($number >= 1 && $number !== $index + 1) {
-                throw new InvalidConfigurationException(
-                    'The rounds of a history are numbered 1, 2, 3 and so on: round ' . ($index + 1)
-                        . " is missing or round {$number} is given twice",
-                    [
-                        'expected_round' => $index + 1,
-                        'round' => $number,
-                        'round_numbers' => array_map(
-                            static fn(RoundPairing $round): int => $round->getRoundNumber(),
-                            $rounds
-                        ),
-                    ],
-                    reason: InvalidConfigurationReason::RoundOutOfSequence
-                );
+            if ($sequenced) {
+                // The rounds before it are 1 to $index, checked already
+                self::requireNextRound($index, $pairing->getRoundNumber(), [
+                    'round_numbers' => array_map(
+                        static fn(RoundPairing $round): int => $round->getRoundNumber(),
+                        $rounds
+                    ),
+                ]);
             }
 
             $positions += $state->positionsOfSoundRound($pairing, $requireEntrant);
@@ -483,7 +483,7 @@ final readonly class StageState
      * records the pairing as given, whatever the size of its events.
      *
      * @throws InvalidConfigurationException When withRoundPlayed() refuses the pairing (a round
-     *                                       number below 1, `ValueOutOfRange`; out of sequence,
+     *                                       number below 1, `ValueOutOfRange`; not the next round,
      *                                       `RoundOutOfSequence`; an event of another round, or an
      *                                       event the pairing says awaited a result that no earlier
      *                                       round holds, `EventNotInRound` or
@@ -507,20 +507,25 @@ final readonly class StageState
      * from then on, and an engine waits for the missing results before it
      * pairs a further round, unless it is told that the stage has none
      * (SwissPairingEngine in results-free mode, which whole-schedule
-     * generation relies on). Rounds are recorded in play order: a round number is 1 or
-     * above and must exceed the last recorded one, and every event and result
-     * in the pairing must carry that round number, so the history can
-     * never contradict itself.
+     * generation relies on). Rounds are recorded in play order and
+     * numbered 1, 2, 3 and so on: the first round recorded is round 1, each
+     * round after it is the one after the last recorded
+     * (getNextRoundNumber()), and every event and result in the pairing
+     * must carry that round number, so the history can never contradict
+     * itself. A round given twice, a round before the last and a round that
+     * leaves one out are refused alike, with the reason fromHistory() gives
+     * for them: every state the verbs build is one fromHistory() builds.
      *
-     * What is not checked: that the round number is the next one (a
-     * higher one is accepted, and the gap stays), that the participants
-     * of the pairing are active, and that an event has only one result.
+     * What is not checked: that the participants of the pairing are
+     * active, and that an event has only one result.
      * The results are appended to getResults() in the order given.
      *
      * @param array<Result> $results
      * @throws InvalidConfigurationException When the pairing's round number is below 1
-     *                                       (`ValueOutOfRange`), the pairing does not follow the
-     *                                       recorded rounds (`RoundOutOfSequence`), an event or result
+     *                                       (`ValueOutOfRange`), the pairing is not the next round:
+     *                                       round 1 first, then the round after the last recorded
+     *                                       (`RoundOutOfSequence`, with `last_round`, `pairing_round`
+     *                                       and `expected_round` in the context), an event or result
      *                                       belongs to a different round or is not in the pairing
      *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
      *                                       event carries no round number at all), or an event the
@@ -540,14 +545,7 @@ final readonly class StageState
             );
         }
 
-        $lastRound = $this->getLastRound();
-        if ($lastRound !== null && $pairing->getRoundNumber() <= $lastRound->getRoundNumber()) {
-            throw new InvalidConfigurationException(
-                'Rounds must be recorded in play order with increasing round numbers',
-                ['last_round' => $lastRound->getRoundNumber(), 'pairing_round' => $pairing->getRoundNumber()],
-                reason: InvalidConfigurationReason::RoundOutOfSequence
-            );
-        }
+        self::requireNextRound($this->getLastRound()?->getRoundNumber() ?? 0, $pairing->getRoundNumber());
 
         foreach ($pairing->getEvents() as $event) {
             $eventRound = $event->getRound()?->getNumber();
@@ -597,6 +595,39 @@ final readonly class StageState
             $this->adjustedParticipants,
             $entrants,
             $withdrawals
+        );
+    }
+
+    /**
+     * The one check of the order of the rounds, which the verbs,
+     * fromHistory() and fromArray() share: the rounds of a stage are
+     * numbered 1, 2, 3 and so on, in the order they are recorded, so the
+     * round recorded after round N is round N + 1 and the first is round 1.
+     * A round given twice, a round before the last, and a round that leaves
+     * one out are all refused. An engine reads the rounds as recorded and
+     * pairs the next from the last, so a state with a round left out would
+     * be read as if that round had been played.
+     *
+     * @param int $lastRound The number of the last round recorded, 0 before the first
+     * @param int $number The number of the round to be recorded
+     * @param array<string, mixed> $context Further context for the refusal
+     *
+     * @throws InvalidConfigurationException When the round is not the next one
+     *                                       (`RoundOutOfSequence`, with `last_round`,
+     *                                       `pairing_round` and `expected_round` in the context)
+     */
+    private static function requireNextRound(int $lastRound, int $number, array $context = []): void
+    {
+        $expected = $lastRound + 1;
+        if ($number === $expected) {
+            return;
+        }
+
+        throw new InvalidConfigurationException(
+            'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round'
+                . " {$expected}, not round {$number}",
+            ['last_round' => $lastRound, 'pairing_round' => $number, 'expected_round' => $expected, ...$context],
+            reason: InvalidConfigurationReason::RoundOutOfSequence
         );
     }
 
@@ -1626,19 +1657,22 @@ final readonly class StageState
      * This is the reader of what toArray() wrote. An application that
      * holds its rounds and results in rows of its own does not build this
      * array: it calls fromHistory(), which records the history through the
-     * same verbs and checks three rules more.
+     * same verbs and checks two rules more.
      *
      * The history is checked as the verbs check it, because it is
-     * recorded again through withRoundPlayed(): rounds in play order with
-     * rising numbers from 1, every event of a pairing carrying the
+     * recorded again through withRoundPlayed(): rounds in play order,
+     * numbered 1, 2, 3 and so on, every event of a pairing carrying the
      * pairing's round number, and every result standing with the results
      * of its round and belonging to an event of that round. Stored data
      * that states a history no sequence of verbs could have recorded is
      * refused with the reason the verb gives (`ValueOutOfRange` for a
      * round below 1, `RoundOutOfSequence`, `EventNotInRound`,
      * `EventWithoutRoundNumber`), where it used to load and be replayed by
-     * an engine as if it were sound. What the verbs do not check is not
-     * checked here either: a gap in the round numbers, the participants of
+     * an engine as if it were sound. A state whose round numbers leave one
+     * out, or do not start at 1, is refused too (`RoundOutOfSequence`),
+     * whatever its format version: 0.2.x recorded and stored such a state,
+     * and an engine read it as if the missing round had been played. What
+     * the verbs do not check is not checked here either: the participants of
      * a pairing being active, and an event with more than one result (the
      * standings and the bracket engines refuse that one, and
      * withResultReplaced() repairs it).

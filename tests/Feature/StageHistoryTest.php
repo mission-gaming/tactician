@@ -473,20 +473,38 @@ describe('a state built from a history', function (): void {
             'a round left out' => [
                 fn() => StageState::fromHistory($entrants, [$roundOne, $roundThree]),
                 InvalidConfigurationReason::RoundOutOfSequence,
-                ['expected_round' => 2, 'round' => 3, 'round_numbers' => [1, 3]],
+                ['last_round' => 1, 'pairing_round' => 3, 'expected_round' => 2, 'round_numbers' => [1, 3]],
             ],
             'a round given twice' => [
                 fn() => StageState::fromHistory($entrants, [$roundOne, $roundOne]),
                 InvalidConfigurationReason::RoundOutOfSequence,
-                ['expected_round' => 2, 'round' => 1],
+                ['last_round' => 1, 'pairing_round' => 1, 'expected_round' => 2],
             ],
             'no first round' => [
                 fn() => StageState::fromHistory($entrants, [$roundThree]),
                 InvalidConfigurationReason::RoundOutOfSequence,
-                ['expected_round' => 1, 'round' => 3],
+                ['last_round' => 0, 'pairing_round' => 3, 'expected_round' => 1],
             ],
             'a round numbered 0' => [
                 fn() => StageState::fromHistory($entrants, [new RoundPairing(0, null, [])]),
+                InvalidConfigurationReason::ValueOutOfRange,
+                ['pairing_round' => 0],
+            ],
+            // A round below 1 is refused for its number, whatever follows
+            // it, and not as round 1 given after round 1: it is no round
+            // of the stage, so nothing is out of sequence after it
+            'a round numbered 0, supplied after round 1' => [
+                fn() => StageState::fromHistory($entrants, [$roundOne, new RoundPairing(0, null, [])]),
+                InvalidConfigurationReason::ValueOutOfRange,
+                ['pairing_round' => 0],
+            ],
+            'rounds numbered -1, 0 and 1' => [
+                fn() => StageState::fromHistory($entrants, [new RoundPairing(0, null, []), $roundOne, new RoundPairing(-1, null, [])]),
+                InvalidConfigurationReason::ValueOutOfRange,
+                ['pairing_round' => -1],
+            ],
+            'a round numbered 0 and a round 3 with round 1 left out' => [
+                fn() => StageState::fromHistory($entrants, [new RoundPairing(0, null, []), $roundThree]),
                 InvalidConfigurationReason::ValueOutOfRange,
                 ['pairing_round' => 0],
             ],
@@ -2184,4 +2202,194 @@ describe('the stored form of a state', function (): void {
             // An empty list is no list: the round is read as one that names none
             ->and(RoundPairing::fromArray([...$marked, 'unresolved_when_paired' => []], $registry)->getUnresolvedWhenPaired())->toBe([]);
     });
+});
+
+// Issue #192: the verbs accepted a round whose number left one out, which
+// fromHistory() refused. An engine read such a state as recorded and called
+// a three-round Swiss stage, or a league of four, complete with two rounds
+// played. Every state the verbs build is now one fromHistory() builds, and
+// stored data with a gap is refused, so no engine is handed one.
+describe('a round left out of the round numbers', function (): void {
+    it('cannot be recorded, so no engine reads a stage as complete with a round never paired', function (StageEngineInterface $engine): void {
+        $entrants = historyField(4);
+        $win = static fn(RoundPairing $pairing): array => array_map(
+            static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+            $pairing->getEvents()
+        );
+
+        // Every round paired in order, to have round 3's pairing in hand
+        $full = StageState::start($entrants);
+        $pairings = [];
+        for ($round = 1; $round <= 3; ++$round) {
+            $pairings[$round] = $engine->pairNextRound($full);
+            $full = $full->withRoundPlayed($pairings[$round], $win($pairings[$round]));
+        }
+        expect($engine->isComplete($full))->toBeTrue();
+
+        $afterOne = StageState::start($entrants)->withRoundPlayed($pairings[1], $win($pairings[1]));
+        expect($engine->isComplete($afterOne))->toBeFalse();
+
+        $refusals = [];
+        foreach ([
+            'withRoundPlayed()' => static fn() => $afterOne->withRoundPlayed($pairings[3], $win($pairings[3])),
+            'withRoundPaired()' => static fn() => $afterOne->withRoundPaired($pairings[3]),
+            'fromHistory()' => static fn() => StageState::fromHistory($entrants, [$pairings[1], $pairings[3]]),
+            'fromArray()' => static function () use ($full): StageState {
+                $stored = $full->toArray();
+                unset($stored['rounds'][1], $stored['results'][2], $stored['results'][3]);
+                $stored['rounds'] = array_values($stored['rounds']);
+                $stored['results'] = array_values($stored['results']);
+
+                return StageState::fromArray($stored);
+            },
+        ] as $path => $build) {
+            try {
+                $build();
+                $refusals[$path] = null;
+            } catch (InvalidConfigurationException $exception) {
+                $refusals[$path] = $exception->getReason();
+            }
+        }
+
+        expect($refusals)->toBe(array_fill_keys(
+            ['withRoundPlayed()', 'withRoundPaired()', 'fromHistory()', 'fromArray()'],
+            InvalidConfigurationReason::RoundOutOfSequence
+        ));
+    })->with([
+        'Swiss over three rounds' => [new SwissPairingEngine(plannedRounds: 3)],
+        'a league of four' => [new RoundRobinEngine()],
+    ]);
+
+    // The seam between the ways in: a state built from rows, or read from
+    // storage, goes on through the verbs from its last round, as one built
+    // verb by verb does. JSON is read through fromArray(), so it refuses a
+    // gap as the array does.
+    it('cannot follow a state built from a history or read from storage', function (string $source): void {
+        $entrants = historyField(4);
+        $engine = new SwissPairingEngine(plannedRounds: 3);
+        $win = static fn(RoundPairing $pairing): array => array_map(
+            static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+            $pairing->getEvents()
+        );
+        $live = StageState::start($entrants);
+        for ($round = 1; $round <= 2; ++$round) {
+            $pairing = $engine->pairNextRound($live);
+            $live = $live->withRoundPlayed($pairing, $win($pairing));
+        }
+
+        $state = match ($source) {
+            'fromHistory()' => StageState::fromHistory($entrants, $live->getRoundsPlayed(), $live->getResults()),
+            'fromArray()' => StageState::fromArray($live->toArray()),
+            'fromJson()' => StageState::fromJson($live->toJson()),
+            default => throw new LogicException($source),
+        };
+        $byHand = static fn(int $number): RoundPairing => new RoundPairing($number, null, [
+            new Event([$entrants[0], $entrants[3]], new Round($number)),
+        ]);
+
+        $contexts = [];
+        foreach ([1, 2, 4] as $number) {
+            try {
+                $state->withRoundPaired($byHand($number));
+                $contexts[$number] = null;
+            } catch (InvalidConfigurationException $exception) {
+                expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence);
+                $contexts[$number] = $exception->getContext();
+            }
+        }
+
+        // A refused round leaves the state as it was: the engine's round 3
+        // is recorded after the refusals, and the stage is then complete
+        $next = $engine->pairNextRound($state);
+
+        expect($contexts)->toBe([
+            1 => ['last_round' => 2, 'pairing_round' => 1, 'expected_round' => 3],
+            2 => ['last_round' => 2, 'pairing_round' => 2, 'expected_round' => 3],
+            4 => ['last_round' => 2, 'pairing_round' => 4, 'expected_round' => 3],
+        ])
+            ->and($state->getNextRoundNumber())->toBe(3)
+            ->and($next->getRoundNumber())->toBe(3)
+            ->and($engine->isComplete($state->withRoundPlayed($next, $win($next))))->toBeTrue()
+            ->and($state->withRoundPaired($byHand(3))->getNextRoundNumber())->toBe(4);
+    })->with(['fromHistory()', 'fromArray()', 'fromJson()']);
+
+    it('is refused from JSON as it is from an array', function (): void {
+        $entrants = historyField(4);
+        $state = StageState::start($entrants);
+        foreach ([1, 2] as $number) {
+            $state = $state->withRoundPaired(new RoundPairing($number, null, [
+                new Event([$entrants[0], $entrants[$number]], new Round($number)),
+            ]));
+        }
+        $stored = $state->toArray();
+        $stored['rounds'][1]['round'] = 3;
+        $stored['rounds'][1]['events'][0]['round']['number'] = 3;
+
+        try {
+            StageState::fromJson(json_encode($stored, JSON_THROW_ON_ERROR));
+            $this->fail('The JSON was read.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence)
+                ->and($exception->getContext())->toBe(['last_round' => 1, 'pairing_round' => 3, 'expected_round' => 2]);
+        }
+    });
+
+    // A round recorded in two steps, paired and then given its results, is
+    // still the last round: the round after it is the next one, and no
+    // other
+    it('is refused after a round paired and then given its results', function (): void {
+        $entrants = historyField(4);
+        $engine = new SwissPairingEngine(plannedRounds: 3);
+        $pairing = $engine->pairNextRound(StageState::start($entrants));
+        $state = StageState::start($entrants)
+            ->withRoundPaired($pairing)
+            ->withAdditionalResults(array_map(
+                static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+                $pairing->getEvents()
+            ));
+        $roundThree = new RoundPairing(3, null, [new Event([$entrants[0], $entrants[3]], new Round(3))]);
+
+        try {
+            $state->withRoundPaired($roundThree);
+            $this->fail('Round 3 was recorded after round 1.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence)
+                ->and($exception->getContext())->toBe(['last_round' => 1, 'pairing_round' => 3, 'expected_round' => 2]);
+        }
+
+        expect($engine->pairNextRound($state)->getRoundNumber())->toBe(2);
+    });
+
+    // The check must refuse only what no engine pairs. Every engine numbers
+    // its round getNextRoundNumber(), across the legs of a league too, so a
+    // whole stage runs through the verbs, every state between its rounds
+    // loads from storage, and its rounds in any order rebuild it
+    it('lets every engine run a whole stage, stored and read again between rounds', function (StageEngineInterface $engine, int $size, int $rounds): void {
+        $entrants = historyField($size);
+        $state = StageState::start($entrants);
+        $numbers = [];
+        while (!$engine->isComplete($state) && count($numbers) < 50) {
+            $pairing = $engine->pairNextRound($state);
+            $numbers[] = $pairing->getRoundNumber();
+            $state = StageState::fromJson($state->withRoundPaired($pairing)->toJson())
+                ->withAdditionalResults(array_map(
+                    static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+                    $pairing->getEvents()
+                ));
+            $state = StageState::fromArray($state->toArray());
+        }
+
+        $rebuilt = StageState::fromHistory($entrants, array_reverse($state->getRoundsPlayed()), $state->getResults());
+
+        expect($numbers)->toBe(range(1, $rounds))
+            ->and($engine->isComplete($state))->toBeTrue()
+            ->and($rebuilt->toArray())->toBe($state->toArray());
+    })->with([
+        'Swiss of eight over four rounds' => [new SwissPairingEngine(plannedRounds: 4), 8, 4],
+        'a league of five' => [new RoundRobinEngine(), 5, 5],
+        'a league of four over three legs' => [new RoundRobinEngine(new RoundRobinOptions(legs: 3)), 4, 9],
+        'single elimination of six' => [new SingleEliminationEngine(), 6, 3],
+        'single elimination of eight with a third-place tie' => [new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)), 8, 3],
+        'double elimination of eight, losers rounds and grand final among them' => [new DoubleEliminationEngine(), 8, 8],
+    ]);
 });

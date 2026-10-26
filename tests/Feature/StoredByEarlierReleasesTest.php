@@ -41,9 +41,9 @@ use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 // draw, the stamp, the replaced result and the shape-only grid), bar one:
 // round-robin options had no `role_assignment` before 0.2.2.
 //
-// Four of the lines are no longer read, each for a change 0.3.0 made on
+// Five of the lines are no longer read, each for a change 0.3.0 made on
 // purpose and its changelog states. They are listed below with the reason
-// they are refused with, so that a fifth cannot join them unnoticed.
+// they are refused with, so that a sixth cannot join them unnoticed.
 
 /**
  * A payload stored by 0.2.x: one line of JSON.
@@ -126,6 +126,11 @@ function readStoredCase(array $case): object
 function storedCasesNoLongerRead(): array
 {
     return [
+        // Rounds 1 and 3, with round 2 left out: the verbs of 0.2.x recorded
+        // it, and an engine read it as if round 2 had been played. A stage
+        // state's rounds are 1, 2, 3 and so on (changelog: "a stored stage
+        // state whose round numbers leave one out no longer loads"; ADR 0018)
+        'state swiss round gap by hand' => InvalidConfigurationReason::RoundOutOfSequence,
         // The shuffled strategy needs a seed in plain data (changelog: "a
         // shuffled leg strategy needs a seed"); 0.2.x wrote the identifier alone
         'options rr shuffled unseeded' => InvalidConfigurationReason::IncompatibleOptions,
@@ -173,7 +178,7 @@ describe('every form as 0.2.3 wrote it', function (): void {
         expect($written)->toBe('{"format_version":1,' . substr($case['stored'], 1));
     })->with(fn(): array => array_values(array_diff(array_keys(formsWrittenByZeroTwoThree()), array_keys(storedCasesNoLongerRead()))));
 
-    it('is refused in the four cases the changelog of 0.3.0 states, and in no other', function (): void {
+    it('is refused in the five cases the changelog of 0.3.0 states, and in no other', function (): void {
         $refused = [];
         foreach (formsWrittenByZeroTwoThree() as $name => $case) {
             try {

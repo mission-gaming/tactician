@@ -1493,10 +1493,12 @@ entry on the engine fingerprint.
     one built by `start()`, `withRoundPlayed()` for each round with its
     results in the order of its events, and `withoutParticipant()` and
     `withAdjustment()` at the moments the history states; it is recorded
-    through the same verbs as a state read by `fromArray()`. A history is
-    held to three rules more, because rows can state what no engine
-    paired: round numbers 1, 2, 3 with none left out or given twice
-    (`RoundOutOfSequence`), every participant an entrant (the new reason
+    through the same verbs as a state read by `fromArray()`. Its round
+    numbers are 1, 2, 3 with none left out or given twice
+    (`RoundOutOfSequence`), as the verbs now require too (see the entry on
+    the rounds of a stage state under **Changed**). A history is held to
+    two rules more, because rows can state what no engine paired: every
+    participant an entrant (the new reason
     `ParticipantNotAnEntrant`, `participant_not_an_entrant`) and nobody in
     a round twice (the new reason `ParticipantTwiceInRound`,
     `participant_twice_in_round`; the two legs of a tie are one
@@ -1508,7 +1510,9 @@ entry on the engine fingerprint.
     and an adjustment without `madeAfterRound()` in a history with rounds
     (the new reason `AdjustmentWithoutRound`, `adjustment_without_round`,
     the same context; ADR 0012, amended).
-    `fromArray()`, `fromJson()` and the verbs accept what they accepted.
+    `fromArray()`, `fromJson()` and the verbs are not held to the two
+    rules: they accept what they accepted, bar a gap in the round numbers
+    (see the entry on the rounds of a stage state under **Changed**).
   - **History is supplied, never recomputed.** An engine reads the rounds
     recorded on a state as they are and derives only the round that does
     not exist yet (ADR 0007,
@@ -2918,15 +2922,17 @@ entry on the engine fingerprint.
   an event or a result that does not belong to its round, a result of a
   round that is not recorded and a result that does not stand with the
   results of its round, and `EventWithoutRoundNumber` for an event or a
-  result's event with no round. What the verbs accept still loads: a gap in
-  the round numbers, a pairing whose participants are not active, and two
-  results of one event, which has to load so that `withResultReplaced()`
-  can repair it. Who is affected: an application whose stored states were
-  written or edited by something other than `toArray()` or `toJson()` (a
-  migration script, a hand-built array), and code that catches only
-  `InvalidInputException` around `fromArray()`. A state the library wrote
-  is always one the verbs recorded and loads as before, whichever release
-  wrote it. What to change: catch `InvalidConfigurationException` as well
+  result's event with no round. What the verbs accept still loads: a
+  pairing whose participants are not active, and two results of one event,
+  which has to load so that `withResultReplaced()` can repair it. (A gap
+  in the round numbers no longer loads: the verbs refuse it now; see the
+  entry on the rounds of a stage state.) Who is affected: an application
+  whose stored states were written or edited by something other than
+  `toArray()` or `toJson()` (a migration script, a hand-built array), and
+  code that catches only `InvalidInputException` around `fromArray()`. A
+  state the library wrote is one the verbs recorded and loads as before,
+  whichever release wrote it, bar one whose round numbers leave one out,
+  which the verbs of 0.2.x recorded. What to change: catch `InvalidConfigurationException` as well
   (`catch (TacticianException)` covers both), and rebuild a refused state
   from your own rows with `StageState::start()` and `withRoundPlayed()`.
   Before: `StageState::fromArray(['rounds' => [$roundTwo, $roundOne], ...])`
@@ -3757,6 +3763,52 @@ entry on the engine fingerprint.
   holds (ADR 0005). A participant without a label is written without the
   `label` key, which 0.2.x requires; a release of 0.2.x refuses such a
   participant, loudly.
+- **Breaking: the rounds of a stage state are 1, 2, 3 and so on, and a
+  stored stage state whose round numbers leave one out no longer loads
+  ([#192](https://github.com/mission-gaming/tactician/issues/192)).**
+  `StageState::withRoundPlayed()` and `withRoundPaired()` accepted any
+  round whose number was above the last recorded one: round 3 after round
+  1, or a first round numbered 3. An engine reads the rounds as recorded,
+  so it read the round left out as played: a Swiss stage of three planned
+  rounds with rounds 1 and 3 recorded reported `isComplete()` after two
+  rounds, and so did a league of four under `RoundRobinEngine`. The verbs
+  now refuse a round that is not the next one: the first round recorded is
+  round 1, and each after it is `getNextRoundNumber()`. The refusal is the
+  one `StageState::fromHistory()` gives a history with a round left out,
+  `InvalidConfigurationException` with the reason `RoundOutOfSequence`, so
+  every state the verbs build is one `fromHistory()` builds. The three ways
+  in share one check. Its context is `last_round`, `pairing_round` and
+  `expected_round`, and `fromHistory()` adds `round_numbers`. Its message
+  says which round was expected. The verbs' refusal of a round that was
+  not above the last one had `last_round` and `pairing_round` and the
+  message "Rounds must be recorded in play order with increasing round
+  numbers", and `fromHistory()` had `expected_round`, `round` and
+  `round_numbers`.
+
+  **A stored state with a gap is refused.** `StageState::fromArray()` and
+  `fromJson()` record the stored rounds again through `withRoundPlayed()`,
+  so a stored state whose rounds leave a number out, or whose first round
+  is not round 1, is now refused with `RoundOutOfSequence`. This includes
+  data stored by 0.2.x, without a format version, whose verbs recorded
+  such a state. It was already a state the engines misread, and loading it
+  would hand an engine that state again. The stage state form keeps
+  format version 1: no key and no meaning changes, and nothing `toArray()`
+  writes changes, so a new version would mark no difference in the data;
+  data stored by 0.2.x is read as version 1 and refused all the same. 0.2.x
+  documented that its verbs accepted such a round, so this is a deliberate
+  break, not a check added to input that was never valid. This is decided in ADR 0018
+  (`docs/adr/0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md`),
+  which amends point 8 of ADR 0007. Of the 0.2.3 fixtures, the stage state
+  of the case `state swiss round gap by hand` (rounds 1 and 3) is the one
+  that no longer loads.
+
+  **Who is affected.** An application that numbers a round itself and
+  leaves a number out. One that records the rounds an engine pairs is not
+  affected, because an engine numbers each round `getNextRoundNumber()`.
+  **What to check.** A round you build by hand with `new RoundPairing()`
+  takes `$state->getNextRoundNumber()` as its number. Before you upgrade, a
+  stored state that no longer loads is rebuilt with its rounds renumbered
+  1, 2, 3, through the verbs or `fromHistory()`.
 
 ### Deprecated
 
