@@ -16,6 +16,7 @@
   Tie: 1
   First: Ines
   Second: bye
+  Score:
   Where it stands: Ines through on a bye
 -
   Round: quarterfinal
@@ -23,6 +24,7 @@
   Tie: 2
   First: Wren
   Second: Kasia
+  Score: 1-2, 0-1
   Where it stands: Kasia through over 2 legs
 -
   Round: quarterfinal
@@ -30,6 +32,7 @@
   Tie: 3
   First: Tomas
   Second: bye
+  Score:
   Where it stands: Tomas through on a bye
 -
   Round: quarterfinal
@@ -37,6 +40,7 @@
   Tie: 4
   First: Olu
   Second: Raf
+  Score: 2-1, 1-0
   Where it stands: Olu through over 2 legs
 -
   Round: semifinal
@@ -44,6 +48,7 @@
   Tie: 1
   First: Ines
   Second: Kasia
+  Score: 3-1, to play
   Where it stands: in play
 -
   Round: semifinal
@@ -51,6 +56,7 @@
   Tie: 2
   First: Tomas
   Second: Olu
+  Score: 3-1, to play
   Where it stands: in play
 -
   Round: final
@@ -58,6 +64,7 @@
   Tie: 1
   First: winner of semifinal 1
   Second: winner of semifinal 2
+  Score:
   Where it stands: waiting
 -
   Round: final
@@ -65,11 +72,12 @@
   Tie: third place
   First: loser of semifinal 1
   Second: loser of semifinal 2
+  Score:
   Where it stands: waiting
 
 == The semifinal first legs ==
-- R2: ines-kasia{"tie_leg":1} => ines
-- R2: tomas-olu{"tie_leg":1} => tomas
+- R2: ines-kasia{"tie_leg":1} => ines (3-1)
+- R2: tomas-olu{"tie_leg":1} => tomas (3-1)
 
 == Double elimination, Merlins withdrawn, in play ==
 -
@@ -78,6 +86,7 @@
   Tie: 1
   First: Harriers
   Second: bye
+  Score:
   Where it stands: Harriers through on a bye
 -
   Round: winners round 1
@@ -85,6 +94,7 @@
   Tie: 2
   First: Merlins (withdrawn)
   Second: Swifts
+  Score: 1-2
   Where it stands: Swifts through
 -
   Round: winners round 1
@@ -92,6 +102,7 @@
   Tie: 3
   First: Kestrels
   Second: bye
+  Score:
   Where it stands: Kestrels through on a bye
 -
   Round: winners round 1
@@ -99,6 +110,7 @@
   Tie: 4
   First: Ospreys
   Second: bye
+  Score:
   Where it stands: Ospreys through on a bye
 -
   Round: losers round 1
@@ -106,6 +118,7 @@
   Tie: 1
   First: bye
   Second: Merlins (withdrawn)
+  Score:
   Where it stands: void, nobody through
 -
   Round: losers round 1
@@ -113,6 +126,7 @@
   Tie: 2
   First: bye
   Second: bye
+  Score:
   Where it stands: empty
 -
   Round: winners round 2
@@ -120,6 +134,7 @@
   Tie: 1
   First: Harriers
   Second: Swifts
+  Score: 2-1
   Where it stands: Harriers through
 -
   Round: winners round 2
@@ -127,6 +142,7 @@
   Tie: 2
   First: Kestrels
   Second: Ospreys
+  Score: 2-1
   Where it stands: Kestrels through
 -
   Round: losers round 2
@@ -134,6 +150,7 @@
   Tie: 1
   First: Ospreys
   Second: nobody (void)
+  Score:
   Where it stands: Ospreys through on a bye
 -
   Round: losers round 2
@@ -141,6 +158,7 @@
   Tie: 2
   First: Swifts
   Second: bye
+  Score:
   Where it stands: Swifts through on a bye
 -
   Round: losers round 3
@@ -148,6 +166,7 @@
   Tie: 1
   First: Ospreys
   Second: Swifts
+  Score:
   Where it stands: to be paired
 -
   Round: winners final
@@ -155,6 +174,7 @@
   Tie: 1
   First: Harriers
   Second: Kestrels
+  Score:
   Where it stands: to be paired
 -
   Round: losers final
@@ -162,6 +182,7 @@
   Tie: 1
   First: loser of winners final
   Second: winner of losers round 3
+  Score:
   Where it stands: waiting
 -
   Round: grand final
@@ -169,6 +190,7 @@
   Tie: 1
   First: winner of winners final
   Second: winner of losers final
+  Score:
   Where it stands: waiting
 -
   Round: grand final reset
@@ -176,6 +198,7 @@
   Tie: 1
   First: loser of grand final
   Second: winner of grand final
+  Score:
   Where it stands: waiting
 
 == The round its engine pairs next ==
@@ -188,6 +211,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Harriers
   Second: bye
+  Score:
   Where it stands: Harriers through on a bye
 -
   Round: winners round 1
@@ -195,6 +219,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 2
   First: Merlins (withdrawn)
   Second: Swifts
+  Score: 1-2
   Where it stands: Swifts through
 -
   Round: winners round 1
@@ -202,6 +227,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 3
   First: Kestrels
   Second: bye
+  Score:
   Where it stands: Kestrels through on a bye
 -
   Round: winners round 1
@@ -209,6 +235,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 4
   First: Ospreys
   Second: bye
+  Score:
   Where it stands: Ospreys through on a bye
 -
   Round: losers round 1
@@ -216,6 +243,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: bye
   Second: Merlins (withdrawn)
+  Score:
   Where it stands: void, nobody through
 -
   Round: losers round 1
@@ -223,6 +251,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 2
   First: bye
   Second: bye
+  Score:
   Where it stands: empty
 -
   Round: winners round 2
@@ -230,6 +259,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Harriers
   Second: Swifts
+  Score: 2-1
   Where it stands: Harriers through
 -
   Round: winners round 2
@@ -237,6 +267,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 2
   First: Kestrels
   Second: Ospreys
+  Score: 2-1
   Where it stands: Kestrels through
 -
   Round: losers round 2
@@ -244,6 +275,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Ospreys
   Second: nobody (void)
+  Score:
   Where it stands: Ospreys through on a bye
 -
   Round: losers round 2
@@ -251,6 +283,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 2
   First: Swifts
   Second: bye
+  Score:
   Where it stands: Swifts through on a bye
 -
   Round: losers round 3
@@ -258,6 +291,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Ospreys
   Second: Swifts
+  Score: 2-1
   Where it stands: Ospreys through
 -
   Round: winners final
@@ -265,6 +299,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Harriers
   Second: Kestrels
+  Score: 2-1
   Where it stands: Harriers through
 -
   Round: losers final
@@ -272,6 +307,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Kestrels
   Second: Ospreys
+  Score: 1-2
   Where it stands: Ospreys through
 -
   Round: grand final
@@ -279,6 +315,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Harriers
   Second: Ospreys
+  Score: 1-2
   Where it stands: Ospreys through
 -
   Round: grand final reset
@@ -286,14 +323,15 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Harriers
   Second: Ospreys
+  Score: 1-2
   Where it stands: Ospreys through
 
 == Final standings ==
-1. ospreys played=5 wins=4 draws=0 losses=1 value=18 for=0 against=0
-2. harriers played=4 wins=2 draws=0 losses=2 value=9 for=0 against=0
-3. kestrels played=3 wins=1 draws=0 losses=2 value=6 for=0 against=0
-4. swifts played=3 wins=1 draws=0 losses=2 value=6 for=0 against=0
-5. merlins played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
+1. ospreys played=5 wins=4 draws=0 losses=1 value=18 for=9 against=6
+2. harriers played=4 wins=2 draws=0 losses=2 value=9 for=6 against=6
+3. kestrels played=3 wins=1 draws=0 losses=2 value=6 for=4 against=5
+4. swifts played=3 wins=1 draws=0 losses=2 value=6 for=4 against=5
+5. merlins played=1 wins=0 draws=0 losses=1 value=0 for=1 against=2
 
 == Re-seeded, before the first round ==
 -
@@ -302,6 +340,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: Ines
   Second: Wren
+  Score:
   Where it stands: to be paired
 -
   Round: semifinal
@@ -309,6 +348,7 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 2
   First: Tomas
   Second: Olu
+  Score:
   Where it stands: to be paired
 -
   Round: final
@@ -316,4 +356,5 @@ R3 [losers round 3]: ospreys-swifts
   Tie: 1
   First: to be re-seeded
   Second: to be re-seeded
+  Score:
   Where it stands: waiting

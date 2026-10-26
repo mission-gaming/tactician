@@ -1410,15 +1410,26 @@ $demonstrations = [
         // of its own, filled from the semifinals before they are decided
         $cup = $rowsOf('Single elimination, two legs, third place');
         expect(array_values(array_unique(array_column($cup, 'Round'))))->toBe(['quarterfinal', 'semifinal', 'final'])
-            ->and($cup[0])->toBe(['Round' => 'quarterfinal', 'Played as' => 'round 1', 'Tie' => '1', 'First' => 'Ines', 'Second' => 'bye', 'Where it stands' => 'Ines through on a bye'])
+            ->and($cup[0])->toBe(['Round' => 'quarterfinal', 'Played as' => 'round 1', 'Tie' => '1', 'First' => 'Ines', 'Second' => 'bye', 'Score' => '', 'Where it stands' => 'Ines through on a bye'])
             ->and($cup[1]['Where it stands'])->toBe('Kasia through over 2 legs')
+            // The upset over two legs, each leg's score read from the view in slot order: 1-2, then 0-1
+            ->and($cup[1]['Score'])->toBe('1-2, 0-1')
+            // The semifinals show the first legs the state holds and a second leg still to play (#181)
             ->and(array_map(
-                static fn(array $row): array => [$row['First'], $row['Second'], $row['Where it stands']],
+                static fn(array $row): array => [$row['First'], $row['Second'], $row['Score'], $row['Where it stands']],
                 $ofRound($cup, 'semifinal')
             ))->toBe(array_map(
-                static fn(mixed $result): array => $result instanceof Result ? [...$labels($result->getEvent()), 'in play'] : [],
+                static fn(mixed $result): array => $result instanceof Result ? [
+                    ...$labels($result->getEvent()),
+                    implode('-', array_map(
+                        static fn(Participant $participant): string => (string) $result->getScoreFor($participant),
+                        array_values($result->getEvent()->getParticipants())
+                    )) . ', to play',
+                    'in play',
+                ] : [],
                 exampleArray($results, 'The semifinal first legs')
             ))
+            ->and(array_column($ofRound($cup, 'final'), 'Score'))->toBe(['', ''])
             ->and(array_map(static fn(array $row): array => [$row['Tie'], $row['First'], $row['Second']], $ofRound($cup, 'final')))->toBe([
                 ['1', 'winner of semifinal 1', 'winner of semifinal 2'],
                 ['third place', 'loser of semifinal 1', 'loser of semifinal 2'],
@@ -1451,6 +1462,13 @@ $demonstrations = [
         expect(array_column($finished, 'Round'))->toBe(array_column($inPlay, 'Round'))
             ->and($reset)->toHaveCount(1)
             ->and($reset[0]['Where it stands'])->toBe($standings->getEntries()[0]->getParticipant()->getLabel() . ' through')
+            // Every tie decided by its results has a score, the reset's 1-2 for the losers champion; a bye or a
+            // void tie has none
+            ->and($reset[0]['Score'])->toBe('1-2')
+            ->and(array_values(array_filter(
+                $finished,
+                static fn(array $row): bool => ($row['Score'] !== '') !== (preg_match('/^\w+ through$/', $row['Where it stands']) === 1)
+            )))->toBe([])
             ->and($standings->getTiers()[0])->toBe(0)
             ->and(array_filter($finished, static fn(array $row): bool => in_array($row['Where it stands'], ['waiting', 'to be paired', 'in play'], true)))->toBe([]);
 
