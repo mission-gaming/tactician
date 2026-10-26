@@ -1275,11 +1275,11 @@ entry on the engine fingerprint.
   `StandingsCalculator::calculateWith()` and `withByesCredited()` counts
   each bye (`StandingEntry::getByes()`) and adds nothing to the ranking
   value, under any ranking strategy, without reading a bye value. The
-  bracket engines calculate their tables so under a ranking strategy that
-  does not say what a bye is worth (ADR 0014). A subclass of the
-  calculator whose constructor does not call the one it inherits has no
-  tiebreakers and no ranking strategy set: a bracket under it counts its
-  byes and credits them with nothing.
+  bracket engines and the Swiss engine calculate their tables so under a
+  ranking strategy that does not say what a bye is worth (ADR 0014,
+  ADR 0019). A subclass of the calculator whose constructor does not call
+  the one it inherits has no tiebreakers and no ranking strategy set: a
+  bracket under it counts its byes and credits them with nothing.
 - **The value of a bye is the caller's choice.** A ranking strategy says
   what one bye adds to a ranking value by implementing the optional
   interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).
@@ -1293,8 +1293,11 @@ entry on the engine fingerprint.
   re-seeded bracket credit a bye with that value, in the one table they
   read for the order a round is paired from and for the outcome, so the
   two cannot value a bye differently. A ranking strategy of your own that
-  implements the interface is no longer refused a stage with a bye; one
-  that does not is refused as before, and the message names the interface.
+  implements the interface has its byes credited with its value; under
+  one that does not, a Swiss stage and a bracket count each bye and credit
+  it with nothing (see the entry on byes under **Changed**), and only
+  `StandingsCalculator` itself, asked to credit a bye with a value, refuses
+  the table, with a message that names the interface.
   An engine fingerprint states the value (`bye-value`) only when it is not
   the value of a win, so every stamp written before is unchanged. With the
   defaults no table, pairing or fingerprint changes; no golden fixture
