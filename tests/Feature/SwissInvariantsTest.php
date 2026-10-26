@@ -12,6 +12,7 @@ use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
+use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\SonnebornBergerTiebreaker;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
@@ -27,7 +28,7 @@ use Random\Randomizer;
 // them and keeps its own books: it never asks the library who has met whom,
 // who has had a bye or how many points anyone has.
 //
-// The sweep: every field size from 2 to 32, each of the six variants below,
+// The sweep: every field size from 2 to 32, each of the seven variants below,
 // two seeds each, over up to seven rounds; then every field size from 2 to
 // 16 to the last round the format has (n - 1, the most that repeat
 // avoidance allows: see SwissScheduler), ten seeds each.
@@ -64,6 +65,10 @@ function swissInvariantsRun(string $variant, int $size, int $rounds, int $seed, 
 {
     $everything = $variant === 'everything at once';
     $tiebreakers = $everything || $variant === 'tiebreakers on a 1/0.5/0 scale';
+    // A strategy that does not say what a bye is worth: the bye is counted
+    // and credited with nothing (ADR 0019), also in a field a withdrawal
+    // makes odd
+    $noByeValue = $variant === 'a ranking strategy without a bye value';
 
     // Clubmates do not meet: a constraint that removes one opponent each
     $differentClubs = static fn(Participant $one, Participant $other): bool => $one->getMetadataValue('club') !== $other->getMetadataValue('club');
@@ -74,9 +79,11 @@ function swissInvariantsRun(string $variant, int $size, int $rounds, int $seed, 
             static fn(Event $event): bool => $differentClubs($event->getParticipants()[0], $event->getParticipants()[1]),
             'Clubmates do not meet'
         )->build(),
-        $tiebreakers
-            ? new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker()])
-            : new StandingsCalculator(),
+        match (true) {
+            $tiebreakers => new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker()]),
+            $noByeValue => new StandingsCalculator(swissInvariantsNoByeValue()),
+            default => new StandingsCalculator(),
+        },
         $rounds,
         $everything || $variant === 'a randomizer' ? new Randomizer(new Mt19937($seed)) : null
     );
@@ -89,9 +96,30 @@ function swissInvariantsRun(string $variant, int $size, int $rounds, int $seed, 
         $tiebreakers ? 1.0 : 3.0,
         $tiebreakers ? 0.5 : 1.0,
         $mayMeet,
-        $everything || $variant === 'withdrawals',
-        $throughJson
+        $everything || $noByeValue || $variant === 'withdrawals',
+        $throughJson,
+        $noByeValue ? 0.0 : null
     );
+}
+
+/**
+ * Three for a win and one for a draw, from a strategy that does not say what
+ * a bye is worth (it is no RankingStrategyWithByeValue).
+ */
+function swissInvariantsNoByeValue(): RankingStrategy
+{
+    return new readonly class implements RankingStrategy {
+        #[Override]
+        public function rank(Participant $participant, array $results): float
+        {
+            $value = 0.0;
+            foreach ($results as $result) {
+                $value += $result->isWinFor($participant) ? 3.0 : ($result->isDraw() ? 1.0 : 0.0);
+            }
+
+            return $value;
+        }
+    };
 }
 
 /**
@@ -142,7 +170,7 @@ describe('Swiss invariants', function (): void {
             }
         }
 
-        $withdraws = in_array($variant, ['withdrawals', 'everything at once'], true);
+        $withdraws = in_array($variant, ['withdrawals', 'everything at once', 'a ranking strategy without a bye value'], true);
 
         expect($violations)->toBe([])
             // The sweep saw what it is there to see
@@ -156,6 +184,7 @@ describe('Swiss invariants', function (): void {
         ['a constraint'],
         ['withdrawals'],
         ['everything at once'],
+        ['a ranking strategy without a bye value'],
     ]);
 
     // To the last round. Monrad pairing is greedy from one round to the
@@ -251,7 +280,7 @@ describe('Swiss invariants', function (): void {
             // Other results, another stage: the pairings follow the table
             ->and(swissInvariantsRun($variant, $size, 6, 12)['transcript'])->not->toBe($run['transcript']);
     })
-        ->with([['plain'], ['tiebreakers on a 1/0.5/0 scale'], ['a randomizer'], ['everything at once']])
+        ->with([['plain'], ['tiebreakers on a 1/0.5/0 scale'], ['a randomizer'], ['everything at once'], ['a ranking strategy without a bye value']])
         ->with([[9], [16], [25]]);
 });
 

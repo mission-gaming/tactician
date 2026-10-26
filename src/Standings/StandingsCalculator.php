@@ -368,8 +368,8 @@ readonly class StandingsCalculator
      * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
      *                           the legs of a tie where a bye stands for a tie of several legs. 0
      *                           counts each bye (StandingEntry::getByes()) and credits it with
-     *                           nothing, under any ranking strategy: a bracket does so under one
-     *                           that does not say what a bye is worth
+     *                           nothing, under any ranking strategy: a Swiss stage and a bracket
+     *                           do so under one that does not say what a bye is worth
      * @param array<int|string, int> $tiers The tier of each participant by ID, lower first; an ID
      *                                      with no entry in the table is ignored. Empty: a table
      *                                      without tiers
@@ -949,8 +949,8 @@ readonly class StandingsCalculator
      * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
      *                           the legs of a tie where a bye stands for a tie of several legs. 0
      *                           counts each bye (StandingEntry::getByes()) and credits it with
-     *                           nothing, under any ranking strategy: a bracket does so under one
-     *                           that does not say what a bye is worth
+     *                           nothing, under any ranking strategy: a Swiss stage and a bracket
+     *                           do so under one that does not say what a bye is worth
      *
      * @throws InvalidConfigurationException When there is a bye to credit with a value
      *                                       ($creditsPerBye above 0) and the ranking strategy does

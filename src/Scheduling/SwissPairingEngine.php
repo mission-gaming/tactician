@@ -28,6 +28,7 @@ use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Stage\Withdrawal;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\EntryOrder;
+use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -35,6 +36,8 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
+use ReflectionException;
+use ReflectionProperty;
 
 /**
  * Pairs Swiss rounds incrementally from the recorded stage state.
@@ -53,7 +56,13 @@ use Random\Randomizer;
  * says a bye is worth (RankingStrategyWithByeValue). For a WinDrawLossRanking
  * that is the value of a win unless another is given (the value of a draw,
  * zero, any amount), so by default a bye recipient is paired among the
- * winners in the following round. The credit is part of the one table the
+ * winners in the following round. A ranking strategy that does not say
+ * what a bye is worth (it is no RankingStrategyWithByeValue) credits a bye
+ * with nothing: the bye is counted (StandingEntry::getByes()), so the bye
+ * still goes to a participant who has had fewer, and the participant who
+ * had it is paired with those who earned what it earned from its results.
+ * No stage is refused for its byes, in a field that is odd from the start
+ * or one a withdrawal makes odd. The credit is part of the one table the
  * engine builds: the order a round is paired from and the table of the
  * outcome are the same table, so the two cannot value a bye differently.
  *
@@ -301,9 +310,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * @throws InvalidConfigurationException When fewer than 2 active participants remain, the
      *                                       planned rounds have all been played (reason
      *                                       `PlannedRoundsPlayed`), the state is stamped with
-     *                                       another engine's fingerprint, or a bye is recorded and the standings calculator's
-     *                                       ranking strategy does not say what a bye is worth (it
-     *                                       is no RankingStrategyWithByeValue)
+     *                                       another engine's fingerprint, or the standings
+     *                                       calculator refuses the table (a subclass, see
+     *                                       StandingsCalculator::calculateWith())
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
     #[Override]
@@ -372,11 +381,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * pairing is left that nobody has played (NoValidPairingException).
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
-     *                                       fingerprint, or the next round could be paired and a
-     *                                       bye is recorded under a ranking strategy that does not
-     *                                       say what a bye is worth (it is no
-     *                                       RankingStrategyWithByeValue), as pairNextRound()
-     *                                       refuses it
+     *                                       fingerprint, or the next round could be paired and the
+     *                                       standings calculator refuses the table, as
+     *                                       pairNextRound() refuses it
      * @throws InvalidInputException When the next round could be paired and the table cannot be
      *                               built from the results, as pairNextRound() refuses it: an
      *                               event has two results (a state StageState::fromHistory()
@@ -470,9 +477,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * complete. An event without a result counts for nobody in it.
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
-     *                                       fingerprint, or a bye is recorded and the ranking
-     *                                       strategy does not say what a bye is worth (it is no
-     *                                       RankingStrategyWithByeValue)
+     *                                       fingerprint, or the standings calculator refuses the
+     *                                       table (a subclass, see
+     *                                       StandingsCalculator::calculateWith())
      */
     #[Override]
     public function getStandings(StageState $state): Standings
@@ -635,9 +642,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *                                pairing is marked as made on incomplete results; empty
      *                                for a pairing that carries no mark
      *
-     * @throws InvalidConfigurationException When the planned rounds have all been played, or a
-     *                                       bye is recorded under a ranking strategy that does
-     *                                       not say what a bye is worth
+     * @throws InvalidConfigurationException When the planned rounds have all been played, or the
+     *                                       standings calculator refuses the table
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
     private function pair(StageState $state, array $unresolved): RoundPairing
@@ -743,14 +749,17 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * The standings are the table the rounds were paired from, so a bye
      * counts in them as it counts for pairing: with the value the ranking
      * strategy gives a bye, in the ranking value of the participant who had
-     * it. StandingEntry::getByes() says how many byes an entry has, also
-     * where a bye is worth nothing; played, wins, draws and losses count
-     * results only, and the outcome lists the byes beside the table. Entries that no result separates are in the order of the
-     * participant list (Standings::getTiedSets() reports them).
+     * it, and nothing under a ranking strategy that does not say what a bye
+     * is worth. StandingEntry::getByes() says how many byes an entry has,
+     * also where a bye is worth nothing; played, wins, draws and losses
+     * count results only, and the outcome lists the byes beside the table.
+     * Entries that no result separates are in the order of the participant
+     * list (Standings::getTiedSets() reports them).
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
-     *                                       fingerprint, or a bye is recorded and the ranking
-     *                                       strategy does not say what a bye is worth
+     *                                       fingerprint, or the standings calculator refuses the
+     *                                       table (a subclass, see
+     *                                       StandingsCalculator::calculateWith())
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
@@ -778,25 +787,60 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * (StandingsCalculator::calculateWith()). Each recorded bye is credited
      * with what the calculator's ranking strategy says a bye is worth
      * (RankingStrategyWithByeValue: the value of a win unless the caller
-     * chose another). A ranking strategy that does not say fails loudly
-     * rather than have the engine guess what sitting out is worth on an
-     * unknown scale. Each adjustment (StageState::withAdjustment()) is an
+     * chose another). Under a ranking strategy that does not say, a bye is
+     * counted and credited with nothing (see creditsPerBye()): the engine
+     * does not guess what sitting out is worth on an unknown scale, and a
+     * stage whose field is or becomes odd is still paired. Each adjustment (StageState::withAdjustment()) is an
      * amount of the ranking value, so it is defined under every ranking
      * strategy. Last, entries that no result separates are put in the order
      * of the entrant list (see entrants()). No seed attribute or label
      * decides an order, and no ID decides one between two active
      * participants.
      *
-     * @throws InvalidConfigurationException When a bye is recorded and the ranking strategy does
-     *                                       not say what a bye is worth
+     * @throws InvalidConfigurationException When the standings calculator is a subclass that
+     *                                       refuses the byes or the adjustments of the state
+     *                                       (StandingsCalculator::calculateWith())
      */
     private function table(StageState $state): Standings
     {
         $entrants = $this->entrants($state);
 
         return $this->standingsCalculator
-            ->calculateWith($entrants, $state->getResults(), $state->getByeCounts(), $state->getAdjustments())
+            ->calculateWith(
+                $entrants,
+                $state->getResults(),
+                $state->getByeCounts(),
+                $state->getAdjustments(),
+                $this->creditsPerBye()
+            )
             ->withTiedSetsOrderedBy($entrants);
+    }
+
+    /**
+     * How many times the table credits each bye with the value of a bye:
+     * once where the ranking strategy says what a bye is worth
+     * (RankingStrategyWithByeValue), and no times where it does not, so
+     * that the bye is counted (StandingEntry::getByes()) and adds nothing
+     * (StandingsCalculator::calculateWith()). The one table of the stage is
+     * calculated with it, so the order a round is paired from and the
+     * outcome credit a bye alike
+     * (docs/adr/0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md).
+     *
+     * A subclass of the calculator whose constructor does not call the one
+     * it inherits has no ranking strategy set, and so none that says what
+     * a bye is worth: nothing is read from it.
+     */
+    private function creditsPerBye(): int
+    {
+        try {
+            if (!(new ReflectionProperty(StandingsCalculator::class, 'rankingStrategy'))->isInitialized($this->standingsCalculator)) {
+                return 0;
+            }
+        } catch (ReflectionException) {
+            // Not thrown: the class declares the property
+        }
+
+        return $this->standingsCalculator->getRankingStrategy() instanceof RankingStrategyWithByeValue ? 1 : 0;
     }
 
     /**
