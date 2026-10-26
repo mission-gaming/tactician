@@ -1029,7 +1029,9 @@ entry on the engine fingerprint.
     meeting from it or the recorded rounds were paired under other
     constraints (which the fingerprint cannot hold), is refused with
     `RecordedRoundMismatch`, the round, the meetings already played and the
-    schedule's events in its context. A state that
+    schedule's events in its context; `getReadiness()` refuses such a round
+    as well rather than call the stage ready, and no other read refuses it.
+    A state that
     names a participant outside its entrant list (0.2.x data with a
     withdrawal, which kept no entrant list) is refused with
     `RecordedRoundMismatch`, because the league could not be drawn again.

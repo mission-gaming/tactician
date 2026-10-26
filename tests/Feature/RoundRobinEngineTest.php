@@ -313,15 +313,22 @@ describe('a league paired round by round', function (): void {
         $derivation = $read->getDerivation();
         assert($derivation instanceof RoundPairing);
         $refusal = leagueRefusal(fn() => $engine->pairNextRound($state));
+        $readiness = leagueRefusal(fn() => $engine->getReadiness($state));
         $scheduled = array_map(static fn(Event $event): array => leagueIds($event->getParticipants()), $schedule[2]);
 
         expect($read->isManual())->toBeTrue()
             ->and($read->getPairing())->toBe($byHand)
             ->and(leagueEvents($derivation->getEvents()))->toBe(leagueEvents($schedule[1]))
-            ->and($engine->getReadiness($state)->isReady())->toBeTrue()
             ->and($refusal->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
             ->and($refusal->getContext())->toBe(['round' => 2, 'legs' => 1, 'met_already' => $scheduled, 'scheduled' => $scheduled])
-            ->and(leagueRefusal(fn() => $engine->pairNextRoundOnIncompleteResults($state))->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch);
+            ->and(leagueRefusal(fn() => $engine->pairNextRoundOnIncompleteResults($state))->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
+            // The state is not called ready: the readiness refuses the
+            // round as the pairing does. Every other read reads the state
+            ->and($readiness->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
+            ->and($readiness->getContext())->toBe($refusal->getContext())
+            ->and($engine->isComplete($state))->toBeFalse()
+            ->and($engine->getOutcome($state))->toBeNull()
+            ->and($engine->getStandings($state)->getEntries())->toHaveCount(6);
 
         $weekTwo = $renumbered(2, $schedule[1]);
         $state = $state->withRoundPlayed($weekTwo, leagueResults($weekTwo->getEvents(), $rng));
@@ -343,6 +350,82 @@ describe('a league paired round by round', function (): void {
             ->and(array_map(static fn(RecordedRound $round): bool => $round->isManual(), $engine->getRecordedRounds($state)))
             ->toBe([true, true, false, false, false]);
     });
+
+    // Over several legs a meeting played early is paired again while it has
+    // been played fewer times than the league has legs: the organiser plays
+    // round 2 of the schedule in week 1, the engine pairs round 2 as the
+    // schedule has it, and every later round is paired and called ready
+    // until the first one that would play a meeting of round 2 once more
+    // than the league has legs. That round is refused, by the readiness as
+    // by the pairing, and the context names only those meetings. Whatever
+    // the leg strategy.
+    it('pairs a meeting again while it has been played fewer times than the league has legs, and refuses the round that would play it once more', function (RoundRobinOptions $options): void {
+        $engine = new RoundRobinEngine($options);
+        $field = leagueField(6);
+        $schedule = leagueSchedule($field, $options, null, null)->getEventsByRound();
+        $rng = new Randomizer(new Mt19937(3));
+        $key = static function (Event $event): string {
+            $ids = leagueIds($event->getParticipants());
+            sort($ids);
+
+            return implode('-', $ids);
+        };
+        $roundTwo = array_map($key, $schedule[2]);
+
+        // Counted by hand: the round of the schedule, after round 1 played
+        // as round 2, that holds a meeting already played as often as the
+        // league has legs
+        $met = array_fill_keys($roundTwo, 1);
+        $expected = null;
+        foreach ($schedule as $number => $events) {
+            if ($number < 2) {
+                continue;
+            }
+            foreach (array_map($key, $events) as $meeting) {
+                if (($met[$meeting] ?? 0) >= $options->legs) {
+                    $expected = $number;
+                    break 2;
+                }
+            }
+            foreach (array_map($key, $events) as $meeting) {
+                $met[$meeting] = ($met[$meeting] ?? 0) + 1;
+            }
+        }
+        assert(is_int($expected));
+
+        $byHand = new RoundPairing(1, null, array_map(
+            static fn(Event $event): Event => new Event($event->getParticipants(), new Round(1)),
+            $schedule[2]
+        ));
+        $state = StageState::start($field)->withRoundPlayed($byHand, leagueResults($byHand->getEvents(), $rng));
+        for ($number = 2; $number < $expected; ++$number) {
+            expect($engine->getReadiness($state)->isReady())->toBeTrue();
+            $pairing = $engine->pairNextRound($state);
+            expect(leagueEvents($pairing->getEvents()))->toBe(leagueEvents($schedule[$number]));
+            $state = $state->withRoundPlayed($pairing, leagueResults($pairing->getEvents(), $rng));
+        }
+
+        $refusal = leagueRefusal(fn() => $engine->pairNextRound($state));
+        $again = array_values(array_map(
+            static fn(Event $event): array => leagueIds($event->getParticipants()),
+            array_filter($schedule[$expected], static fn(Event $event): bool => ($met[$key($event)] ?? 0) >= $options->legs)
+        ));
+
+        expect($refusal->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
+            ->and($refusal->getContext())->toBe([
+                'round' => $expected,
+                'legs' => $options->legs,
+                'met_already' => $again,
+                'scheduled' => array_map(static fn(Event $event): array => leagueIds($event->getParticipants()), $schedule[$expected]),
+            ])
+            ->and(leagueRefusal(fn() => $engine->getReadiness($state))->getContext())->toBe($refusal->getContext())
+            ->and($engine->getStandings($state)->getEntries())->toHaveCount(6)
+            ->and($engine->isComplete($state))->toBeFalse();
+    })->with([
+        'two mirrored legs' => [new RoundRobinOptions(legs: 2)],
+        'three repeated legs' => [new RoundRobinOptions(legs: 3, strategy: new RepeatedLegStrategy())],
+        'two shuffled legs' => [new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 11))],
+    ]);
 
     // The constraints are not part of the fingerprint, so an engine built
     // with other constraints than the ones that paired the recorded rounds

@@ -116,7 +116,10 @@ use Random\Randomizer;
  * The engine waits for results, as every engine does: while an event of a
  * recorded round awaits a result, pairNextRound() refuses with an
  * UnresolvedRoundException and getReadiness() says the same without
- * throwing. A league that plays on while a fixture is postponed asks for
+ * throwing. A round refused for a meeting played as often as the league
+ * has legs is refused by getReadiness() too, and by no other read:
+ * getStandings(), getRecordedRounds(), isComplete() and getOutcome() read
+ * such a state. A league that plays on while a fixture is postponed asks for
  * the next round with pairNextRoundOnIncompleteResults(), and the round is
  * marked as paired that way.
  *
@@ -249,8 +252,6 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * result. The call records nothing: pass the pairing to
      * StageState::withRoundPaired().
      *
-     * @throws UnresolvedRoundException When an event of a recorded round awaits a result (reason
-     *                                  `RoundPartiallyResolved`)
      * The round is refused where it would pair two participants more often
      * than the league has legs, counting the recorded rounds: a recorded
      * round drawn by hand took the pairing from it, or the recorded rounds
@@ -357,14 +358,20 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * events that await a result (see HistoryReadingEngine). An event of an
      * entrant who has withdrawn awaits none.
      *
-     * Ready means that no recorded event awaits a result and a round of the
-     * schedule is left. The schedule is not generated here, so where
-     * constraints leave the scheduler no schedule, pairNextRound() still
-     * refuses (IncompleteScheduleException), and so it does where its round
-     * would pair two participants more often than the league has legs
-     * (`RecordedRoundMismatch`, see pairNextRound()).
+     * Ready means that no recorded event awaits a result, a round of the
+     * schedule is left, and pairing it would pair no two participants more
+     * often than the league has legs. A state whose next round would is
+     * not called ready: it is refused here as pairNextRound() refuses it
+     * (`RecordedRoundMismatch`, with the same context), since no answer of
+     * the three describes a round the application has to draw by hand.
+     * Where the constraints leave the scheduler no schedule, the answer is
+     * ready all the same and pairNextRound() refuses
+     * (IncompleteScheduleException).
      *
-     * @throws InvalidConfigurationException For every case getPlan() names
+     * @throws InvalidConfigurationException For every case getPlan() names, and when the next
+     *                                       round could be paired and would pair two participants
+     *                                       more often than the league has legs
+     *                                       (`RecordedRoundMismatch`), as pairNextRound() refuses it
      */
     #[Override]
     public function getReadiness(StageState $state): PairingReadiness
@@ -376,6 +383,17 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
         $unresolved = $this->unresolvedEvents($state);
         if ($unresolved !== []) {
             return PairingReadiness::awaitingResults($unresolved[0]->getRound()?->getNumber() ?? 0, $unresolved);
+        }
+
+        // The round is refused here as pairNextRound() refuses it, and is
+        // not called ready
+        try {
+            $next = $this->roundOf($this->roundsOf($this->schedule($this->field($state))), $state->getNextRoundNumber(), false);
+        } catch (IncompleteScheduleException) {
+            $next = null;
+        }
+        if ($next instanceof RoundPairing) {
+            $this->refuseMeetingsBeyondTheLegs($state, $next);
         }
 
         return PairingReadiness::ready($state->getNextRoundNumber());
