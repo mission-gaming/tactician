@@ -15,6 +15,7 @@ use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\HistoryReadingEngine;
 use MissionGaming\Tactician\Stage\PairingReadiness;
 use MissionGaming\Tactician\Stage\PairKey;
@@ -321,7 +322,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             );
         }
 
-        return $this->pair($state, false);
+        return $this->pair($state, []);
     }
 
     /**
@@ -331,16 +332,20 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * The round is paired from the table as it stands, in which an event
      * without a result counts for nobody. When an event did await a result
      * the pairing is marked (RoundPairing::isPairedOnIncompleteResults()),
-     * and the mark is recorded and stored with the round. When none did,
-     * this is pairNextRound() and the pairing carries no mark. In
-     * results-free mode no event awaits a result, so nothing is marked.
+     * with the events that awaited one
+     * (RoundPairing::getUnresolvedWhenPaired()), and both are recorded and
+     * stored with the round. When none did, this is pairNextRound() and the
+     * pairing carries no mark. In results-free mode no event awaits a
+     * result, so nothing is marked.
      *
      * The event still awaits its result afterwards: pairNextRound()
      * refuses and isComplete() is false until it has one. Once the round
      * paired here is recorded, StageState::withAdditionalResults() no
      * longer reaches the earlier round (it adds to the last round only):
      * supply the late result with the history (StageState::fromHistory()),
-     * or rebuild the state from its rounds.
+     * or rebuild the state from its rounds. However it goes, the round
+     * paired here is not reported as manual for it: getRecordedRounds()
+     * reads the round from the results that were in when it was paired.
      *
      * @throws InvalidConfigurationException For every case pairNextRound() names but the
      *                                       unfinished round
@@ -351,7 +356,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         $state->requireEngineFingerprint($this->getFingerprint());
         $this->validateParticipants(array_values($state->getParticipants()));
 
-        return $this->pair($state, $this->unresolvedEvents($state) !== []);
+        return $this->pair($state, $this->unresolvedEvents($state));
     }
 
     /**
@@ -404,7 +409,12 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * was known when the round was paired: the rounds recorded before it
      * and their results, the adjustments made before it
      * (Adjustment::getAfterRound()), and the participants who had not
-     * withdrawn by then (StageState::getWithdrawals()). A participant was
+     * withdrawn by then (StageState::getWithdrawals()). A round paired
+     * early (pairNextRoundOnIncompleteResults()) is read without the
+     * results of the events it lists as awaiting one
+     * (RoundPairing::getUnresolvedWhenPaired()), so a late result does not
+     * make it manual; a marked round that lists none has no derivation,
+     * since which results were in is not known. A participant was
      * in the stage for the rounds that name it and for those before them,
      * whatever round its withdrawal states, and where it states none, for
      * no round after the last that names it. So a round this engine paired
@@ -496,7 +506,20 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         }
 
         $rounds = array_values($state->getRoundsPlayed());
-        $number = $rounds[$index]->getRoundNumber();
+        $recorded = $rounds[$index];
+        $number = $recorded->getRoundNumber();
+
+        // The table a round paired early was paired from has the results
+        // that were in at the time: those of the events it says awaited
+        // one are left out, whenever they arrived. A mark that names no
+        // event does not say which results were in
+        $unknown = [];
+        foreach ($recorded->getUnresolvedWhenPaired() as $event) {
+            $unknown[self::eventKey($event)] = true;
+        }
+        if ($recorded->isPairedOnIncompleteResults() && $unknown === []) {
+            return null;
+        }
 
         // The table the round was paired from has the adjustments made
         // before it (a stage state says of each when it was made)
@@ -555,6 +578,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
                 array_values(array_filter(
                     $state->getResults(),
                     static fn(Result $result): bool => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $number
+                        && !isset($unknown[self::eventKey($result->getEvent())])
                 )),
                 array_map(
                     // A participant whose withdrawal has no round (a state
@@ -571,10 +595,25 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
 
             // Before its first round a stage has only the participants it
             // was started with, and fromHistory() has dropped the others
-            return count($before->getParticipants()) < 2 ? null : $this->pair($before, false);
+            return count($before->getParticipants()) < 2 ? null : $this->pair($before, []);
         } catch (InvalidConfigurationException|InvalidInputException|NoValidPairingException) {
             return null;
         }
+    }
+
+    /**
+     * An event by its round, its participants and its tie leg, as a stage
+     * state tells one event from another: a result names its event by
+     * value, and object identity does not survive plain data.
+     */
+    private static function eventKey(Event $event): string
+    {
+        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
+
+        return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...array_map(
+            static fn(Participant $participant): string => $participant->getId(),
+            array_values($event->getParticipants())
+        )) . ':' . (is_int($leg) ? $leg : 1);
     }
 
     /**
@@ -607,15 +646,16 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * Pair a round from the state, whatever its recorded rounds have of
      * results.
      *
-     * @param bool $onIncompleteResults Whether the pairing is to be marked as made while an
-     *                                  event awaited a result
+     * @param list<Event> $unresolved The recorded events that await a result, with which the
+     *                                pairing is marked as made on incomplete results; empty
+     *                                for a pairing that carries no mark
      *
      * @throws InvalidConfigurationException When the planned rounds have all been played, or a
      *                                       bye is recorded under a ranking strategy that does
      *                                       not say what a bye is worth
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
-    private function pair(StageState $state, bool $onIncompleteResults): RoundPairing
+    private function pair(StageState $state, array $unresolved): RoundPairing
     {
         $participants = array_values($state->getParticipants());
 
@@ -659,7 +699,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $events = $search->pair($orderedParticipants);
 
             if ($events !== null) {
-                return new RoundPairing($roundNumber, null, $events, [], $onIncompleteResults);
+                return new RoundPairing($roundNumber, null, $events, [], $unresolved !== [], $unresolved);
             }
 
             throw new NoValidPairingException($roundNumber, $participants);
@@ -674,7 +714,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $events = $search->pair($remaining);
 
             if ($events !== null) {
-                return new RoundPairing($roundNumber, null, $events, [$byeCandidate], $onIncompleteResults);
+                return new RoundPairing($roundNumber, null, $events, [$byeCandidate], $unresolved !== [], $unresolved);
             }
         }
 

@@ -63,11 +63,19 @@ final readonly class RecordedRound
      * when the recorded round was paired: the entrant list, the rounds
      * recorded before this one and their results, the adjustments made
      * before it (Adjustment::getAfterRound()) and the entrants who had not
-     * withdrawn by then (StageState::getWithdrawals()).
+     * withdrawn by then (StageState::getWithdrawals()). For a round paired
+     * before the results were all in, the results of the events it says
+     * awaited one (RoundPairing::getUnresolvedWhenPaired()) are left out,
+     * whenever they arrived: the round is read from the table it was
+     * paired from.
      *
      * Null when the engine cannot say: it draws from a randomizer, whose
-     * draw at the time is not part of the state, or it finds no pairing of
-     * its own for the round.
+     * draw at the time is not part of the state, it finds no pairing of
+     * its own for the round, or the round carries the mark of a round
+     * paired early (RoundPairing::isPairedOnIncompleteResults()) and lists
+     * no event as awaiting a result, so which results were in is not
+     * known. An engine whose rounds no result changes (the round-robin
+     * engine) needs no such list.
      *
      * It is there to be shown beside a manual round. Nothing is paired
      * from it. A withdrawal the state does not know the time of (data
@@ -97,7 +105,10 @@ final readonly class RecordedRound
      *   needs to know who paired a round keeps a mark of its own.
      * - Anything, where the engine has no derivation to compare with
      *   (getDerivation() is null): the flag is then false, whoever paired
-     *   the round.
+     *   the round. A marked round that lists no event as awaiting a result
+     *   is one of these to the Swiss engine. The mark excuses nothing: a
+     *   round paired early by hand is compared with the round the engine
+     *   pairs from the same results, and is manual where the two differ.
      * - That another engine would agree. The derivation is this engine's,
      *   with its options: a round paired by an engine with other options,
      *   or by an earlier release with another pairing order, is manual to
@@ -106,7 +117,9 @@ final readonly class RecordedRound
      * What it does say, for a state whose adjustments and withdrawals
      * carry their rounds (every state built by the verbs): a round this
      * engine paired is not reported as manual, whatever was recorded after
-     * it, with two exceptions that StageState::withoutParticipant()
+     * it, a late result of an earlier round included where the round was
+     * paired early with the events that awaited one listed (the engine
+     * lists them), with two exceptions that StageState::withoutParticipant()
      * describes: a later round that names a participant who had withdrawn
      * before this one (the participant is then read as in the stage for
      * this round too; not by the round-robin engine, which pairs a withdrawn

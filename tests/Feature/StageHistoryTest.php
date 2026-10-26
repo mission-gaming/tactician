@@ -222,7 +222,8 @@ function historyRebuilt(StageState $state, array $entrants, Randomizer $rng, boo
                 $pairing->getLabel(),
                 $rng->shuffleArray($pairing->getEvents()),
                 $rng->shuffleArray($pairing->getByes()),
-                $pairing->isPairedOnIncompleteResults()
+                $pairing->isPairedOnIncompleteResults(),
+                $rng->shuffleArray($pairing->getUnresolvedWhenPaired())
             ),
             $rounds
         );
@@ -1021,7 +1022,115 @@ describe('a Swiss round paired before the results are in', function (): void {
 
         expect($asked->isPairedOnIncompleteResults())->toBeFalse()
             ->and($asked->toArray())->toBe($this->engine->pairNextRound($finished)->toArray())
-            ->and(array_key_exists('paired_on_incomplete_results', $asked->toArray()))->toBeFalse();
+            ->and(array_key_exists('paired_on_incomplete_results', $asked->toArray()))->toBeFalse()
+            ->and($asked->getUnresolvedWhenPaired())->toBe([])
+            ->and(array_key_exists('unresolved_when_paired', $asked->toArray()))->toBeFalse();
+    });
+
+    it('says which events awaited a result when it was paired, and stores them with the mark', function (): void {
+        $early = $this->engine->pairNextRoundOnIncompleteResults($this->unfinished);
+        $form = $this->awaited->toArray();
+        unset($form['format_version']);
+        $registry = array_combine(historyIds($this->entrants), $this->entrants);
+
+        expect($early->getUnresolvedWhenPaired())->toBe([$this->awaited])
+            ->and($early->toArray()['unresolved_when_paired'] ?? null)->toBe([$form])
+            ->and(RoundPairing::fromArray($early->toArray(), $registry)->toArray())->toBe($early->toArray())
+            // A list marks the round
+            ->and((new RoundPairing(2, null, $early->getEvents(), [], false, [$this->awaited]))->isPairedOnIncompleteResults())->toBeTrue();
+    });
+
+    it('is read from the results that were in when it was paired, however the late result goes', function (): void {
+        $early = $this->engine->pairNextRoundOnIncompleteResults($this->unfinished);
+        $state = $this->unfinished->withRoundPaired($early);
+
+        foreach ([...$this->awaited->getParticipants(), null] as $winner) {
+            $late = StageState::fromHistory($this->entrants, $state->getRoundsPlayed(), [...$state->getResults(), new Result($this->awaited, $winner)]);
+            $round = $this->engine->getRecordedRounds($late)[1];
+
+            expect($round->isManual())->toBeFalse()
+                ->and(historyPairs($round->getDerivation()?->getEvents() ?? []))->toBe(historyPairs($early->getEvents()));
+        }
+    });
+
+    // The mark does not excuse a round: one drawn by hand is compared with
+    // the round the engine pairs from the same results
+    it('is reported as manual where it was drawn by hand, before the late result and after it', function (): void {
+        $early = $this->engine->pairNextRoundOnIncompleteResults($this->unfinished);
+        // The same round with the opponents of its first two events exchanged
+        [$first, $second, $third] = $early->getEvents();
+        [$a, $b] = array_values($first->getParticipants());
+        [$c, $d] = array_values($second->getParticipants());
+        $byHand = new RoundPairing(2, null, [new Event([$a, $c], new Round(2)), new Event([$b, $d], new Round(2)), $third], [], true, [$this->awaited]);
+
+        $state = $this->unfinished->withRoundPaired($byHand);
+        $reads = [$state];
+        foreach ([...$this->awaited->getParticipants(), null] as $winner) {
+            $late = StageState::fromHistory($this->entrants, $state->getRoundsPlayed(), [...$state->getResults(), new Result($this->awaited, $winner)]);
+            $reads = [...$reads, $late, StageState::fromJson($late->toJson())];
+        }
+
+        foreach ($reads as $read) {
+            $round = $this->engine->getRecordedRounds($read)[1];
+
+            expect($round->isManual())->toBeTrue()
+                ->and($round->isPairedOnIncompleteResults())->toBeTrue()
+                ->and(historyPairs($round->getDerivation()?->getEvents() ?? []))->toBe(historyPairs($early->getEvents()));
+        }
+    });
+
+    // A mark without the events says that a result was missing and not
+    // which: the table the round was paired from is not known
+    it('has no derivation where the mark names no event, and is then not reported as manual', function (): void {
+        $early = $this->engine->pairNextRoundOnIncompleteResults($this->unfinished);
+        $markOnly = new RoundPairing(2, null, array_reverse($early->getEvents()), [], true);
+        $state = $this->unfinished->withRoundPaired($markOnly);
+        $late = StageState::fromHistory($this->entrants, $state->getRoundsPlayed(), [...$state->getResults(), new Result($this->awaited, $this->awaited->getParticipants()[1])]);
+
+        foreach ([$state, $late] as $read) {
+            $round = $this->engine->getRecordedRounds($read)[1];
+
+            expect($round->getDerivation())->toBeNull()
+                ->and($round->isManual())->toBeFalse()
+                ->and($round->isPairedOnIncompleteResults())->toBeTrue();
+        }
+    });
+
+    it('is refused where it says that an event awaited a result that no earlier round holds', function (): void {
+        $early = $this->engine->pairNextRoundOnIncompleteResults($this->unfinished);
+        // A meeting round 1 does not hold, and an event of round 1 named as one of round 2
+        $unplayed = array_values(array_diff(
+            ['h1 v h2 leg 1', 'h1 v h3 leg 1', 'h1 v h4 leg 1', 'h1 v h5 leg 1', 'h1 v h6 leg 1'],
+            historyPairs($this->unfinished->getRoundsPlayed()[0]->getEvents())
+        ));
+        $h = array_combine(historyIds($this->entrants), $this->entrants);
+        [$one, $other] = explode(' v ', substr($unplayed[0], 0, -6));
+        $strangers = [
+            new Event([$h[$one], $h[$other]], new Round(1)),
+            new Event($this->awaited->getParticipants(), new Round(2)),
+        ];
+
+        foreach ($strangers as $stranger) {
+            $pairing = new RoundPairing(2, null, $early->getEvents(), [], true, [$this->awaited, $stranger]);
+
+            foreach ([
+                fn(): StageState => $this->unfinished->withRoundPaired($pairing),
+                fn(): StageState => StageState::fromHistory($this->entrants, [$pairing, ...$this->unfinished->getRoundsPlayed()], $this->unfinished->getResults()),
+            ] as $record) {
+                try {
+                    $record();
+                    $this->fail('An event no earlier round holds was accepted.');
+                } catch (InvalidConfigurationException $exception) {
+                    expect($exception->getReason())->toBe(InvalidConfigurationReason::EventNotInRound)
+                        ->and($exception->getContext()['pairing_round'] ?? null)->toBe(2)
+                        ->and($exception->getContext()['participants'] ?? null)->toBe(historyIds($stranger->getParticipants()));
+                }
+            }
+        }
+
+        // The event it names may have its result by the time the round is recorded
+        $resolved = $this->unfinished->withAdditionalResults([new Result($this->awaited, $this->awaited->getParticipants()[0])]);
+        expect($resolved->withRoundPaired($early)->getLastRound()?->getUnresolvedWhenPaired())->toBe([$this->awaited]);
     });
 
     it('does not end the stage: the last planned round has to be finished', function (): void {
@@ -1081,6 +1190,220 @@ describe('a Swiss round paired before the results are in', function (): void {
 
         expect($this->engine->getReadiness($awarded)->isReady())->toBeTrue()
             ->and($this->engine->pairNextRound($awarded)->isPairedOnIncompleteResults())->toBeFalse();
+    });
+});
+
+/**
+ * Some of the missing results, which arrive now, in an order of their own;
+ * all of them when $all is set. They are taken off $pending.
+ *
+ * @param list<Result> $pending
+ *
+ * @return list<Result>
+ */
+function lateResultsArriving(Randomizer $rng, array &$pending, bool $all): array
+{
+    $pending = $rng->shuffleArray($pending);
+
+    return array_splice($pending, 0, $all ? count($pending) : $rng->getInt(0, count($pending)));
+}
+
+/**
+ * The state with a result that has arrived: added by the verb when it is
+ * of the last round, and supplied with the history when it is of an
+ * earlier one, as the usage guide says.
+ *
+ * @param list<Participant> $entrants
+ *
+ * @throws InvalidConfigurationException When the state refuses the result (not expected)
+ * @throws InvalidInputException When the history is refused (not expected)
+ */
+function lateResultRecorded(StageState $state, Result $result, array $entrants): StageState
+{
+    if ($result->getEvent()->getRound()?->getNumber() === $state->getLastRound()?->getRoundNumber()) {
+        return $state->withAdditionalResults([$result]);
+    }
+
+    return StageState::fromHistory(
+        $entrants,
+        $state->getRoundsPlayed(),
+        [...$state->getResults(), $result],
+        $state->getWithdrawals(),
+        $state->getAdjustments()
+    );
+}
+
+/**
+ * A Swiss stage played as an application plays it when results come late
+ * (issue #191): whenever a result is missing the next round is paired
+ * early, and the missing results arrive in an order and in batches of
+ * their own, some before the early round is recorded and some after it,
+ * the last of them once the stage has had all its rounds. In an eventful
+ * stage adjustments are made while rounds are played, and an entrant
+ * withdraws after round 2, results of earlier rounds still missing.
+ *
+ * A point is the stage at one moment: the state the verbs give (a late
+ * result of an earlier round is supplied with the history, as the usage
+ * guide says), and the rows an application holds: the rounds as the
+ * engine paired them and the results in.
+ *
+ * @param list<Participant> $entrants
+ *
+ * @return list<array{state: StageState, rounds: list<RoundPairing>, results: list<Result>}>
+ *
+ * @throws InvalidConfigurationException When the engine or the state refuses a step (not expected)
+ * @throws InvalidInputException When a result or an adjustment is refused (not expected)
+ */
+function lateResultsPoints(SwissPairingEngine $engine, array $entrants, int $planned, int $seed, bool $eventful): array
+{
+    $rng = new Randomizer(new Mt19937($seed));
+    $state = StageState::start($entrants);
+    $rounds = [];
+    $known = [];
+    $pending = [];
+    $points = [];
+
+    for ($number = 1; $number <= $planned; ++$number) {
+        try {
+            $pairing = $pending === []
+                ? $engine->pairNextRound($state)
+                : $engine->pairNextRoundOnIncompleteResults($state);
+        } catch (NoValidPairingException) {
+            // A small field can be left without a pairing nobody has played
+            break;
+        }
+
+        // Results that arrive after the round is paired and before it is
+        // recorded: it was paired without them all the same
+        foreach (lateResultsArriving($rng, $pending, false) as $result) {
+            $known[] = $result;
+            $state = lateResultRecorded($state, $result, $entrants);
+            $points[] = ['state' => $state, 'rounds' => $rounds, 'results' => $known];
+        }
+
+        $rounds[] = $pairing;
+        $state = $state->withRoundPaired($pairing);
+        $points[] = ['state' => $state, 'rounds' => $rounds, 'results' => $known];
+
+        $played = [];
+        foreach ($pairing->getEvents() as $event) {
+            [$first, $second] = array_values($event->getParticipants());
+            $result = new Result($event, [null, $first, $second][$rng->getInt(0, 2)]);
+            if ($rng->getInt(0, 2) === 0) {
+                $pending[] = $result;
+            } else {
+                $played[] = $result;
+                $known[] = $result;
+            }
+        }
+        $state = $state->withAdditionalResults($played);
+        $points[] = ['state' => $state, 'rounds' => $rounds, 'results' => $known];
+
+        if ($eventful && $rng->getInt(0, 1) === 1) {
+            $state = $state->withAdjustment(
+                new Adjustment($entrants[$rng->getInt(0, count($entrants) - 1)]->getId(), $rng->getInt(-4, 4) / 2.0)
+            );
+            $points[] = ['state' => $state, 'rounds' => $rounds, 'results' => $known];
+        }
+        if ($eventful && $number === 2 && count($entrants) >= 5) {
+            $state = $state->withoutParticipant($entrants[$rng->getInt(0, count($entrants) - 1)]);
+            $points[] = ['state' => $state, 'rounds' => $rounds, 'results' => $known];
+        }
+
+        foreach (lateResultsArriving($rng, $pending, false) as $result) {
+            $known[] = $result;
+            $state = lateResultRecorded($state, $result, $entrants);
+            $points[] = ['state' => $state, 'rounds' => $rounds, 'results' => $known];
+        }
+    }
+
+    // What is still missing arrives once no round is left to pair
+    foreach (lateResultsArriving($rng, $pending, true) as $result) {
+        $known[] = $result;
+        $state = lateResultRecorded($state, $result, $entrants);
+        $points[] = ['state' => $state, 'rounds' => $rounds, 'results' => $known];
+    }
+
+    return $points;
+}
+
+/**
+ * The stages lateResultsPoints() plays: field sizes 3 to 10, two seeds
+ * each, the second eventful.
+ *
+ * @return Generator<string, array{SwissPairingEngine, list<Participant>, list<array{state: StageState, rounds: list<RoundPairing>, results: list<Result>}>}>
+ *
+ * @throws InvalidConfigurationException When the engine or the state refuses a step (not expected)
+ * @throws InvalidInputException When a result is refused (not expected)
+ */
+function lateResultsStages(): Generator
+{
+    foreach (range(3, 10) as $size) {
+        foreach ([1, 2] as $seed) {
+            $planned = min(4, $size - 1);
+            $engine = new SwissPairingEngine(plannedRounds: $planned);
+            $entrants = historyField($size);
+
+            yield "{$size} entrants, seed {$seed}" => [$engine, $entrants, lateResultsPoints($engine, $entrants, $planned, 1000 * $size + $seed, $seed === 2)];
+        }
+    }
+}
+
+describe('a Swiss round paired before the results are in, once they arrive', function (): void {
+    it('is never reported as manual, whatever arrives after it, and its derivation is the round the engine paired', function (): void {
+        $lateArrived = 0;
+        foreach (lateResultsStages() as $stage => [$engine, , $points]) {
+            foreach ($points as $at => $point) {
+                foreach ($engine->getRecordedRounds($point['state']) as $index => $round) {
+                    $paired = $point['rounds'][$index];
+                    $where = "{$stage}, point {$at}, round {$round->getRoundNumber()}";
+                    $derivation = $round->getDerivation();
+
+                    expect($round->isManual())->toBeFalse($where)
+                        ->and($round->isPairedOnIncompleteResults())->toBe($paired->isPairedOnIncompleteResults(), $where)
+                        ->and($derivation)->toBeInstanceOf(RoundPairing::class, $where)
+                        ->and(historyPairs($derivation?->getEvents() ?? []))->toBe(historyPairs($paired->getEvents()), $where)
+                        ->and(historyIds($derivation?->getByes() ?? []))->toBe(historyIds($paired->getByes()), $where);
+
+                    // A round paired early whose late results have begun to arrive
+                    $stillAwaited = array_intersect(
+                        historyPairs($paired->getUnresolvedWhenPaired()),
+                        historyPairs($point['state']->getEventsWithoutResult())
+                    );
+                    $lateArrived += count($stillAwaited) < count($paired->getUnresolvedWhenPaired()) ? 1 : 0;
+                }
+            }
+        }
+
+        // The sweep reaches the case it is about
+        expect($lateArrived)->toBeGreaterThan(40);
+    });
+
+    it('reads the same from the rows in any order, and stored and read back, as from the state the verbs built', function (): void {
+        foreach (lateResultsStages() as $stage => [$engine, $entrants, $points]) {
+            $rng = new Randomizer(new Mt19937(crc32($stage)));
+            $registry = array_combine(historyIds($entrants), $entrants);
+
+            foreach ($points as $at => $point) {
+                $rows = StageState::fromHistory(
+                    $entrants,
+                    $rng->shuffleArray(array_map(
+                        // Each round as the plain data of an application's row gives it
+                        static fn(RoundPairing $pairing): RoundPairing => RoundPairing::fromArray($pairing->toArray(), $registry),
+                        $point['rounds']
+                    )),
+                    $rng->shuffleArray($point['results']),
+                    historyWithdrawals($point['state'], $rng),
+                    $point['state']->getAdjustments()
+                );
+                $expected = historyReading($engine, $point['state']);
+
+                expect(historyReading($engine, $rows))->toBe($expected, "{$stage}, point {$at}")
+                    // The events of each round, its byes and the events it says awaited a result, in an order of their own
+                    ->and(historyReading($engine, historyRebuilt($point['state'], $entrants, $rng, true)))->toBe($expected, "{$stage}, point {$at}")
+                    ->and(historyReading($engine, StageState::fromJson($point['state']->toJson())))->toBe($expected, "{$stage}, point {$at}");
+            }
+        }
     });
 });
 
@@ -1815,5 +2138,28 @@ describe('the stored form of a state', function (): void {
 
         expect(fn(): RoundPairing => RoundPairing::fromArray($data, []))
             ->toThrow(InvalidInputException::class, 'paired_on_incomplete_results must be a boolean');
+    });
+
+    it('refuses a list of the events that awaited a result on a round without the mark, and a list that is no list of events', function (): void {
+        [$h1, $h2] = $entrants = historyField(2);
+        $registry = array_combine(historyIds($entrants), $entrants);
+        $awaited = new Event([$h1, $h2], new Round(1));
+        $marked = (new RoundPairing(2, null, [], [], true, [$awaited]))->toArray();
+
+        $unmarked = $marked;
+        unset($unmarked['paired_on_incomplete_results']);
+        $markedFalse = [...$marked, 'paired_on_incomplete_results' => false];
+
+        expect(RoundPairing::fromArray($marked, $registry)->toArray())->toBe($marked)
+            ->and(fn(): RoundPairing => RoundPairing::fromArray($unmarked, $registry))
+            ->toThrow(InvalidInputException::class, 'requires paired_on_incomplete_results to be true')
+            ->and(fn(): RoundPairing => RoundPairing::fromArray($markedFalse, $registry))
+            ->toThrow(InvalidInputException::class, 'requires paired_on_incomplete_results to be true')
+            ->and(fn(): RoundPairing => RoundPairing::fromArray([...$marked, 'unresolved_when_paired' => 'h1 v h2'], $registry))
+            ->toThrow(InvalidInputException::class, 'unresolved_when_paired must be an array')
+            ->and(fn(): RoundPairing => RoundPairing::fromArray([...$marked, 'unresolved_when_paired' => ['h1 v h2']], $registry))
+            ->toThrow(InvalidInputException::class, 'unresolved_when_paired entry must be an array')
+            // An empty list is no list: the round is read as one that names none
+            ->and(RoundPairing::fromArray([...$marked, 'unresolved_when_paired' => []], $registry)->getUnresolvedWhenPaired())->toBe([]);
     });
 });

@@ -518,10 +518,13 @@ final readonly class StageState
      * @param array<Result> $results
      * @throws InvalidConfigurationException When the pairing's round number is below 1
      *                                       (`ValueOutOfRange`), the pairing does not follow the
-     *                                       recorded rounds (`RoundOutOfSequence`), or an event or result
+     *                                       recorded rounds (`RoundOutOfSequence`), an event or result
      *                                       belongs to a different round or is not in the pairing
      *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
-     *                                       event carries no round number at all)
+     *                                       event carries no round number at all), or an event the
+     *                                       pairing says awaited a result when it was paired
+     *                                       (RoundPairing::getUnresolvedWhenPaired()) is in no
+     *                                       recorded round (`EventNotInRound`)
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
@@ -556,6 +559,7 @@ final readonly class StageState
         }
 
         $this->assertResultsBelongTo($pairing, $results);
+        $this->assertUnresolvedWhenPairedRecorded($pairing);
 
         // The first round says who was in the draw: of those who withdrew
         // before it was recorded, the ones it names keep their place, and
@@ -590,6 +594,47 @@ final readonly class StageState
             $entrants,
             $withdrawals
         );
+    }
+
+    /**
+     * The events a round says awaited a result when it was paired
+     * (RoundPairing::getUnresolvedWhenPaired()) must be events of the
+     * rounds recorded before it: the Swiss engine reads the table the round
+     * was paired from without their results, and an event that no round
+     * holds would leave out nothing. Whether they have a result now is not
+     * asked: it may have arrived since.
+     *
+     * @throws InvalidConfigurationException When a listed event is in no recorded round
+     */
+    private function assertUnresolvedWhenPairedRecorded(RoundPairing $pairing): void
+    {
+        if ($pairing->getUnresolvedWhenPaired() === []) {
+            return;
+        }
+
+        $recorded = [];
+        foreach ($this->roundsPlayed as $earlier) {
+            foreach ($earlier->getEvents() as $event) {
+                $recorded[$this->eventKey($event)] = true;
+            }
+        }
+
+        foreach ($pairing->getUnresolvedWhenPaired() as $event) {
+            if (!isset($recorded[$this->eventKey($event)])) {
+                throw new InvalidConfigurationException(
+                    'The round says that an event awaited a result when it was paired, and no earlier round holds that event',
+                    [
+                        'pairing_round' => $pairing->getRoundNumber(),
+                        'event_round' => $event->getRound()?->getNumber(),
+                        'participants' => array_map(
+                            static fn(Participant $participant): string => $participant->getId(),
+                            array_values($event->getParticipants())
+                        ),
+                    ],
+                    reason: InvalidConfigurationReason::EventNotInRound
+                );
+            }
+        }
     }
 
     /**
@@ -1423,7 +1468,8 @@ final readonly class StageState
      * result carries an `award` key only when it is awarded and a
      * `decider` key only when it carries the decision of a level tie, and
      * a round a `paired_on_incomplete_results` key only when it carries
-     * that mark.
+     * that mark and an `unresolved_when_paired` key only when it lists the
+     * events that awaited a result when it was paired.
      * The `entrants` key, the IDs of the entrant list in its order (see
      * getEntrants()), is present only when an entrant has withdrawn and
      * kept its place: `active` is then that list without the withdrawn,

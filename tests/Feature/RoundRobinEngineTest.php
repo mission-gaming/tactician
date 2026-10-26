@@ -976,6 +976,8 @@ describe('a league that plays on while a fixture is postponed', function (): voi
         for ($number = 2; $number <= 3; ++$number) {
             $early = $engine->pairNextRoundOnIncompleteResults($state);
             expect($early->isPairedOnIncompleteResults())->toBeTrue()
+                // The mark says which fixture awaited its result, as the Swiss engine's does
+                ->and($early->getUnresolvedWhenPaired())->toBe([$postponed])
                 ->and(leagueEvents($early->getEvents()))->toBe(leagueEvents($schedule[$number]));
             $rounds[] = $early;
             $played = leagueResults($early->getEvents(), $rng);
@@ -996,6 +998,8 @@ describe('a league that plays on while a fixture is postponed', function (): voi
         $finished = StageState::fromHistory($field, $rounds, [...$results, ...leagueResults([$postponed], $rng)]);
 
         expect($engine->isComplete($finished))->toBeTrue()
+            // No result changes a fixture: a round paired early is not manual once the late result is in
+            ->and(array_map(static fn(RecordedRound $round): bool => $round->isManual(), $engine->getRecordedRounds($finished)))->toBe([false, false, false])
             ->and($engine->pairNextRoundOnIncompleteResults(StageState::start($field))->isPairedOnIncompleteResults())->toBeFalse();
     });
 });

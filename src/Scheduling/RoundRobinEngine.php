@@ -287,7 +287,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
             );
         }
 
-        return $this->pair($state, $field, false);
+        return $this->pair($state, $field, []);
     }
 
     /**
@@ -296,8 +296,11 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      *
      * The round is the one pairNextRound() gives, since no result changes a
      * fixture. When an event did await a result the pairing is marked
-     * (RoundPairing::isPairedOnIncompleteResults()), and the mark is
-     * recorded and stored with the round. The event still awaits its result
+     * (RoundPairing::isPairedOnIncompleteResults()) with the events that
+     * awaited one (RoundPairing::getUnresolvedWhenPaired()), as the Swiss
+     * engine marks it, and both are recorded and stored with the round;
+     * this engine reads neither, since no result changes a fixture, and an
+     * application's row may give the mark alone. The event still awaits its result
      * afterwards: the stage is not complete until it has one, and once the
      * round paired here is recorded, the result is supplied with the history
      * (StageState::fromHistory()), since StageState::withAdditionalResults()
@@ -311,7 +314,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
     {
         $state->requireEngineFingerprint($this->getFingerprint());
 
-        return $this->pair($state, $this->field($state), $this->unresolvedEvents($state) !== []);
+        return $this->pair($state, $this->field($state), $this->unresolvedEvents($state));
     }
 
     /**
@@ -388,7 +391,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
         // The round is refused here as pairNextRound() refuses it, and is
         // not called ready
         try {
-            $next = $this->roundOf($this->roundsOf($this->schedule($this->field($state))), $state->getNextRoundNumber(), false);
+            $next = $this->roundOf($this->roundsOf($this->schedule($this->field($state))), $state->getNextRoundNumber(), []);
         } catch (IncompleteScheduleException) {
             $next = null;
         }
@@ -456,7 +459,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
         $read = [];
         foreach ($state->getRoundsPlayed() as $pairing) {
             $number = $pairing->getRoundNumber();
-            $derivation = $rounds === null ? null : $this->roundOf($rounds, $number, false);
+            $derivation = $rounds === null ? null : $this->roundOf($rounds, $number, []);
 
             $read[] = new RecordedRound(
                 $pairing,
@@ -550,18 +553,21 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * Pair round N of the schedule, N being the state's next round number.
      *
      * @param list<Participant> $field
+     * @param list<Event> $unresolved The recorded events that await a result, with which the
+     *                                pairing is marked as made on incomplete results; empty
+     *                                for a pairing that carries no mark
      *
      * @throws InvalidConfigurationException When the rounds of the schedule have all been
      *                                       recorded, or the scheduler refuses the entrants or the
      *                                       options
      * @throws IncompleteScheduleException When the constraints leave the scheduler no schedule
      */
-    private function pair(StageState $state, array $field, bool $onIncompleteResults): RoundPairing
+    private function pair(StageState $state, array $field, array $unresolved): RoundPairing
     {
         $rounds = $this->roundsOf($this->schedule($field));
         $next = $state->getNextRoundNumber();
 
-        $pairing = $this->roundOf($rounds, $next, $onIncompleteResults);
+        $pairing = $this->roundOf($rounds, $next, $unresolved);
         if (!$pairing instanceof RoundPairing) {
             throw new InvalidConfigurationException(
                 'Every round of the round robin has been recorded; no further round exists',
@@ -655,8 +661,10 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * the schedule has no such round.
      *
      * @param array{events: array<int, array<Event>>, byes: array<int, list<Participant>>, total: int} $rounds
+     * @param list<Event> $unresolved The events the pairing is marked with as awaiting a result
+     *                                when it was paired (see RoundPairing::getUnresolvedWhenPaired())
      */
-    private function roundOf(array $rounds, int $number, bool $onIncompleteResults): ?RoundPairing
+    private function roundOf(array $rounds, int $number, array $unresolved): ?RoundPairing
     {
         if ($number < 1 || $number > $rounds['total']) {
             return null;
@@ -667,7 +675,8 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
             null,
             $rounds['events'][$number] ?? [],
             $rounds['byes'][$number] ?? [],
-            $onIncompleteResults
+            $unresolved !== [],
+            $unresolved
         );
     }
 
