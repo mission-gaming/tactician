@@ -4346,12 +4346,13 @@ missing result arrives and would have paired it otherwise:
 ```php
 $swissState = $swissState->withRoundPaired($early);
 
-// The missing result of round 1 arrives: Cy beats Di
+// The missing result of round 1 arrives: Di beats Cy, and the engine would
+// now pair Ada with Di
 $missing = $firstRound->getEvents()[1];
 $swissState = StageState::fromHistory(
     [$ada, $bo, $cy, $di],
     $swissState->getRoundsPlayed(),
-    [...$swissState->getResults(), new Result($missing, $cy)]
+    [...$swissState->getResults(), new Result($missing, $di)]
 );
 $secondRound = $swiss->getRecordedRounds($swissState)[1];
 var_dump($secondRound->isPairedOnIncompleteResults()); // bool(true)
