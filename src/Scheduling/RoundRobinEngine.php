@@ -89,13 +89,14 @@ use Random\Randomizer;
  * - The table is the standings calculator's, from the recorded results,
  *   the byes and the adjustments in one call
  *   (StandingsCalculator::calculateWith()), with the entrant list deciding
- *   where results do not. A bye (the round a participant sits out in a
- *   field of odd size) is worth what the ranking strategy says a bye is
- *   worth (RankingStrategyWithByeValue; a win under the default
- *   WinDrawLossRanking, so a league that gives nothing for sitting out says
- *   so with WinDrawLossRanking::withByeValue(0.0)). An awarded result is a
- *   result, and an adjustment is added to the ranking value of its
- *   participant. The table orders nothing the engine pairs.
+ *   where results do not. A round sat out in a field of odd size is listed
+ *   among the byes of the round and counted on the participant's entry
+ *   (StandingEntry::getByes()), and earns nothing, whatever the ranking
+ *   strategy says a bye is worth: a rest is a gap in a fixture list drawn
+ *   once, not a round the format let a participant through without an
+ *   opponent (ADR 0017). An awarded result is a result, and an adjustment
+ *   is added to the ranking value of its participant. The table orders
+ *   nothing the engine pairs.
  * - A withdrawal draws nothing again and decides nothing. The withdrawn
  *   entrant's results stand and count in the table. Its fixtures stay in
  *   the schedule, recorded and later ones alike: the engine still pairs
@@ -121,6 +122,15 @@ use Random\Randomizer;
  */
 final readonly class RoundRobinEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
 {
+    /**
+     * How many times each round a participant sits out is credited with the
+     * value of a bye: never. A rest is counted on the participant's entry
+     * and earns nothing, whatever the ranking strategy says a bye is worth
+     * (ADR 0017). It is held here, in one place, so that an option could
+     * credit a rest later; none does.
+     */
+    private const int CREDITS_PER_REST = 0;
+
     private RoundRobinOptions $options;
 
     /**
@@ -302,9 +312,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * (getStandings()), the results, the byes, the last round and the
      * entrant list; null before.
      *
-     * @throws InvalidConfigurationException For every case getPlan() names, and when a bye is
-     *                                       recorded and the ranking strategy does not say what a
-     *                                       bye is worth (`IncompatibleOptions`)
+     * @throws InvalidConfigurationException For every case getPlan() names
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
@@ -433,14 +441,16 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      * order of the entrant list. A participant given an adjustment who then
      * withdrew before the draw is in no round and still has its adjustment:
      * it is in the table too, after the entrants where results are level.
-     * An event without a result counts for nobody.
+     * An event without a result counts for nobody. A round sat out is
+     * counted on the entry (StandingEntry::getByes()) and earns nothing,
+     * under any ranking strategy (see the class docblock), so a strategy
+     * that does not say what a bye is worth is not refused a league with a
+     * rest.
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
      *                                       fingerprint, names a participant outside its entrant
      *                                       list or holds an event of other than two participants
-     *                                       (`RecordedRoundMismatch`), and when a bye is recorded and
-     *                                       the ranking strategy does not say what a bye is worth
-     *                                       (`IncompatibleOptions`)
+     *                                       (`RecordedRoundMismatch`)
      */
     #[Override]
     public function getStandings(StageState $state): Standings
@@ -451,16 +461,16 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
     }
 
     /**
-     * @throws InvalidConfigurationException When the entrant list does not hold every participant
-     *                                       the state names, or a bye is recorded under a ranking
-     *                                       strategy that does not say what a bye is worth
+     * @throws InvalidConfigurationException When a round or a result names a participant outside
+     *                                       the entrant list, or an event has other than two
+     *                                       participants
      */
     private function table(StageState $state): Standings
     {
         $listed = $this->tableList($state);
 
         return $this->standingsCalculator
-            ->calculateWith($listed, $state->getResults(), $state->getByeCounts(), $state->getAdjustments())
+            ->calculateWith($listed, $state->getResults(), $state->getByeCounts(), $state->getAdjustments(), self::CREDITS_PER_REST)
             ->withTiedSetsOrderedBy($listed);
     }
 

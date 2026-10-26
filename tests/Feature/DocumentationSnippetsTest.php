@@ -312,6 +312,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["1 event awaits a result\nbool(true)\nbool(true)\n"],
             [],
         ],
+        'a round sat out in a league, counted and credited with nothing' => [
+            'docs/USAGE.md',
+            '$oddLeague = new RoundRobinEngine();',
+            ["1 rest, 0 points\n0\n"],
+            [],
+        ],
         'a withdrawal from a league, and the award of its fixture' => [
             'docs/USAGE.md',
             "new Award('walkover', 'Dunmore withdrew')",

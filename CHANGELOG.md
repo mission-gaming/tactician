@@ -1003,10 +1003,15 @@ entry on the engine fingerprint.
     further round is refused with `PlannedRoundsPlayed`.
   - **The table** is the standings calculator's table of the recorded
     results, byes and adjustments (`calculateWith()`), entries that results
-    do not separate in the order of the entrant list. A round sat out is a
-    bye and is worth what the ranking strategy says a bye is worth: a win
-    under the default `WinDrawLossRanking`, so a league that gives nothing
-    for it uses `withByeValue(0.0)`.
+    do not separate in the order of the entrant list. **A round sat out
+    earns nothing** (ADR 0017): the participant who rests is listed among
+    the byes of the round and its entry counts the rest
+    (`StandingEntry::getByes()`), and the table credits it with nothing,
+    whatever the ranking strategy says a bye is worth, so a table in the
+    middle of a season shows the points played for. A rest is a gap in a
+    fixture list drawn once, not the bye of a Swiss round or a bracket
+    (ADR 0009), and a ranking strategy that says nothing of byes is not
+    refused a league with one.
   - **A withdrawal draws nothing again and decides nothing.** The entrant
     keeps its place, its played results stand, and its fixtures are still
     paired: an event of it without a result awaits none

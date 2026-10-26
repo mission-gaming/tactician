@@ -3,7 +3,9 @@
 Status: accepted; amended by [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md),
 which credits the byes of a bracket in its placement table too, and in a
 bracket credits a bye with nothing, and refuses nothing, under a strategy
-without a bye value
+without a bye value; narrowed by [0017](0017-a-league-rest-earns-nothing.md),
+under which the round a participant of a league rests is counted and
+credited with nothing
 
 ## Context
 

@@ -114,9 +114,10 @@ $enter = static function (array &$gameRows, int $round, array $results = []): vo
     }
 };
 
-// The club scores 1, ½ and 0, and resting earns nothing
+// The club scores 1, ½ and 0. A week a player rests earns nothing in a
+// league, whatever the scale says a bye is worth
 $engine = new RoundRobinEngine(
-    standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero()->withByeValue(0.0))
+    standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero())
 );
 
 // --- Weeks 1 and 2: pair, play, enter ---------------------------------------

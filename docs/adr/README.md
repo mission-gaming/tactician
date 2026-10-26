@@ -18,13 +18,14 @@ there is not repeated here.
 | [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
 | [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived |
 | [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
-| [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says (amended by 0014) |
+| [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says (amended by 0014; narrowed by 0017 for a league) |
 | [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table (amended by 0014) |
 | [0011](0011-a-tie-both-entrants-left-is-void.md) | A tie both entrants left is void |
 | [0012](0012-a-withdrawal-states-its-round.md) | A withdrawal states its round (amended: an adjustment does too) |
 | [0013](0013-a-finished-bracket-keeps-its-winner.md) | A finished bracket keeps its winner |
 | [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md) | A bracket's table forms its tied sets inside a tier and credits its byes (amends 0009 and 0010) |
 | [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md) | An engine fingerprint versions the rules of each configuration |
+| [0017](0017-a-league-rest-earns-nothing.md) | A league rest earns nothing (narrows 0009) |
 
 ## Adding a record
 

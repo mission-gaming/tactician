@@ -25,10 +25,12 @@ use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\Withdrawal;
 use MissionGaming\Tactician\Standings\Adjustment;
+use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+use Override;
 use PHPUnit\Framework\Assert;
 use Random\Engine\Mt19937;
 use Random\Engine\Xoshiro256StarStar;
@@ -156,8 +158,8 @@ function leagueIds(array $participants): array
 
 /**
  * The table of a league worked out here, without the standings calculator:
- * three points for a win, one for a draw, three for a bye, and the
- * adjustments; the entries in order of points, score difference, scores
+ * three points for a win, one for a draw, nothing for a round sat out, and
+ * the adjustments; the entries in order of points, score difference, scores
  * for and then the entrant list.
  *
  * @param list<Participant> $field
@@ -189,9 +191,7 @@ function leagueTableByHand(array $field, StageState $state): array
             $for[$id] += (int) ($scores[$id] ?? 0);
         }
     }
-    foreach ($state->getByeIds() as $id) {
-        $points[$id] += 3.0;
-    }
+    // A round sat out earns nothing (ADR 0017): no line for it
     foreach ($state->getAdjustments() as $adjustment) {
         $points[$adjustment->getParticipantId()] += $adjustment->getAmount();
     }
@@ -491,7 +491,7 @@ describe('the table of a league', function (): void {
 
                     $table = $engine->getStandings($state);
                     expect($table)->toEqual(
-                        $calculator->calculateWith($field, $state->getResults(), $state->getByeCounts(), $state->getAdjustments())
+                        $calculator->calculateWith($field, $state->getResults(), $state->getByeCounts(), $state->getAdjustments(), 0)
                             ->withTiedSetsOrderedBy($field)
                     )
                         ->and(leagueTable($table))->toBe(leagueTableByHand($field, $state), "{$name}, {$size} entrants");
@@ -511,26 +511,74 @@ describe('the table of a league', function (): void {
         expect($points)->toBeGreaterThan(30);
     })->with(array_keys(leagueConfigurations()));
 
-    it('gives a round sat out what the ranking strategy says a bye is worth, nothing where it says so', function (): void {
-        $field = leagueField(3);
-        $nothingForAByeEngine = new RoundRobinEngine(standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue(0.0)));
-        $engine = new RoundRobinEngine();
-        $pairing = $engine->pairNextRound(StageState::start($field));
-        [$bye] = $pairing->getByes();
-        $state = StageState::start($field)->withRoundPlayed($pairing, array_map(
-            static fn(Event $event): Result => new Result($event),
-            $pairing->getEvents()
-        ));
+    // A rest is a gap in a fixture list drawn once, not a round the format
+    // let a participant through (ADR 0017): it is counted on the entry and
+    // earns nothing under any ranking strategy, a strategy whose bye is
+    // worth a win included. Fields of odd size of one and two legs, the
+    // table read after every round and at the end.
+    it('counts a round sat out and credits it with nothing, mid-season and at the end, whatever a bye is worth', function (int $legs): void {
+        $calculators = [
+            'a bye worth a win' => new StandingsCalculator(),
+            'a bye worth a draw' => new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue(1.0)),
+            'one, a half and nothing' => new StandingsCalculator(WinDrawLossRanking::oneHalfZero()),
+            'a strategy that says nothing of byes' => new StandingsCalculator(new readonly class implements RankingStrategy {
+                /**
+                 * @param array<Result> $results
+                 */
+                #[Override]
+                public function rank(Participant $participant, array $results): float
+                {
+                    return (float) count(array_filter($results, static fn(Result $result): bool => $result->isWinFor($participant)));
+                }
+            }),
+        ];
+        $rests = 0;
 
-        $value = static fn(Standings $table): float => array_values(array_filter(
-            $table->getEntries(),
-            static fn(StandingEntry $entry): bool => $entry->getParticipant() === $bye
-        ))[0]->getRankingValue();
+        foreach ([3, 5, 7] as $size) {
+            $field = leagueField($size);
+            $options = new RoundRobinOptions(legs: $legs);
+            $engines = array_map(static fn(StandingsCalculator $calculator): RoundRobinEngine => new RoundRobinEngine($options, standingsCalculator: $calculator), $calculators);
+            $rng = new Randomizer(new Mt19937($size * $legs));
+            $state = StageState::start($field);
+            $restsOf = array_fill_keys(leagueIds($field), 0);
 
-        expect($value($engine->getStandings($state)))->toBe(3.0)
-            ->and($value($nothingForAByeEngine->getStandings($state)))->toBe(0.0)
-            ->and($nothingForAByeEngine->getFingerprint())->toBe($engine->getFingerprint());
-    });
+            while (!$engines['a bye worth a win']->isComplete($state)) {
+                $before = array_map(static fn(RoundRobinEngine $engine): Standings => $engine->getStandings($state), $engines);
+                $pairing = $engines['a bye worth a win']->pairNextRound($state);
+                [$resting] = $pairing->getByes();
+                $state = $state->withRoundPaired($pairing)->withAdditionalResults(leagueResults($pairing->getEvents(), $rng));
+                ++$restsOf[$resting->getId()];
+                ++$rests;
+
+                foreach ($engines as $name => $engine) {
+                    $table = $engine->getStandings($state);
+                    $entry = $table->getEntryFor($resting);
+                    $earlier = $before[$name]->getEntryFor($resting);
+                    assert($entry instanceof StandingEntry && $earlier instanceof StandingEntry);
+
+                    // The round it rested adds nothing to the participant
+                    expect($entry->getRankingValue())->toBe($earlier->getRankingValue(), "{$name}, {$size} entrants")
+                        ->and($entry->getEarnedRankingValue())->toBe($entry->getRankingValueOfResults())
+                        ->and(array_map(static fn(StandingEntry $row): int => $row->getByes(), $table->getEntries()))
+                        ->toBe(array_map(static fn(StandingEntry $row): int => $restsOf[$row->getParticipant()->getId()], $table->getEntries()));
+                }
+                expect(leagueTable($engines['a bye worth a win']->getStandings($state)))->toBe(leagueTableByHand($field, $state));
+            }
+
+            // Everybody has rested once a leg, and the final table is the
+            // table of the results
+            $outcome = $engines['a bye worth a win']->getOutcome($state);
+            assert($outcome instanceof StageOutcome);
+            expect(array_values($restsOf))->each->toBe($legs)
+                ->and(leagueTable($outcome->getStandings()))->toBe(leagueTableByHand($field, $state))
+                ->and(array_map(static fn(StandingEntry $row): int => $row->getByes(), $outcome->getStandings()->getEntries()))->each->toBe($legs);
+        }
+
+        expect($rests)->toBe(15 * $legs)
+            // Nothing is paired from the table, so the bye value is not in the fingerprint
+            ->and((new RoundRobinEngine(standingsCalculator: $calculators['a bye worth a draw']))->getFingerprint())
+            ->toBe((new RoundRobinEngine())->getFingerprint());
+    })->with([1, 2]);
 });
 
 describe('a withdrawal from a league', function (): void {

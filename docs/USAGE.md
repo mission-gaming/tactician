@@ -48,7 +48,7 @@ anything else that competes.
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size, or the schedule is refused; `RoundParityRoleAssignment` (the default up to 0.2.x) alternates with round parity; `BalancedWherePossibleRoleAssignment` (the default) gives the balanced roles where the scheduler finds a schedule with them and otherwise the round-parity roles, with a **role fall-back** mark. A role assignment may state the rule it holds a leg to, and the scheduler then looks for other roles within that rule where a constraint rejects the ones it gave. See [Role Assignment](#role-assignment). |
 | **Role fall-back** | What the default role assignment of a round robin does where it finds no schedule with balanced roles: the schedule is generated with the roles the generator proposes, exactly as under `RoundParityRoleAssignment`, and its metadata says so under the key `role_fallback`, with the reason (`RoleFallback`): no balanced roles exist in what was searched, a bound stopped the search, or the search was cut short because a schedule was in hand. A schedule with balanced roles has no such key. See [Balanced where possible](#balanced-where-possible). |
 | **Fixed seating** | A seating is one pairing of a round as a role assignment is handed it: two seats, with the first-named participant in the first. A fixed seating is one the role assignment is told to keep as given (`RoleAssignmentContext::isFixed()`): the scheduler put its event to the constraints the other way round, they rejected it, and it asks the role assignment for the roles of the other seatings around it. See [Writing a role assignment](#writing-a-role-assignment). |
-| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**. In a bracket a bye is a node of the **bracket view** with the status `Bye` (an entrant who stood alone and went on); the advancer of an **uncontested tie** is listed among the byes of its round but has no bye. See [Byes in a table](#byes-in-a-table). |
+| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**, except in a **league**, where it is a **rest** and earns nothing. In a bracket a bye is a node of the **bracket view** with the status `Bye` (an entrant who stood alone and went on); the advancer of an **uncontested tie** is listed among the byes of its round but has no bye. See [Byes in a table](#byes-in-a-table). |
 | **Bye value** | What one bye adds to the ranking value of the participant who had it, as the ranking strategy states it (`RankingStrategyWithByeValue::getByeValue()`): the value of a win, of a draw, nothing, or any other amount. `WinDrawLossRanking` values a bye as a win unless told otherwise. The same value orders the next round of a stage and stands in its final table. |
 | **Bye treatment** | How a tiebreaker computed from opponents counts a bye (`ByeTreatment`): not at all (`Uncounted`, the default), as an opponent worth nothing (`Zero`), or as an opponent with the participant's own ranking value (`OwnRankingValue`); the last two read an opponent's ranking value with the credit of its byes. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
@@ -85,6 +85,7 @@ anything else that competes.
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **League** | A round-robin stage held between rounds as a `StageState` and paired one round at a time by `RoundRobinEngine`, whose rounds are those of the schedule `RoundRobinScheduler` generates for the same entrants, options, constraints and seed. See [Leagues Run Round by Round](#leagues-run-round-by-round). |
+| **Rest (in a league)** | The round a participant of a league of odd size sits out. It is a **bye** of the round, listed among its byes and counted on the participant's entry (`StandingEntry::getByes()`), and it earns nothing, whatever the ranking strategy says a bye is worth: a gap in a fixture list drawn once, not a round the format let the participant through without an opponent ([ADR 0017](adr/0017-a-league-rest-earns-nothing.md)). See [Leagues Run Round by Round](#leagues-run-round-by-round). |
 | **Stage state** | The record of a results-driven stage between rounds (`StageState`): the entrant list, who has withdrawn, the recorded pairings (with byes), results, and adjustments. It is built verb by verb and stored (`toJson()`), or built on each request from a history the application holds (`StageState::fromHistory()`). Withdrawals are `withoutParticipant()`, a result of the last recorded round is corrected with `withResultReplaced()`, and an adjustment is recorded with `withAdjustment()`. |
 | **History (of a stage)** | What an application holds of a stage in its own storage: the entrants in their order, the rounds that were paired, the results recorded so far, who has withdrawn and after which round, the adjustments and after which round. A history is a set of facts. An engine reads the rounds as they are and derives only the round that does not exist yet; `StageState::fromHistory()` builds a stage state from one and refuses a history that breaks a **hard rule**. See [Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows). |
 | **Hard rule** | One of the three things `StageState::fromHistory()` requires of a history beside what recording a round always requires: round numbers 1, 2, 3 with none left out, every participant an entrant, and nobody in a round twice. A history that breaks one is refused with a reason; a round that only pairs the entrants otherwise than the engine would have is not. |
@@ -2345,6 +2346,12 @@ draw is worth, nothing, or any other amount. `WinDrawLossRanking` values a
 bye as a win unless it is told otherwise, with `withByeValue()` or the key
 `bye` of its plain data (a number, or `'win'`, `'draw'` or `'loss'` for the
 value the same array gives that outcome).
+
+That is the bye of a format that lets a participant through a round
+without an opponent: a Swiss round, a bracket. The round a participant of a
+**league** rests is not such a bye: the round-robin engine counts it and
+credits it with nothing, whatever the strategy says (see
+[Leagues Run Round by Round](#leagues-run-round-by-round)).
 
 `calculateWith()` calculates a table with its byes, and with its adjustments,
 in one call. The byes are counts by participant ID, which is what a stage
@@ -4812,7 +4819,7 @@ that every call gives the same round for the same state. For the same reason a
 | `options` | `RoundRobinOptions`, as the scheduler takes them; null for its default (one leg, roles balanced where possible) |
 | `constraints` | The `ConstraintSet` the schedule is generated under. They must answer the same on every call |
 | `seed` | An integer that shuffles the entrant list before the first leg is laid out, as a `Randomizer` would; null for the list order as given |
-| `standingsCalculator` | Orders the table of the stage. Nothing is paired from it, so it is not part of the fingerprint |
+| `standingsCalculator` | Orders the table of the stage. Nothing is paired from it, so it is not part of the fingerprint. A round sat out earns nothing under it, whatever its ranking strategy says a bye is worth |
 
 **Results are waited for.** No result changes a fixture, and the engine
 waits for them all the same, as every engine does: while an event of a
@@ -4852,21 +4859,40 @@ is the standings calculator's table of the recorded results, byes and
 adjustments, in one call (`StandingsCalculator::calculateWith()`); where
 results do not separate two entries, their position in the entrant list
 does. An [awarded result](#awarded-results) is a result, and an
-[adjustment](#adjustments) is added to its participant's ranking value. A
-**round sat out** in a field of odd size is a bye, and a bye is worth what
-the ranking strategy says it is worth ([Byes in a table](#byes-in-a-table)):
-a win under the default `WinDrawLossRanking`. Over a whole round robin every
-participant sits out as many rounds as there are legs, so the final order is
-the same either way; in the middle of a season a league that gives nothing
-for sitting out says so:
+[adjustment](#adjustments) is added to its participant's ranking value.
+
+**A round sat out earns nothing.** In a field of odd size the participant
+who sits a round out is listed among the byes of the round, the state
+counts it (`StageState::getByeCounts()`) and so does its entry
+(`StandingEntry::getByes()`), but the table credits it with nothing,
+whatever the ranking strategy says a bye is worth: the engine asks the
+calculator for the table with `creditsPerBye: 0`. A rest in a league is
+not the bye of [Byes in a table](#byes-in-a-table), a round the format let
+a participant through without an opponent: it is a gap in a fixture list
+drawn once, and the table in the middle of a season shows the points
+played for, as a league publishes it
+([ADR 0017](adr/0017-a-league-rest-earns-nothing.md)).
 
 ```php
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 
-$nothingForSittingOut = new RoundRobinEngine(
-    standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue(0.0))
+$five = [...$clubs, new Participant('eld', 'Eldon')];
+$oddLeague = new RoundRobinEngine();
+$week = $oddLeague->pairNextRound(StageState::start($five));
+[$resting] = $week->getByes();
+$weekPlayed = StageState::start($five)->withRoundPlayed($week, array_map(
+    static fn($event) => new Result($event, null),
+    $week->getEvents()
+));
+$entry = $oddLeague->getStandings($weekPlayed)->getEntryFor($resting);
+echo $entry->getByes(), ' rest, ', $entry->getRankingValue(), " points\n"; // 1 rest, 0 points
+
+// A ranking strategy that values a bye changes nothing here
+$scaleWithAByeValue = new RoundRobinEngine(
+    standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue(1.0))
 );
+echo $scaleWithAByeValue->getStandings($weekPlayed)->getEntryFor($resting)->getRankingValue(), "\n"; // 0
 ```
 
 **A withdrawal draws nothing again and decides nothing.** The entrant keeps
