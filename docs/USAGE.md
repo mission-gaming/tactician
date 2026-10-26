@@ -4095,8 +4095,8 @@ round of every side, the rounds still to come included, each with its
 **nodes** (a tie at its place in the bracket) and each node with its
 **slots**. It is enough to draw a bracket of any kind without asking the
 engine anything else: byes, two-legged ties, a third-place tie, a losers
-bracket, withdrawals, and the score of every leg. Both elimination engines offer it
-(`BracketViewEngine`), and it can be asked at any point of the stage,
+bracket, withdrawals, and the score of every leg. Both elimination engines
+offer it (`BracketViewEngine`), and it can be asked at any point of the stage,
 before the first round, with a round in play or a tie that awaits its
 decider, and once the bracket is complete: it throws only for a state the
 engine cannot read at all.
@@ -4188,8 +4188,10 @@ and nothing is worked out from them (who went through is
 and a `null`, a round recorded with `withRoundPaired()` has a `null` for
 every event until its results come, and a node with no event (a bye, an
 empty node, a round still to come, a reset that is not played) has none. A
-tie an entrant left while it was played (`Uncontested`, or `Void`) keeps
-what was recorded of it before.
+tie left while it was played (`Uncontested` where one entrant left, `Void`
+where both did) shows the results the state holds for its events, recorded
+before the withdrawal or after it, and its status still says how it was
+settled.
 
 ```php
 $twoLegs = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));

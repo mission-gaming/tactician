@@ -669,6 +669,34 @@ describe('the results of a node (#181)', function (): void {
             ->and($bracket->getNode('main:2:1')?->getResults())->toBe([]);
     });
 
+    it('shows a result recorded after an entrant left the tie, and the status still says how the tie was settled', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        [$p1, $p2, $p3, $p4] = bracketViewField(4);
+        $state = StageState::start([$p1, $p2, $p3, $p4]);
+        $pairing = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($pairing);
+
+        // p1 v p4: the first leg, then p4 leaves, then the second leg's result comes in all the same
+        [$firstLeg, $secondLeg] = array_values(array_filter(
+            $pairing->getEvents(),
+            static fn(Event $event): bool => $event->hasParticipant($p1)
+        ));
+        $first = new Result($firstLeg, $p1, ['p1' => 2, 'p4' => 0]);
+        $second = new Result($secondLeg, $p4, ['p1' => 0, 'p4' => 5]);
+        $state = $state->withAdditionalResults([$first])
+            ->withoutParticipant($p4)
+            ->withAdditionalResults([$second]);
+
+        $node = $engine->getBracket($state)->getNode('main:1:1');
+        assert($node instanceof BracketNode);
+
+        // The results are what the state holds, whenever they were recorded; the status and the
+        // advancer, not the results, say that p1 went through uncontested
+        expect($node->getResults())->toBe([$first, $second])
+            ->and($node->getStatus())->toBe(BracketNodeStatus::Uncontested)
+            ->and($node->getAdvancer())->toBe($p1);
+    });
+
     it('shows an awarded result and a decider as recorded, and the result that replaced another', function (): void {
         $engine = new SingleEliminationEngine();
         [$p1, $p2, $p3, $p4] = bracketViewField(4);

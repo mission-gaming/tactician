@@ -247,8 +247,10 @@ final readonly class BracketNode
      * is a result and the second null. A node of a round recorded when it
      * was paired, with no result yet, has null for every event. A node with
      * an event and a status that settles it without its results (an
-     * uncontested or a void tie an entrant withdrew from while it was
-     * played) shows what was recorded before the withdrawal, if anything.
+     * uncontested tie, or a void one, left by an entrant or by both while it
+     * was played) shows the results the state holds for its events like
+     * any other, whether they were recorded before the withdrawal or after
+     * it: the status and the advancer say how the tie was settled.
      * A bye, an empty node, a node of a round still to come and a node not
      * played have no event and so no result.
      *
