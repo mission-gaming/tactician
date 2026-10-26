@@ -81,7 +81,7 @@ anything else that competes.
 | **Bracket view** | The structured view of an elimination bracket as its engine reads a stage state (`Bracket`, from `BracketViewEngine::getBracket()`): every round of every side, the rounds still to come included, each with its nodes and slots. It is enough to draw the bracket, and the English round labels are a rendering of it. See [Drawing the Bracket](#drawing-the-bracket). |
 | **Side (of a bracket)** | The part of a bracket a round belongs to (`BracketSide`): `Main` in single elimination; `Winners`, `Losers` and `GrandFinal` (the grand final and its reset) in double elimination. |
 | **Structural round** | A round of the shape of a bracket, counted 1, 2, 3 on its side whether or not it is played (`BracketRound::getRound()`), as against the number of a recorded round, which counts only the rounds that had an event to play, across sides. |
-| **Node (of a bracket)** | A tie at its place in a bracket view (`BracketNode`), identified as `<side>:<round>:<position>`, with its slots, its status (`BracketNodeStatus`), who went through and its recorded events. A pair of slots with one entrant or none is a node too. |
+| **Node (of a bracket)** | A tie at its place in a bracket view (`BracketNode`), identified as `<side>:<round>:<position>`, with its slots, its status (`BracketNodeStatus`), who went through, and its recorded events in leg order with the result of each, or none where it has no result yet. A pair of slots with one entrant or none is a node too. |
 | **Slot** | One place of a node (`BracketSlot`): the entrant who stands in it, or a **placeholder** (`SlotPlaceholder`) that says whom it waits for (the advancer or the loser of a node, or a re-seeded entrant) or why it will hold nobody (a bye, a void node before it, a node not played). |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
@@ -4095,7 +4095,7 @@ round of every side, the rounds still to come included, each with its
 **nodes** (a tie at its place in the bracket) and each node with its
 **slots**. It is enough to draw a bracket of any kind without asking the
 engine anything else: byes, two-legged ties, a third-place tie, a losers
-bracket, withdrawals. Both elimination engines offer it
+bracket, withdrawals, and the score of every leg. Both elimination engines offer it
 (`BracketViewEngine`), and it can be asked at any point of the stage,
 before the first round, with a round in play or a tie that awaits its
 decider, and once the bracket is complete: it throws only for a state the
@@ -4177,6 +4177,37 @@ two-legged tie), and `getKind()` is `BracketTie::Final` for the final of a
 single elimination bracket and `BracketTie::ThirdPlace` for its
 third-place tie, which is a node of its own after the final in the last
 round, its slots filled from the losers of the two nodes before the final.
+
+**The results of a node.** `getResults()` gives, beside the events, the
+result the state holds for each of them: one entry per event, at the place
+of its event, so in leg order, and `null` for an event with no result yet.
+It is the result as recorded, a result replaced with `withResultReplaced()`
+included: its winner, its scores, its award and its decider are all there
+and nothing is worked out from them (who went through is
+`getAdvancer()`). So a two-legged tie with its first leg in has a result
+and a `null`, a round recorded with `withRoundPaired()` has a `null` for
+every event until its results come, and a node with no event (a bye, an
+empty node, a round still to come, a reset that is not played) has none. A
+tie an entrant left while it was played (`Uncontested`, or `Void`) keeps
+what was recorded of it before.
+
+```php
+$twoLegs = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+$opening = $twoLegs->pairNextRound(StageState::start($field));
+$firstLegPlayed = StageState::start($field)
+    ->withRoundPaired($opening)
+    ->withAdditionalResults([new Result($opening->getEvents()[0], $field[3], ['di' => 2, 'ed' => 1])]);
+
+$tie = $twoLegs->getBracket($firstLegPlayed)->getNode('main:1:2');
+foreach ($tie?->getResults() ?? [] as $leg => $result) {
+    echo 'leg ', $leg + 1, ': ', $result === null ? 'to play' : implode('-', array_map(
+        fn (Participant $entrant): string => (string) $result->getScoreFor($entrant),
+        $tie->getParticipants()
+    )), "\n";
+}
+// leg 1: 2-1
+// leg 2: to play
+```
 
 A slot (`BracketSlot`) holds an entrant or a placeholder, exactly one of
 the two, and always says where it is filled from (`getSource()`:

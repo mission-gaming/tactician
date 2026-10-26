@@ -850,6 +850,13 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ],
             [],
         ],
+        // The results a node of the view carries: a two-legged tie with its first leg in (#181)
+        'the result of each leg of a tie, read from the bracket view' => [
+            'docs/USAGE.md',
+            '$tie = $twoLegs->getBracket($firstLegPlayed)',
+            ["leg 1: 2-1\nleg 2: to play\n"],
+            [],
+        ],
         'a selection that results do not decide is refused, and says what is undecided' => [
             'docs/USAGE.md',
             'RankRangeSelector::topPerGroup(2)->select($undecided);',
