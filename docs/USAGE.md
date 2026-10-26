@@ -91,7 +91,7 @@ anything else that competes.
 | **History (of a stage)** | What an application holds of a stage in its own storage: the entrants in their order, the rounds that were paired, the results recorded so far, who has withdrawn and after which round, the adjustments and after which round. A history is a set of facts. An engine reads the rounds as they are and derives only the round that does not exist yet; `StageState::fromHistory()` builds a stage state from one and refuses a history that breaks a **hard rule**. See [Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows). |
 | **Hard rule** | One of the three things `StageState::fromHistory()` requires of a history beside what recording a round always requires: round numbers 1, 2, 3 with none left out, every participant an entrant, and nobody in a round twice. A history that breaks one is refused with a reason; a round that only pairs the entrants otherwise than the engine would have is not. |
 | **Manual round** | A recorded round that is not the round the engine would have paired from the rounds before it: paired by hand, or by other rules. It is read as recorded, never refused for it, and reported by `HistoryReadingEngine::getRecordedRounds()` (`RecordedRound::isManual()`) with the engine's own round beside it (the **derivation**). |
-| **Unresolved event** | An event of a recorded round that still awaits its result. While there is one, the next round is refused (`UnresolvedRoundException`), the stage is not complete, and reading it throws nothing. `HistoryReadingEngine::getReadiness()` lists the events without an exception. See [Rounds That Are Not Finished](#rounds-that-are-not-finished). |
+| **Unresolved event** | An event of a recorded round that still awaits its result. While there is one, the next round is refused (`UnresolvedRoundException`), the stage is not complete, and reading it throws nothing. `HistoryReadingEngine::getReadiness()` lists the events without an exception. A round paired early on purpose (`pairNextRoundOnIncompleteResults()`) is marked and lists the events that were unresolved when it was paired (`RoundPairing::getUnresolvedWhenPaired()`). See [Rounds That Are Not Finished](#rounds-that-are-not-finished). |
 | **After round (of a withdrawal or an adjustment)** | When a withdrawal or an adjustment happened, in the rounds of its stage: the number of the last round that was recorded at that moment, 0 before the first round (`Adjustment::getAfterRound()`, `Withdrawal::getAfterRound()`). The verbs of a stage state record it without being told; a history that holds a round states it for every withdrawal and every adjustment. An engine reads a recorded round from the adjustments made, and the entrants still in the stage, before it was paired, which to a state is before it was recorded, so a round is recorded when it is paired (`withRoundPaired()`); a round that names an entrant was paired while that entrant was in the stage, whatever its withdrawal states. Only a withdrawal stored by 0.2.x has no round: its time is not known and is never read as one that suits. See [When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened). |
 | **Settled tie** | A tie of a bracket as its engine settled it (`SettledTie`): who went on from it and who did not, also where no result says so because an entrant withdrew. The outcome of a bracket carries its last one (`StageOutcome::getSettledTies()`), and `MatchOutcomeSelector` reads it. |
 | **Uncontested tie** | A tie of a bracket that is not played because one of its two entrants has withdrawn: the other entrant advances without an event, the bracket is not drawn again, and an event already paired for the tie awaits no result. Some sports call it a walkover. It is no **bye**: no table credits it, and a competition that counts it as a win records an **awarded result** for the tie. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
@@ -4330,12 +4330,45 @@ var_dump($early->isPairedOnIncompleteResults()); // bool(true)
 ```
 
 The round is paired from the table as it stands, in which the missing
-result counts for nobody. The mark is recorded and stored with the round
-(`paired_on_incomplete_results` in its plain data, written only when it is
+result counts for nobody. The mark is recorded and stored with the round,
+with the events that awaited a result when it was paired
+(`getUnresolvedWhenPaired()`; `paired_on_incomplete_results` and
+`unresolved_when_paired` in its plain data, each written only when it is
 set), so that the round can later be told from one paired on full results;
-pass it to the `RoundPairing` you build when your rows hold the rounds.
-When nothing was missing, the method is `pairNextRound()` and marks
-nothing. An event that is never played is not left without a result: give
+pass both to the `RoundPairing` you build when your rows hold the rounds
+(its fifth and sixth arguments). When nothing was missing, the method is
+`pairNextRound()` and marks nothing.
+
+The round is read from the results that were in when it was paired, so it
+is not reported as [manual](#rounds-the-engine-would-have-paired-otherwise) when the
+missing result arrives and would have paired it otherwise:
+
+```php
+$swissState = $swissState->withRoundPaired($early);
+
+// The missing result of round 1 arrives: Cy beats Di
+$missing = $firstRound->getEvents()[1];
+$swissState = StageState::fromHistory(
+    [$ada, $bo, $cy, $di],
+    $swissState->getRoundsPlayed(),
+    [...$swissState->getResults(), new Result($missing, $cy)]
+);
+$secondRound = $swiss->getRecordedRounds($swissState)[1];
+var_dump($secondRound->isPairedOnIncompleteResults()); // bool(true)
+var_dump($secondRound->isManual());                    // bool(false)
+```
+
+The derivation beside it (`getDerivation()`) is the round the engine pairs
+from the table without the results of those events, which is the round it
+paired. A round drawn by hand and marked is compared with that round, and is
+manual where it differs. A marked round that lists no event says that a
+result was missing and not which, and the Swiss engine has no derivation
+for it (`getDerivation()` is null, so it is not reported as manual); the
+round-robin engine reads neither the mark nor the list, since no result
+changes a fixture. A listed event that no earlier round holds is refused
+when the round is recorded (`EventNotInRound`); one that has its result by
+then is not, since the result may have arrived between the pairing and the
+recording. An event that is never played is not left without a result: give
 it an [awarded result](#awarded-results), which is a result. The result
 that was missing still has to arrive: until it does the stage is not
 complete, and `pairNextRound()` goes on refusing. `withAdditionalResults()`
@@ -4424,10 +4457,12 @@ sees it.)
 
 The derivation is there to be shown, and nothing is paired from it. It is
 the round the engine pairs from what was known when the recorded round was
-paired: the rounds before it and their results, the adjustments made before
-it, and the entrants who had not withdrawn by then. A round the engine
-paired itself is therefore not reported as manual, whatever was recorded
-after it, unless a later round names somebody who had left before this one
+paired: the rounds before it and their results (for a round paired early,
+without the results of the events it lists as awaiting one; see
+[Rounds That Are Not Finished](#rounds-that-are-not-finished)),
+the adjustments made before it, and the entrants who had not withdrawn by
+then. A round the engine paired itself is therefore not reported as manual,
+whatever was recorded after it, a late result included, unless a later round names somebody who had left before this one
 (see
 [When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened)).
 What `isManual()` promises, and what it does not:
@@ -7658,7 +7693,8 @@ records with its reasons:
   `decisions` in a rank range selector, `third_place` in elimination
   options, `award` and `decider` in a result, `adjustments`, `entrants` and
   `withdrawals` in a stage state, `after_round` in an adjustment,
-  `paired_on_incomplete_results` in a round pairing,
+  `paired_on_incomplete_results` and `unresolved_when_paired` in a round
+  pairing,
   `bye` in a win-draw-loss ranking), each of which may be left out. So rows
   stored by 0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to

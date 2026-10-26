@@ -498,7 +498,9 @@ follow from that:
 - **Pairing a Swiss round early is said in so many words.** Call
   `pairNextRoundOnIncompleteResults()` to pair from the table as it
   stands; the round it returns is marked
-  (`isPairedOnIncompleteResults()`), and the mark is stored with it.
+  (`isPairedOnIncompleteResults()`), and the mark is stored with it,
+  with the events that awaited a result (`getUnresolvedWhenPaired()`),
+  so that the round is not reported as manual once they have one.
   With a `Randomizer`, pairing the same state again gives another
   round, so record the pairing before you show it.
 
