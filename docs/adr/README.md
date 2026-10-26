@@ -25,6 +25,7 @@ there is not repeated here.
 | [0013](0013-a-finished-bracket-keeps-its-winner.md) | A finished bracket keeps its winner |
 | [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md) | A bracket's table forms its tied sets inside a tier and credits its byes (amends 0009 and 0010) |
 | [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md) | An engine fingerprint versions the rules of each configuration |
+| [0016](0016-qualifiers-for-a-bracket-keep-their-tiers.md) | Qualifiers for a bracket keep their tiers |
 | [0017](0017-a-league-rest-earns-nothing.md) | A league rest earns nothing (narrows 0009) |
 
 ## Adding a record

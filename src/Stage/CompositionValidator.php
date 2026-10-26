@@ -26,11 +26,13 @@ final readonly class CompositionValidator
     /**
      * Validate a linear chain of stage transitions.
      *
-     * Three things are checked: that every stage declares at least 2
+     * Four things are checked: that every stage declares at least 2
      * entrants, that a transition that declares the pools of the stage
-     * before declares at least 1, and that a transition's selector yields
-     * as many participants as its destination declares. It never throws;
-     * what is wrong is in the returned list.
+     * before declares at least 1, that it declares no fewer than its
+     * selector can select from (SelectionYield::getMinimumPools()), and
+     * that a transition's selector yields as many participants as its
+     * destination declares. It never throws; what is wrong is in the
+     * returned list.
      *
      * How many a selector yields is what it declares
      * (ProgressionSelector::getYield()), counted with
@@ -43,6 +45,13 @@ final readonly class CompositionValidator
      * - a count per pool (a per-group rank range) is multiplied by the
      *   pools the transition declares (`sourcePools`), and passes unchecked
      *   where it declares none;
+     * - a count per pool plus a count across the pools (the top of every
+     *   pool and the best few of the next rank, BracketQualifiersSelector)
+     *   is counted the same way, with the count across the pools added.
+     *   Fewer pools than the selector can select from are reported, and
+     *   the count is then not checked: the top two of one pool and the
+     *   best of its third-placed are three entrants of that one pool, two
+     *   of whom meet in the first round of any bracket;
      * - the winners or the losers of the last round (a match-outcome
      *   selector) are counted from the entrants of the stage before. By
      *   default that stage is one knockout round of all its entrants: half
@@ -80,6 +89,17 @@ final readonly class CompositionValidator
             if ($pools !== null && $pools < 1) {
                 $violations[] = "Stage '{$transition->label}' declares {$pools} pools for the previous stage; a stage is played in at least 1.";
                 $pools = null;
+            }
+
+            $minimumPools = $transition->selector?->getYield()->getMinimumPools() ?? 1;
+            if ($pools !== null && $pools < $minimumPools) {
+                $violations[] = sprintf(
+                    "Stage '%s' declares %d %s for the previous stage; its selection is made from at least %d.",
+                    $transition->label,
+                    $pools,
+                    $pools === 1 ? 'pool' : 'pools',
+                    $minimumPools
+                );
             }
 
             $yield = $transition->selector?->getYield()->countFrom($entrants, $pools, $transition->afterWholeBracket);

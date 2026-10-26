@@ -1981,6 +1981,46 @@ entry on the engine fingerprint.
   selection as `RankRangeSelector` does, with the same two choices to go
   on (`withTiesInsideSelectionAccepted()`, `withTableOrderAccepted()`). The
   list is best first and is not placed for a bracket (#94).
+- **Qualifiers placed for a bracket: `BracketQualifiersSelector`
+  ([#94](https://github.com/mission-gaming/tactician/issues/94)).**
+  `BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2),
+  BestOfRankSelector::ofRank(3, 2))` hands the top two of every pool and
+  the two best third-placed to a bracket with no two entrants of one pool
+  meeting in its first round. The list is in tiers: every pool's first
+  selected rank, then every pool's second, then the best of the next rank,
+  best first, at the last positions. Only the order of the pools inside
+  each rank follows from which pools the best of the next rank come from:
+  the order in which entrants of one pool can first meet as late as
+  possible, rank after rank, and nearest to pool order among equals. Each
+  rank is settled before the next, so from the second round on the list
+  does not always have the fewest pairs of one pool that can meet. Who is
+  selected is what the two selectors select, with their tie policies,
+  comparison methods and decisions; `selection()` carries their marks.
+  Where the two order a pool's level entries differently, so that both
+  select one entrant, the selector refuses (`IncompatibleOptions`).
+  From two pools up the first round always keeps the pools apart, byes
+  included, whichever pools the best of the next rank come from; with one
+  pool the selector refuses with the new reason `PoolMatesInFirstRound`
+  (ADR 0016, `docs/adr/0016-qualifiers-for-a-bracket-keep-their-tiers.md`).
+  It takes a per-group selection and a best-of-rank selection of a rank
+  below its last, and refuses anything else (`IncompatibleOptions`); it has
+  `fromArray()`/`toArray()` (`per_group` and `best_of_rank`, each in its
+  selector's own form without a format version, after `format_version`).
+  The usage guide has it under "Qualifiers placed for a bracket".
+- **A yield of a count per pool plus a count across the pools, and the
+  fewest pools a selection is made from.** `SelectionYield::perPoolPlus()`
+  states the yield of `BracketQualifiersSelector`, of the new kind
+  `SelectionYieldKind::PerPoolPlusFixed` (`getAddedCount()` is the count
+  across the pools), and `SelectionYield::getMinimumPools()` the fewest
+  pools the selection is made from (1 for every other yield).
+  `CompositionValidator::validateChain()` reports a transition whose
+  `sourcePools` are fewer, and does not count its yield then, so a
+  composition whose qualifiers cannot be kept apart in a bracket is
+  reported before any pool is played. `SelectionYieldKind` is new in this
+  release (below), so no released code matches over it without the new
+  case. `RankRangeSelector::getFrom()`/`getTo()` and
+  `BestOfRankSelector::getRank()`/`getCount()` read the settings of the two
+  selectors.
 - **`PoolComparison`, the method pools of unequal size are compared by**,
   an enum with three cases: `RawTotals` (`raw-totals`), `PerEvent`
   (`per-event`: every figure divided by the events the entrant has played)

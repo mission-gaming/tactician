@@ -227,6 +227,14 @@ enum InvalidConfigurationReason: string
      */
     case PoolComparisonRequired = 'pool_comparison_required';
 
+    /**
+     * A selection placed for a bracket cannot keep the entrants of one pool
+     * apart in its first round: every entrant comes from the one pool the
+     * outcome has (`BracketQualifiersSelector`). The context holds the
+     * number of pools (`pools`).
+     */
+    case PoolMatesInFirstRound = 'pool_mates_in_first_round';
+
     // Recording a results-driven stage
 
     /**
