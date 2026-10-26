@@ -65,14 +65,16 @@ describe('StageState adjustments', function (): void {
         ))->toBe([['jun', 0], ['ines', 1], ['kofi', 3], ['jun', 3]]);
     });
 
-    it('records after the number of the last round, not after how many rounds there are', function (): void {
-        // The verbs accept a gap in the round numbers, and a round is known by its number
+    it('records after the number of the last round', function (): void {
+        // The rounds are 1, 2, 3 and so on, so the last round recorded is
+        // also how many there are
         $state = StageState::start($this->participants)
             ->withRoundPlayed(($this->round)(1), [])
-            ->withRoundPlayed(($this->round)(4), [])
+            ->withRoundPlayed(($this->round)(2), [])
+            ->withRoundPlayed(($this->round)(3), [])
             ->withAdjustment(new Adjustment('jun', -1.0));
 
-        expect($state->getAdjustments()[0]->getAfterRound())->toBe(4);
+        expect($state->getAdjustments()[0]->getAfterRound())->toBe(3);
     });
 
     it('keeps the round an adjustment states, so that one made earlier can be recorded late', function (): void {

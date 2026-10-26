@@ -108,8 +108,8 @@ describe('a stored stage state', function (): void {
                 return $stored;
             },
             InvalidConfigurationReason::RoundOutOfSequence,
-            'Rounds must be recorded in play order with increasing round numbers',
-            ['last_round' => 2, 'pairing_round' => 1],
+            'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 1, not round 2',
+            ['last_round' => 0, 'pairing_round' => 2, 'expected_round' => 1],
         ],
         'one round recorded twice' => [
             function (array $stored): array {
@@ -118,8 +118,8 @@ describe('a stored stage state', function (): void {
                 return $stored;
             },
             InvalidConfigurationReason::RoundOutOfSequence,
-            'Rounds must be recorded in play order with increasing round numbers',
-            ['last_round' => 2, 'pairing_round' => 2],
+            'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 3, not round 2',
+            ['last_round' => 2, 'pairing_round' => 2, 'expected_round' => 3],
         ],
         // Refused by the verb before it looks at the events of the pairing
         'a first round numbered 0' => [
@@ -142,15 +142,15 @@ describe('a stored stage state', function (): void {
             'Round numbers are 1-based: a round cannot be recorded with a number below 1',
             ['pairing_round' => -3],
         ],
-        'a pairing renumbered under its events' => [
+        'a pairing that holds an event of another round' => [
             function (array $stored): array {
-                $stored['rounds'][1]['round'] = 7;
+                $stored['rounds'][1]['events'][1]['round']['number'] = 7;
 
                 return $stored;
             },
             InvalidConfigurationReason::EventNotInRound,
             'Pairing contains an event from a different round',
-            ['pairing_round' => 7, 'event_round' => 2],
+            ['pairing_round' => 2, 'event_round' => 7],
         ],
         'a pairing that holds an event with no round' => [
             function (array $stored): array {
@@ -249,17 +249,37 @@ describe('a stored stage state', function (): void {
             ->toThrow(InvalidConfigurationException::class, 'Rounds must be recorded in play order');
     });
 
-    // What the verbs accept is accepted from storage: a state that holds it
-    // must load, so that it can be read and repaired.
-    it('is read with a gap in its round numbers', function (): void {
+    // The verbs refuse a round that is not the next one, so a stored state
+    // whose rounds leave one out is one no verb records, and an engine read
+    // it as if the missing round had been played. 0.2.x recorded such a
+    // state and stored it without a format version; it is refused all the
+    // same (the changelog says so).
+    it('is refused with a gap in its round numbers, with or without a format version', function (bool $versioned): void {
         $stored = storedHistory();
         $stored['rounds'][1]['round'] = 5;
         foreach ([0, 1] as $index) {
             $stored['rounds'][1]['events'][$index]['round']['number'] = 5;
         }
         $stored['results'][1]['event']['round']['number'] = 5;
+        if (!$versioned) {
+            unset($stored['format_version']);
+        }
 
-        expect(StageState::fromArray($stored)->getNextRoundNumber())->toBe(6);
+        $refusal = storedHistoryRefusal($stored);
+
+        expect($refusal->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence)
+            ->and($refusal->getContext())->toBe(['last_round' => 1, 'pairing_round' => 5, 'expected_round' => 2]);
+    })->with(['format version 1' => true, 'no format version, as 0.2.x wrote it' => false]);
+
+    it('is refused when its first round is not round 1', function (): void {
+        $stored = storedHistory();
+        array_shift($stored['rounds']);
+        array_shift($stored['results']);
+
+        $refusal = storedHistoryRefusal($stored);
+
+        expect($refusal->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence)
+            ->and($refusal->getContext())->toBe(['last_round' => 0, 'pairing_round' => 2, 'expected_round' => 1]);
     });
 
     it('is read with two results of one event, which withResultReplaced() repairs', function (): void {

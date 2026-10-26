@@ -104,6 +104,10 @@ describe('StageState', function (): void {
             fn($test) => new RoundPairing(1, null, [new Event([$test->carol, $test->dave], new Round(1))]),
             InvalidConfigurationReason::RoundOutOfSequence,
         ],
+        'a round that leaves one out' => [
+            fn($test) => new RoundPairing(3, null, [new Event([$test->carol, $test->dave], new Round(3))]),
+            InvalidConfigurationReason::RoundOutOfSequence,
+        ],
         'an event of another round' => [
             fn($test) => new RoundPairing(2, null, [new Event([$test->carol, $test->dave], new Round(3))]),
             InvalidConfigurationReason::EventNotInRound,
@@ -113,6 +117,51 @@ describe('StageState', function (): void {
             InvalidConfigurationReason::EventWithoutRoundNumber,
         ],
     ]);
+
+    // Every state the verbs build is one fromHistory() builds: the rounds
+    // are numbered 1, 2, 3 and so on. A round that is not the next one is
+    // refused by both, for the same reason; an engine read a state with a
+    // round left out as if that round had been played.
+    it('refuses a round that is not the next one, as fromHistory() refuses it', function (string $verb, array $earlier, int $number, array $context): void {
+        $round = fn(int $number): RoundPairing => new RoundPairing($number, null, [new Event([$this->alice, $this->bob], new Round($number))]);
+        $pairings = array_map($round, $earlier);
+        $last = $round($number);
+        $state = StageState::start($this->participants);
+        foreach ($pairings as $pairing) {
+            $state = $verb === 'played' ? $state->withRoundPlayed($pairing, []) : $state->withRoundPaired($pairing);
+        }
+
+        try {
+            $verb === 'played' ? $state->withRoundPlayed($last, []) : $state->withRoundPaired($last);
+            $this->fail('The round was recorded.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence)
+                ->and($exception->getContext())->toBe($context);
+        }
+
+        try {
+            StageState::fromHistory($this->participants, [...$pairings, $last]);
+            $this->fail('The history was accepted.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence)
+                ->and(array_intersect_key($exception->getContext(), $context))->toBe($context);
+        }
+    })->with(['played', 'paired'])->with([
+        'a first round numbered 2' => [[], 2, ['last_round' => 0, 'pairing_round' => 2, 'expected_round' => 1]],
+        'round 3 after round 1' => [[1], 3, ['last_round' => 1, 'pairing_round' => 3, 'expected_round' => 2]],
+        'round 5 after rounds 1 and 2' => [[1, 2], 5, ['last_round' => 2, 'pairing_round' => 5, 'expected_round' => 3]],
+    ]);
+
+    it('records the rounds 1, 2, 3 and so on, one after the other', function (): void {
+        $state = StageState::start($this->participants);
+        foreach ([1, 2, 3] as $number) {
+            expect($state->getNextRoundNumber())->toBe($number);
+            $state = $state->withRoundPaired(new RoundPairing($number, null, [new Event([$this->alice, $this->bob], new Round($number))]));
+        }
+
+        expect($state->getNextRoundNumber())->toBe(4)
+            ->and(StageState::fromHistory($this->participants, $state->getRoundsPlayed())->toArray())->toBe($state->toArray());
+    });
 
     it('rejects results from a different round than the pairing', function (): void {
         $event = new Event([$this->alice, $this->bob], new Round(2));
@@ -343,9 +392,11 @@ describe('StageState', function (): void {
         $this->fail("A round numbered {$number} was recorded.");
     })->with([0, -1]);
 
-    it('records a first round numbered 1 or above', function (int $number): void {
-        $state = StageState::start($this->participants)->withRoundPlayed(new RoundPairing($number, null, []), []);
+    // Round 1 and no other: a first round numbered above it is out of
+    // sequence (see 'refuses a round that is not the next one')
+    it('records a first round numbered 1', function (): void {
+        $state = StageState::start($this->participants)->withRoundPlayed(new RoundPairing(1, null, []), []);
 
-        expect($state->getLastRound()?->getRoundNumber())->toBe($number);
-    })->with([1, 3]);
+        expect($state->getLastRound()?->getRoundNumber())->toBe(1);
+    });
 });

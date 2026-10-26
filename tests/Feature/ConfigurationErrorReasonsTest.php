@@ -1066,14 +1066,26 @@ function stageStateMistakes(): array
         'a round recorded a second time' => [
             fn() => $start()->withRoundPlayed($roundOne, [])->withRoundPlayed($roundOne, []),
             InvalidConfigurationReason::RoundOutOfSequence,
-            'Rounds must be recorded in play order with increasing round numbers',
-            ['last_round' => 1, 'pairing_round' => 1],
+            'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 2, not round 1',
+            ['last_round' => 1, 'pairing_round' => 1, 'expected_round' => 2],
         ],
         'round 1 recorded after round 2' => [
-            fn() => $start()->withRoundPlayed($roundTwo, [])->withRoundPlayed($roundOne, []),
+            fn() => $start()->withRoundPlayed($roundOne, [])->withRoundPlayed($roundTwo, [])->withRoundPlayed($roundOne, []),
             InvalidConfigurationReason::RoundOutOfSequence,
-            'Rounds must be recorded in play order with increasing round numbers',
-            ['last_round' => 2, 'pairing_round' => 1],
+            'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 3, not round 1',
+            ['last_round' => 2, 'pairing_round' => 1, 'expected_round' => 3],
+        ],
+        'a first round that is not round 1' => [
+            fn() => $start()->withRoundPlayed($roundTwo, []),
+            InvalidConfigurationReason::RoundOutOfSequence,
+            'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 1, not round 2',
+            ['last_round' => 0, 'pairing_round' => 2, 'expected_round' => 1],
+        ],
+        'round 3 recorded after round 1, with round 2 left out' => [
+            fn() => $start()->withRoundPlayed($roundOne, [])->withRoundPlayed(new RoundPairing(3, null, [new Event([$carol, $dan], new Round(3))]), []),
+            InvalidConfigurationReason::RoundOutOfSequence,
+            'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 2, not round 3',
+            ['last_round' => 1, 'pairing_round' => 3, 'expected_round' => 2],
         ],
         'a pairing of round 1 that holds an event of round 2' => [
             fn() => $start()->withRoundPlayed(new RoundPairing(1, null, [$first, $second]), []),
@@ -1218,11 +1230,12 @@ describe('a configuration error of StageState', function (): void {
         expect($exception->getDiagnosticReport())->toBe(
             "=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===\n"
             . "\n"
-            . "Issue: Rounds must be recorded in play order with increasing round numbers\n"
+            . "Issue: Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 2, not round 1\n"
             . "\n"
             . "=== CONFIGURATION DETAILS ===\n"
             . "• last_round: 1\n"
-            . '• pairing_round: 1'
+            . "• pairing_round: 1\n"
+            . '• expected_round: 2'
         );
     });
 });
