@@ -43,7 +43,7 @@ use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 //
 // Five of the lines are no longer read, each for a change 0.3.0 made on
 // purpose and its changelog states. They are listed below with the reason
-// they are refused with, so that a fifth cannot join them unnoticed.
+// they are refused with, so that a sixth cannot join them unnoticed.
 
 /**
  * A payload stored by 0.2.x: one line of JSON.
