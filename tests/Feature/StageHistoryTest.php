@@ -2359,4 +2359,37 @@ describe('a round left out of the round numbers', function (): void {
 
         expect($engine->pairNextRound($state)->getRoundNumber())->toBe(2);
     });
+
+    // The check must refuse only what no engine pairs. Every engine numbers
+    // its round getNextRoundNumber(), across the legs of a league too, so a
+    // whole stage runs through the verbs, every state between its rounds
+    // loads from storage, and its rounds in any order rebuild it
+    it('lets every engine run a whole stage, stored and read again between rounds', function (StageEngineInterface $engine, int $size, int $rounds): void {
+        $entrants = historyField($size);
+        $state = StageState::start($entrants);
+        $numbers = [];
+        while (!$engine->isComplete($state) && count($numbers) < 50) {
+            $pairing = $engine->pairNextRound($state);
+            $numbers[] = $pairing->getRoundNumber();
+            $state = StageState::fromJson($state->withRoundPaired($pairing)->toJson())
+                ->withAdditionalResults(array_map(
+                    static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+                    $pairing->getEvents()
+                ));
+            $state = StageState::fromArray($state->toArray());
+        }
+
+        $rebuilt = StageState::fromHistory($entrants, array_reverse($state->getRoundsPlayed()), $state->getResults());
+
+        expect($numbers)->toBe(range(1, $rounds))
+            ->and($engine->isComplete($state))->toBeTrue()
+            ->and($rebuilt->toArray())->toBe($state->toArray());
+    })->with([
+        'Swiss of eight over four rounds' => [new SwissPairingEngine(plannedRounds: 4), 8, 4],
+        'a league of five' => [new RoundRobinEngine(), 5, 5],
+        'a league of four over three legs' => [new RoundRobinEngine(new RoundRobinOptions(legs: 3)), 4, 9],
+        'single elimination of six' => [new SingleEliminationEngine(), 6, 3],
+        'single elimination of eight with a third-place tie' => [new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)), 8, 3],
+        'double elimination of eight, losers rounds and grand final among them' => [new DoubleEliminationEngine(), 8, 8],
+    ]);
 });
