@@ -278,7 +278,7 @@ final readonly class StageState
                 $requireEntrant($participant, 'in a result', $event->getRound()?->getNumber());
             }
 
-            $key = $state->eventKey($event);
+            $key = EventKey::of($event);
             if (isset($resultEvents[$key])) {
                 throw new InvalidConfigurationException(
                     'The history holds two results for one event',
@@ -419,7 +419,7 @@ final readonly class StageState
                 array_values($event->getParticipants())
             );
             $tie = PairKey::of(...$ids);
-            $key = $this->eventKey($event);
+            $key = EventKey::of($event);
 
             foreach ($event->getParticipants() as $participant) {
                 $requireEntrant($participant, 'in an event', $number);
@@ -615,12 +615,12 @@ final readonly class StageState
         $recorded = [];
         foreach ($this->roundsPlayed as $earlier) {
             foreach ($earlier->getEvents() as $event) {
-                $recorded[$this->eventKey($event)] = true;
+                $recorded[EventKey::of($event)] = true;
             }
         }
 
         foreach ($pairing->getUnresolvedWhenPaired() as $event) {
-            if (!isset($recorded[$this->eventKey($event)])) {
+            if (!isset($recorded[EventKey::of($event)])) {
                 throw new InvalidConfigurationException(
                     'The round says that an event awaited a result when it was paired, and no earlier round holds that event',
                     [
@@ -648,7 +648,7 @@ final readonly class StageState
     {
         $pairingEventKeys = [];
         foreach ($pairing->getEvents() as $event) {
-            $pairingEventKeys[$this->eventKey($event)] = true;
+            $pairingEventKeys[EventKey::of($event)] = true;
         }
 
         foreach ($results as $result) {
@@ -663,26 +663,14 @@ final readonly class StageState
                 );
             }
 
-            if (!isset($pairingEventKeys[$this->eventKey($result->getEvent())])) {
+            if (!isset($pairingEventKeys[EventKey::of($result->getEvent())])) {
                 throw new InvalidConfigurationException(
                     'Result references an event that is not part of the pairing being recorded',
-                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => $this->eventKey($result->getEvent())],
+                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => EventKey::of($result->getEvent())],
                     reason: InvalidConfigurationReason::EventNotInRound
                 );
             }
         }
-    }
-
-    /**
-     * Identify an event by round, participants, and tie leg — object
-     * identity does not survive serialization round-trips.
-     */
-    private function eventKey(Event $event): string
-    {
-        $ids = array_map(fn(Participant $participant) => $participant->getId(), $event->getParticipants());
-        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
-
-        return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }
 
     /**
@@ -799,13 +787,13 @@ final readonly class StageState
         }
 
         $event = $result->getEvent();
-        $eventKey = $this->eventKey($event);
+        $eventKey = EventKey::of($event);
         $round = $event->getRound()?->getNumber();
 
         $results = [];
         $replaced = false;
         foreach ($this->results as $recorded) {
-            if ($this->eventKey($recorded->getEvent()) !== $eventKey) {
+            if (EventKey::of($recorded->getEvent()) !== $eventKey) {
                 $results[] = $recorded;
                 continue;
             }
@@ -1059,13 +1047,13 @@ final readonly class StageState
     {
         $resolved = [];
         foreach ($this->results as $result) {
-            $resolved[$this->eventKey($result->getEvent())] = true;
+            $resolved[EventKey::of($result->getEvent())] = true;
         }
 
         $events = [];
         foreach ($this->roundsPlayed as $pairing) {
             foreach ($pairing->getEvents() as $event) {
-                if (!isset($resolved[$this->eventKey($event)])) {
+                if (!isset($resolved[EventKey::of($event)])) {
                     $events[] = $event;
                 }
             }

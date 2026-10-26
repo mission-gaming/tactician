@@ -14,8 +14,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
+use MissionGaming\Tactician\Stage\EventKey;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
-use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\HistoryReadingEngine;
 use MissionGaming\Tactician\Stage\PairingReadiness;
 use MissionGaming\Tactician\Stage\PairKey;
@@ -515,7 +515,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         // event does not say which results were in
         $unknown = [];
         foreach ($recorded->getUnresolvedWhenPaired() as $event) {
-            $unknown[self::eventKey($event)] = true;
+            $unknown[EventKey::of($event)] = true;
         }
         if ($recorded->isPairedOnIncompleteResults() && $unknown === []) {
             return null;
@@ -578,7 +578,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
                 array_values(array_filter(
                     $state->getResults(),
                     static fn(Result $result): bool => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $number
-                        && !isset($unknown[self::eventKey($result->getEvent())])
+                        && !isset($unknown[EventKey::of($result->getEvent())])
                 )),
                 array_map(
                     // A participant whose withdrawal has no round (a state
@@ -599,21 +599,6 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         } catch (InvalidConfigurationException|InvalidInputException|NoValidPairingException) {
             return null;
         }
-    }
-
-    /**
-     * An event by its round, its participants and its tie leg, as a stage
-     * state tells one event from another: a result names its event by
-     * value, and object identity does not survive plain data.
-     */
-    private static function eventKey(Event $event): string
-    {
-        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
-
-        return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...array_map(
-            static fn(Participant $participant): string => $participant->getId(),
-            array_values($event->getParticipants())
-        )) . ':' . (is_int($leg) ? $leg : 1);
     }
 
     /**

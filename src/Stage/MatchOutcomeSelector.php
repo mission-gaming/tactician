@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Serialization\PlainData;
@@ -355,8 +356,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      */
     private function eventKey(Event $event): string
     {
-        $round = $event->getRound()?->getNumber();
-        if ($round === null) {
+        if (!$event->getRound() instanceof Round) {
             // Selectors read recorded outcomes with certainty; a round-less
             // event cannot be matched to its result and must not silently
             // collide with other rounds
@@ -367,9 +367,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             );
         }
 
-        $leg = $event->getMetadataValue(FormatMetadataKey::TIE_LEG);
-
-        return $round . ':' . PairKey::of(...$this->participantIds($event)) . ':' . (is_int($leg) ? $leg : 1);
+        return EventKey::of($event);
     }
 
     /**
