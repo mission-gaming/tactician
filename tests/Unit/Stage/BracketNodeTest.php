@@ -82,10 +82,17 @@ describe('BracketNode', function (): void {
         $first = new Result($this->first, $this->p1);
         $second = new Result($this->second, $this->p2);
         $otherRound = new Result(new Event([$this->p1, $this->p2], new Round(2), ['tie_leg' => 1]), $this->p1);
+        $p3 = new Participant('p3', 'Entrant 3');
+        $otherPair = new Result(new Event([$this->p1, $p3], new Round(1), ['tie_leg' => 1]), $this->p1);
 
         expect(fn() => ($this->node)([$this->first, $this->second], [$second, $first]))
             ->toThrow(InvalidInputException::class, 'is not of the event at its place')
             ->and(fn() => ($this->node)([$this->first], [$otherRound]))
-            ->toThrow(InvalidInputException::class, 'is not of the event at its place');
+            ->toThrow(InvalidInputException::class, 'is not of the event at its place')
+            ->and(fn() => ($this->node)([$this->first], [$otherPair]))
+            ->toThrow(InvalidInputException::class, 'The result at place 1 of a bracket node is not of the event at its place.')
+            // The place is counted from 1 in the message: the second event here
+            ->and(fn() => ($this->node)([$this->first, $this->second], [null, $first]))
+            ->toThrow(InvalidInputException::class, 'The result at place 2 of a bracket node');
     });
 });
