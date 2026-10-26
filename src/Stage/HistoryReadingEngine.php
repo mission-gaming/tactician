@@ -11,7 +11,7 @@ use MissionGaming\Tactician\Standings\Standings;
  * anything being paired and without an exception for a round that is still
  * being played.
  *
- * The three engines of the library implement it. It is separate from
+ * The engines of the library implement it. It is separate from
  * StageEngineInterface so that adding it broke no engine written against
  * that interface; check for it with instanceof where the engine is held as
  * a StageEngineInterface.
@@ -39,7 +39,12 @@ interface HistoryReadingEngine
      * complete means isComplete() is true. Ready means that nothing
      * recorded stands in the way of the next round: a bracket engine then
      * pairs it. The Swiss engine can still find that no pairing exists
-     * (NoValidPairingException), which only the search tells.
+     * (NoValidPairingException), which only the search tells, and the
+     * round-robin engine that the constraints leave the scheduler no
+     * schedule (IncompleteScheduleException). A round the round-robin
+     * engine refuses because it would pair two participants more often
+     * than the league has legs (`RecordedRoundMismatch`) is not called
+     * ready: getReadiness() refuses it as pairNextRound() does.
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the state cannot be read at all
      */

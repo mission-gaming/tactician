@@ -1,0 +1,43 @@
+# The results of examples/31-league-from-application-rows.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Week 1 ==
+- R1: tomas-lena
+- R1: kofi-ines
+
+== Resting in week 1 ==
+Mira
+
+== Week 3, one game postponed ==
+The next week can be paired: false
+Waiting for week: 3
+
+== The game it waits for ==
+- R3: ines-mira
+
+== Week 4 paired while a game was postponed ==
+true
+
+== Week 5, after Lena withdraws: not to be played ==
+- R5: mira-lena
+
+== Week 5: the games still to play ==
+- R5: ines-tomas
+
+== Every week as the scheduler publishes it ==
+true
+
+== Final standings ==
+1. mira played=4 wins=2 draws=2 losses=0 value=3 for=0 against=0 awarded=1
+2. lena played=4 wins=2 draws=1 losses=1 value=2.5 for=0 against=0 awarded=1
+3. tomas played=4 wins=1 draws=2 losses=1 value=2 for=0 against=0
+4. ines played=4 wins=1 draws=1 losses=2 value=1.5 for=0 against=0
+5. kofi played=4 wins=1 draws=0 losses=3 value=1 for=0 against=0

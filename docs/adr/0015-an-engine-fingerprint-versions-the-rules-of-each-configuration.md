@@ -76,6 +76,7 @@ In 0.3.0:
 | Single elimination, re-seeded | 2 | Survivors in list order, a bye credited ([0004](0004-position-decides-where-results-do-not.md)) |
 | Single elimination on a fixed path | 1 | Paired as 0.2.x paired it |
 | Double elimination | 1 | Paired as 0.2.x paired it |
+| Round robin | 1 | A format new in 0.3.0 (`RoundRobinEngine`) |
 
 One case pairs otherwise on a fixed path and in double elimination, and does
 not raise the version: a withdrawal after the first round. 0.2.x drew the

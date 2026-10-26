@@ -14,6 +14,8 @@ use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinEngine;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
@@ -90,6 +92,8 @@ function historyEngines(): array
         'single elimination with a third-place tie' => new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)),
         'double elimination' => new DoubleEliminationEngine(),
         'double elimination over two legs' => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+        'round robin' => new RoundRobinEngine(),
+        'round robin over two legs' => new RoundRobinEngine(new RoundRobinOptions(legs: 2)),
     ];
 }
 
@@ -1223,7 +1227,15 @@ describe('a recorded round the engine would have paired otherwise', function ():
         }
 
         expect($manualRounds)->toBeGreaterThan(5);
-    })->with(array_keys(historyEngines()));
+    })->with(array_values(array_filter(
+        array_keys(historyEngines()),
+        // A league pairs on from its schedule, not from the rounds recorded:
+        // an exchange in every round takes meetings of later rounds, and the
+        // engine refuses to play a meeting more often than the league has
+        // legs. RoundRobinEngineTest.php has a round drawn by hand, the
+        // refusal and the round drawn by hand after it.
+        static fn(string $name): bool => !str_starts_with($name, 'round robin')
+    )));
 
     it('is not reported for the rounds an engine paired itself', function (string $name): void {
         $engine = historyEngines()[$name];

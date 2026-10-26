@@ -109,7 +109,9 @@ final readonly class RecordedRound
      * it, with two exceptions that StageState::withoutParticipant()
      * describes: a later round that names a participant who had withdrawn
      * before this one (the participant is then read as in the stage for
-     * this round too), and a first round that was recorded after a
+     * this round too; not by the round-robin engine, which pairs a withdrawn
+     * entrant's fixtures to the end and reads the withdrawal from the round
+     * it states), and a first round that was recorded after a
      * participant of it withdrew. Where a withdrawal carries no round and
      * neither the round nor a later one names the entrant, a tie that is
      * missing from the round because the entrant has withdrawn is not

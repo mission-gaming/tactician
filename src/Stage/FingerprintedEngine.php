@@ -10,7 +10,7 @@ namespace MissionGaming\Tactician\Stage;
  * and refuses a stamped state whose fingerprint is not that one
  * (StageState::requireEngineFingerprint()).
  *
- * The library's three engines implement it. It is separate from
+ * The library's engines implement it. It is separate from
  * StageEngineInterface so that an engine written against that interface
  * alone keeps working; code that holds a StageEngineInterface asks before
  * it stamps:
@@ -43,7 +43,7 @@ namespace MissionGaming\Tactician\Stage;
  *   invalidate the stamps of the others (ADR 0015). In 0.3.0 Swiss and a
  *   re-seeded single elimination bracket are at version 2, a bracket on a
  *   fixed path and a double elimination bracket at 1, the strings 0.2.x
- *   wrote for them.
+ *   wrote for them, and the round-robin engine, new in 0.3.0, at 1.
  * - It describes, it does not rebuild: it is not a description to build an
  *   engine from, and an engine built from the application's own
  *   configuration compares its fingerprint with the stamp. A state built

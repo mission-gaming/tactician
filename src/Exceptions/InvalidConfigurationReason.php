@@ -149,7 +149,8 @@ enum InvalidConfigurationReason: string
 
     /**
      * A further round was asked of a Swiss stage that has played every one
-     * of its planned rounds.
+     * of its planned rounds, or of a round-robin stage that has recorded
+     * every round of its schedule.
      */
     case PlannedRoundsPlayed = 'planned_rounds_played';
 
@@ -309,7 +310,14 @@ enum InvalidConfigurationReason: string
      * in a double elimination stage than the stage has places for, or it is
      * a round of a re-seeded bracket that an entrant had withdrawn before,
      * in a state that holds an adjustment which does not say after which
-     * round it was made. A round that only pairs the entrants otherwise
+     * round it was made. A round-robin engine refuses a state that names a
+     * participant outside its entrant list, from which it could not draw
+     * the league again, and one with an event of other than two
+     * participants; it refuses to pair a round of its schedule that would
+     * pair two participants more often than the league has legs, where the
+     * recorded rounds are not the schedule's (a round drawn by hand took a
+     * meeting from it, or other constraints paired them); the recorded
+     * rounds are still read. A round that only pairs the entrants otherwise
      * than the engine would have is read, and reported as manual.
      */
     case RecordedRoundMismatch = 'recorded_round_mismatch';

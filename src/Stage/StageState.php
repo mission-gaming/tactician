@@ -853,7 +853,10 @@ final readonly class StageState
      * the rounds between are then compared with rounds that pair the
      * participant (RecordedRound::isManual()), and a bracket is read with
      * the participant still in it, which a double elimination engine can
-     * refuse.
+     * refuse. A league is the exception: the round-robin engine pairs the
+     * fixtures of a withdrawn entrant to the end of the schedule, so its
+     * rounds name the entrant after it left, and it reads the withdrawal
+     * from the round it states (see RoundRobinEngine).
      */
     public function withoutParticipant(Participant $participant): self
     {

@@ -1149,7 +1149,7 @@ rules. Constructed in code, a timeline or a grid takes
 ## Service wiring
 
 There is nothing to register. The entry points (`RoundRobinScheduler`,
-`PotDrawScheduler`, the three engines, `TimelineAssigner`,
+`PotDrawScheduler`, the engines, `TimelineAssigner`,
 `ScheduleRepacker`, `StandingsCalculator`) are plain objects with no
 dependency on a container, a connection or a clock, and they are cheap
 to build. Build them in the adapter, where the constraints and options

@@ -156,10 +156,12 @@ the last one, which is about the library as a whole.
   the library makes an unseeded one. A scheduler that holds a randomizer draws
   from it on every call, so its second call continues the sequence and returns
   a different schedule. A pot draw, a pre-drawn Swiss schedule, the Swiss
-  engine and the shuffled leg strategy also take an integer seed, which is
-  plain data and gives the same output on every call; the Swiss engine draws
-  each round from the seed and the round number, so a stage rebuilt from
-  stored rows pairs its next round as the stage played round by round.
+  engine, the round-robin engine and the shuffled leg strategy also take an
+  integer seed, which is plain data and gives the same output on every call;
+  the Swiss engine draws each round from the seed and the round number, and
+  the round-robin engine draws the whole schedule from it again on every
+  call, so a stage rebuilt from stored rows pairs its next round as the
+  stage played round by round.
   [Deterministic randomization](docs/USAGE.md#deterministic-randomization)
 - **Serialization**: `Schedule`, `StageState` and `ScheduledSchedule`
   round-trip JSON, and the value objects convert to and from arrays.
@@ -274,7 +276,8 @@ The round is recorded when it is paired, before any result exists, so that
 a withdrawal or an adjustment made while it is played is recorded after it
 and the round is read as it was paired. Single and double elimination
 (`SingleEliminationEngine`, `DoubleEliminationEngine`) drive through the
-same loop, and group stages
+same loop, and so does a league held between rounds (`RoundRobinEngine`,
+whose rounds are the round-robin schedule's), and group stages
 compose from pools and progression selectors (`PoolDistributor`,
 `RankRangeSelector`, `BestOfRankSelector`, `BracketQualifiersSelector`,
 `MatchOutcomeSelector`) — see the
@@ -339,10 +342,12 @@ breaking changes are expected. Namespaces are relative to
 **Experimental** (still being designed; expected to change in a minor release
 before `1.0.0`):
 
-- The Swiss and elimination engines: `Scheduling\SwissPairingEngine`,
+- The stage engines: `Scheduling\SwissPairingEngine`,
   `Scheduling\SwissScheduler`, `Scheduling\SwissOptions`,
   `Scheduling\SingleEliminationEngine`, `Scheduling\DoubleEliminationEngine`,
-  and `Scheduling\EliminationOptions`
+  `Scheduling\EliminationOptions`, and `Scheduling\RoundRobinEngine` (the
+  round-robin scheduler and its options are stable; the engine that holds a
+  league as a stage state is not)
 - The pot draw: `Scheduling\PotDrawScheduler`, `Scheduling\PotDrawOptions`,
   and `Stage\PotDrawPlan`
 - `Stage`

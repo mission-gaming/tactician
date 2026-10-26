@@ -14,6 +14,7 @@ How to use Tactician, format by format. The test suite executes the `php` blocks
 - [Pot Draws](#pot-draws)
 - [Elimination Brackets](#elimination-brackets)
 - [Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows)
+- [Leagues Run Round by Round](#leagues-run-round-by-round)
 - [Pools, Progression, and Multi-Stage Tournaments](#pools-progression-and-multi-stage-tournaments)
 - [Timeline Assignment](#timeline-assignment)
 - [Schedule Repacking](#schedule-repacking)
@@ -47,7 +48,7 @@ anything else that competes.
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size, or the schedule is refused; `RoundParityRoleAssignment` (the default up to 0.2.x) alternates with round parity; `BalancedWherePossibleRoleAssignment` (the default) gives the balanced roles where the scheduler finds a schedule with them and otherwise the round-parity roles, with a **role fall-back** mark. A role assignment may state the rule it holds a leg to, and the scheduler then looks for other roles within that rule where a constraint rejects the ones it gave. See [Role Assignment](#role-assignment). |
 | **Role fall-back** | What the default role assignment of a round robin does where it finds no schedule with balanced roles: the schedule is generated with the roles the generator proposes, exactly as under `RoundParityRoleAssignment`, and its metadata says so under the key `role_fallback`, with the reason (`RoleFallback`): no balanced roles exist in what was searched, a bound stopped the search, or the search was cut short because a schedule was in hand. A schedule with balanced roles has no such key. See [Balanced where possible](#balanced-where-possible). |
 | **Fixed seating** | A seating is one pairing of a round as a role assignment is handed it: two seats, with the first-named participant in the first. A fixed seating is one the role assignment is told to keep as given (`RoleAssignmentContext::isFixed()`): the scheduler put its event to the constraints the other way round, they rejected it, and it asks the role assignment for the roles of the other seatings around it. See [Writing a role assignment](#writing-a-role-assignment). |
-| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**. In a bracket a bye is a node of the **bracket view** with the status `Bye` (an entrant who stood alone and went on); the advancer of an **uncontested tie** is listed among the byes of its round but has no bye. See [Byes in a table](#byes-in-a-table). |
+| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**, except in a **league**, where it is a **rest** and earns nothing. In a bracket a bye is a node of the **bracket view** with the status `Bye` (an entrant who stood alone and went on); the advancer of an **uncontested tie** is listed among the byes of its round but has no bye. See [Byes in a table](#byes-in-a-table). |
 | **Bye value** | What one bye adds to the ranking value of the participant who had it, as the ranking strategy states it (`RankingStrategyWithByeValue::getByeValue()`): the value of a win, of a draw, nothing, or any other amount. `WinDrawLossRanking` values a bye as a win unless told otherwise. The same value orders the next round of a stage and stands in its final table. |
 | **Bye treatment** | How a tiebreaker computed from opponents counts a bye (`ByeTreatment`): not at all (`Uncounted`, the default), as an opponent worth nothing (`Zero`), or as an opponent with the participant's own ranking value (`OwnRankingValue`); the last two read an opponent's ranking value with the credit of its byes. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
@@ -84,6 +85,8 @@ anything else that competes.
 | **Slot** | One place of a node (`BracketSlot`): the entrant who stands in it, or a **placeholder** (`SlotPlaceholder`) that says whom it waits for (the advancer or the loser of a node, or a re-seeded entrant) or why it will hold nobody (a bye, a void node before it, a node not played). |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
+| **League** | A round-robin stage held between rounds as a `StageState` and paired one round at a time by `RoundRobinEngine`, whose rounds are those of the schedule `RoundRobinScheduler` generates for the same entrants, options, constraints and seed. See [Leagues Run Round by Round](#leagues-run-round-by-round). |
+| **Rest (in a league)** | The round a participant of a league of odd size sits out. It is a **bye** of the round, listed among its byes and counted on the participant's entry (`StandingEntry::getByes()`), and it earns nothing, whatever the ranking strategy says a bye is worth ([ADR 0017](adr/0017-a-league-rest-earns-nothing.md) says why). See [Leagues Run Round by Round](#leagues-run-round-by-round). |
 | **Stage state** | The record of a results-driven stage between rounds (`StageState`): the entrant list, who has withdrawn, the recorded pairings (with byes), results, and adjustments. It is built verb by verb and stored (`toJson()`), or built on each request from a history the application holds (`StageState::fromHistory()`). Withdrawals are `withoutParticipant()`, a result of the last recorded round is corrected with `withResultReplaced()`, and an adjustment is recorded with `withAdjustment()`. |
 | **History (of a stage)** | What an application holds of a stage in its own storage: the entrants in their order, the rounds that were paired, the results recorded so far, who has withdrawn and after which round, the adjustments and after which round. A history is a set of facts. An engine reads the rounds as they are and derives only the round that does not exist yet; `StageState::fromHistory()` builds a stage state from one and refuses a history that breaks a **hard rule**. See [Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows). |
 | **Hard rule** | One of the three things `StageState::fromHistory()` requires of a history beside what recording a round always requires: round numbers 1, 2, 3 with none left out, every participant an entrant, and nobody in a round twice. A history that breaks one is refused with a reason; a round that only pairs the entrants otherwise than the engine would have is not. |
@@ -92,6 +95,7 @@ anything else that competes.
 | **After round (of a withdrawal or an adjustment)** | When a withdrawal or an adjustment happened, in the rounds of its stage: the number of the last round that was recorded at that moment, 0 before the first round (`Adjustment::getAfterRound()`, `Withdrawal::getAfterRound()`). The verbs of a stage state record it without being told; a history that holds a round states it for every withdrawal and every adjustment. An engine reads a recorded round from the adjustments made, and the entrants still in the stage, before it was paired, which to a state is before it was recorded, so a round is recorded when it is paired (`withRoundPaired()`); a round that names an entrant was paired while that entrant was in the stage, whatever its withdrawal states. Only a withdrawal stored by 0.2.x has no round: its time is not known and is never read as one that suits. See [When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened). |
 | **Settled tie** | A tie of a bracket as its engine settled it (`SettledTie`): who went on from it and who did not, also where no result says so because an entrant withdrew. The outcome of a bracket carries its last one (`StageOutcome::getSettledTies()`), and `MatchOutcomeSelector` reads it. |
 | **Uncontested tie** | A tie of a bracket that is not played because one of its two entrants has withdrawn: the other entrant advances without an event, the bracket is not drawn again, and an event already paired for the tie awaits no result. Some sports call it a walkover. It is no **bye**: no table credits it, and a competition that counts it as a win records an **awarded result** for the tie. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
+| **Uncontested event** | An event of a round-robin stage that names an entrant who has withdrawn and has no result: it awaits none and counts for nobody, and the fixtures are not drawn again. The application may record an awarded result for it, which counts as any result does (`RecordedRound::getUncontestedEvents()`). See [Leagues Run Round by Round](#leagues-run-round-by-round). |
 | **Over (of a bracket)** | The moment an elimination bracket's last ties are decided: the final and, where it has one, the third-place tie; in double elimination the grand final, or its reset where one is due. A last tie is decided by its results, or by the withdrawal of one of its entrants while the other is still in the stage, who then has it. A withdrawal after that takes nothing back: the winner and every placing stay. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
 | **Paired round (recorded as)** | A round recorded when it is drawn, before any of its results exist (`StageState::withRoundPaired()`); its results are added as they come (`withAdditionalResults()`). Recorded so, it comes before whatever happens while it is played. See [Swiss Tournaments](#swiss-tournaments). |
 | **Void tie** | A tie of a bracket both of whose entrants have withdrawn, with no result that decides it, before either went through it (before its next tie was paired). A last tie has no next tie and goes to the entrant still in when the other left, so it is void only where both had left by the time it had them both (a third-place tie whose entrants both left before the second semifinal was decided), or where the times are not known (data stored by 0.2.x). A void tie sends nobody on: the slot it would have filled is empty, so the entrant who would have met its winner goes on alone, and in double elimination nobody drops from it to the losers bracket. Its two entrants go out in it. See [Withdrawals from a Bracket](#withdrawals-from-a-bracket). |
@@ -2344,6 +2348,12 @@ bye as a win unless it is told otherwise, with `withByeValue()` or the key
 `bye` of its plain data (a number, or `'win'`, `'draw'` or `'loss'` for the
 value the same array gives that outcome).
 
+That is the bye of a format that lets a participant through a round
+without an opponent: a Swiss round, a bracket. The round a participant of a
+**league** rests is not such a bye: the round-robin engine counts it and
+credits it with nothing, whatever the strategy says (see
+[Leagues Run Round by Round](#leagues-run-round-by-round)).
+
 `calculateWith()` calculates a table with its byes, and with its adjustments,
 in one call. The byes are counts by participant ID, which is what a stage
 state (`StageState::getByeCounts()`), an outcome (`StageOutcome::getByes()`)
@@ -2988,7 +2998,7 @@ this engine would have paired there, so a round paired by other rules shows
 as manual. A round drawn by hand is allowed, which is why that is a report
 and the stamp is the refusal ([ADR 0015](adr/0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)).
 
-The three engines implement `Stage\FingerprintedEngine`. `getFingerprint()`
+The library's engines implement `Stage\FingerprintedEngine`. `getFingerprint()`
 is not part of `StageEngineInterface`, so that an engine written against
 that interface keeps working; code that holds a `StageEngineInterface`
 tests for it before it stamps:
@@ -4262,7 +4272,7 @@ try {
 ```
 
 `getReadiness()`, `getRecordedRounds()` and `getStandings()` are the
-methods of `HistoryReadingEngine`, which the three engines implement. A
+methods of `HistoryReadingEngine`, which the engines implement. A
 `PairingReadiness` says one of three things: the stage is ready
 (`isReady()`, and `getRoundNumber()` is the number the next round will
 carry), it awaits results (`isAwaitingResults()`, with
@@ -4738,6 +4748,230 @@ rounds themselves show:
 | A round that names the participant | The round was paired before it left, and so was every round before it. This is read with a round too: a round that names the entrant goes before the round its withdrawal states |
 | Two withdrawals from one tie that has no complete result | The one a later recorded round names went on; where a later round names neither, or both, the tie is void, the last tie of a bracket included |
 | A round that holds no tie and no bye for the participant, where no later round names it either | It had left before the round. A round supplied without its byes is misread here: an entrant who had a bye and withdrew before the next round looks the same. With the rounds stated, as every history now states them, a round supplied without its byes is read correctly |
+
+## Leagues Run Round by Round
+
+A round robin does not depend on results, so
+[`RoundRobinScheduler`](#basic-usage) can publish every fixture of a
+league at once. An application that also holds the league between rounds,
+with results as they come in, withdrawals, adjustments, a table at any
+point and an outcome for the next stage, holds it as a `StageState` and
+asks `RoundRobinEngine` for one round at a time, as it does for a Swiss
+stage or a bracket. The engine is the state-driven view of the scheduler's
+schedule: **round N is round N of the schedule** the scheduler generates for
+the state's entrant list (`StageState::getEntrants()`) with the engine's
+options, constraints and seed. The events are the same, with their roles,
+metadata and round, and in a field of odd size the participant who sits the
+round out is listed among the byes of the round.
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Scheduling\RoundRobinEngine;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Stage\StageState;
+
+$clubs = [
+    new Participant('ash', 'Ashford'),
+    new Participant('bry', 'Brayton'),
+    new Participant('cal', 'Calder'),
+    new Participant('dun', 'Dunmore'),
+];
+$homeAndAway = new RoundRobinOptions(legs: 2);
+$league = new RoundRobinEngine($homeAndAway);
+
+$season = StageState::start($clubs)->withEngineFingerprint($league->getFingerprint());
+$matchday = $league->pairNextRound($season);
+$season = $season->withRoundPaired($matchday); // the fixtures are published
+
+// The fixtures the scheduler gives for the whole season
+$published = (new RoundRobinScheduler())->schedule($clubs, $homeAndAway);
+var_dump($matchday->getEvents() == $published->getEventsByRound()[1]); // bool(true)
+
+// The results come in one by one: the first-named of the first event wins it
+[$first, $second] = $matchday->getEvents();
+[$home, $away] = $first->getParticipants();
+$season = $season->withAdditionalResults([new Result($first, $home, [$home->getId() => 2, $away->getId() => 0])]);
+var_dump($league->getReadiness($season)->isReady()); // bool(false)
+
+$season = $season->withAdditionalResults([new Result($second, null)]); // a draw
+echo $league->getReadiness($season)->getRoundNumber(), "\n"; // 2
+echo $home->getLabel(), ' v ', $away->getLabel(), "\n"; // Dunmore v Ashford
+echo $league->getStandings($season)->getEntries()[0]->getParticipant()->getLabel(), "\n"; // Dunmore
+```
+
+**The configuration is the engine's.** The options (`RoundRobinOptions`:
+legs, leg strategy, role assignment, backtracking), the constraints and the
+seed are given to the constructor, as every engine is given its options,
+and the state holds facts only. The engine generates the schedule again
+from the entrant list on every call, so build it the same way for the whole
+stage. The [fingerprint](#recording-which-engine-pairs-a-state) holds the
+options and the seed to that; the constraints have no name, and keeping
+them the same is the caller's to do, as for the Swiss engine. An engine
+built with other constraints than the ones that paired the recorded rounds
+is not refused by the stamp, and is not silent either: where its schedule
+does not continue the recorded rounds, a round of it pairs a meeting the
+recorded rounds have already played as often as the league has legs, and
+that round is refused (`RecordedRoundMismatch`, as for a round drawn by
+hand below) before the league could end with a meeting played twice and
+another not at all. The recorded rounds it would have paired otherwise
+are reported as manual (`getRecordedRounds()`). The seed is an
+integer, not a `Randomizer`: the scheduler is given
+`new Randomizer(new Xoshiro256StarStar($seed))`, made anew on every call, so
+that every call gives the same round for the same state. For the same reason a
+`ShuffledLegStrategy` that holds a randomizer is refused
+(`IncompatibleOptions`); build it from a seed.
+
+| Argument | What it is |
+| --- | --- |
+| `options` | `RoundRobinOptions`, as the scheduler takes them; null for its default (one leg, roles balanced where possible) |
+| `constraints` | The `ConstraintSet` the schedule is generated under. They must answer the same on every call |
+| `seed` | An integer that shuffles the entrant list before the first leg is laid out, as a `Randomizer` would; null for the list order as given |
+| `standingsCalculator` | Orders the table of the stage. Nothing is paired from it, so it is not part of the fingerprint. A round sat out earns nothing under it, whatever its ranking strategy says a bye is worth |
+
+**Results are waited for.** No result changes a fixture, and the engine
+waits for them all the same, as every engine does: while an event of a
+recorded round awaits a result, `pairNextRound()` refuses with an
+`UnresolvedRoundException` and `getReadiness()` lists the events (see
+[Rounds That Are Not Finished](#rounds-that-are-not-finished)). A league
+that plays on while a fixture is postponed says so with
+`pairNextRoundOnIncompleteResults()`, and the round is marked, as a Swiss
+round paired early is:
+
+```php
+use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
+
+$second = $league->pairNextRound($season);
+$season = $season->withRoundPaired($second);
+[$played, $postponed] = $second->getEvents();
+$season = $season->withAdditionalResults([new Result($played, $played->getParticipants()[1])]);
+
+try {
+    $league->pairNextRound($season);
+} catch (UnresolvedRoundException $exception) {
+    echo count($exception->getUnresolvedEvents()), " event awaits a result\n"; // 1 event awaits a result
+}
+
+$third = $league->pairNextRoundOnIncompleteResults($season);
+var_dump($third->isPairedOnIncompleteResults()); // bool(true)
+var_dump($third->getEvents() == $published->getEventsByRound()[3]); // bool(true)
+```
+
+The postponed fixture still awaits its result: the league is not complete
+until it has one. Once the round after it is recorded, the result arrives
+with the history (`StageState::fromHistory()` takes the results of any
+round), because `withAdditionalResults()` reaches the last round only.
+
+**The table** (`getStandings()`, and the outcome's once the league is over)
+is the standings calculator's table of the recorded results, byes and
+adjustments, in one call (`StandingsCalculator::calculateWith()`); where
+results do not separate two entries, their position in the entrant list
+does. An [awarded result](#awarded-results) is a result, and an
+[adjustment](#adjustments) is added to its participant's ranking value.
+
+**A round sat out earns nothing.** In a field of odd size the participant
+who sits a round out is listed among the byes of the round, the state
+counts it (`StageState::getByeCounts()`) and so does its entry
+(`StandingEntry::getByes()`), but the table credits it with nothing,
+whatever the ranking strategy says a bye is worth: the engine asks the
+calculator for the table with `creditsPerBye: 0`. A rest in a league is
+not the bye of [Byes in a table](#byes-in-a-table), a round the format let
+a participant through without an opponent: it is a gap in a fixture list
+drawn once, and the table in the middle of a season shows the points
+played for, as a league publishes it
+([ADR 0017](adr/0017-a-league-rest-earns-nothing.md)).
+
+```php
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+
+$five = [...$clubs, new Participant('eld', 'Eldon')];
+$oddLeague = new RoundRobinEngine();
+$week = $oddLeague->pairNextRound(StageState::start($five));
+[$resting] = $week->getByes();
+$weekPlayed = StageState::start($five)->withRoundPlayed($week, array_map(
+    static fn($event) => new Result($event, null),
+    $week->getEvents()
+));
+$entry = $oddLeague->getStandings($weekPlayed)->getEntryFor($resting);
+echo $entry->getByes(), ' rest, ', $entry->getRankingValue(), " points\n"; // 1 rest, 0 points
+
+// A ranking strategy that values a bye changes nothing here
+$scaleWithAByeValue = new RoundRobinEngine(
+    standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue(1.0))
+);
+echo $scaleWithAByeValue->getStandings($weekPlayed)->getEntryFor($resting)->getRankingValue(), "\n"; // 0
+```
+
+**A withdrawal draws nothing again and decides nothing.** The entrant keeps
+its place in the entrant list, so the schedule is the one drawn at the
+start, to the end of the league. What it played stands and counts in the
+table. Its fixtures stay in the schedule and are still paired: an event of
+it that has no result **awaits none** (it is an uncontested event,
+`RecordedRound::getUncontestedEvents()`), and it counts for nobody. The
+library neither awards such an event nor takes back what was played,
+because that is the competition's rule, not the format's. The application
+records what its rule says: an [awarded result](#awarded-results) for the
+event, which is a result like any other, or a history that leaves out the
+results it voids.
+
+```php
+use MissionGaming\Tactician\DTO\Award;
+
+// Round 3 is played in full, and Dunmore withdraws after it
+$season = $season->withRoundPaired($third);
+foreach ($third->getEvents() as $event) {
+    $season = $season->withAdditionalResults([new Result($event, $event->getParticipants()[0])]);
+}
+$season = $season->withoutParticipant($clubs[3]);
+
+$fourth = $league->pairNextRoundOnIncompleteResults($season);
+$season = $season->withRoundPaired($fourth);
+
+// Dunmore's fixture of round 4 is paired, and awaits nothing
+$uncontested = $league->getRecordedRounds($season)[3]->getUncontestedEvents();
+echo count($uncontested), " uncontested\n"; // 1 uncontested
+
+// The competition awards it to the opponent: a result like any other
+[$fixture] = $uncontested;
+[$one, $other] = $fixture->getParticipants();
+$season = $season->withAdditionalResults([
+    new Result($fixture, $one === $clubs[3] ? $other : $one, award: new Award('walkover', 'Dunmore withdrew')),
+]);
+echo count($league->getRecordedRounds($season)[3]->getUncontestedEvents()), " uncontested\n"; // 0 uncontested
+```
+
+A withdrawal before the first round is recorded takes the entrant out of the
+draw, and the league is drawn from those who remain.
+
+**Recorded rounds are facts.** A round recorded otherwise than the
+schedule has it (fixtures swapped by hand) is read as recorded and reported
+as manual by `getRecordedRounds()`, with the schedule's round beside it
+(`getDerivation()`). Roles, the order of the events, the byes and an event
+of an entrant who had withdrawn before the round are not compared, so a
+round recorded without such a fixture is not manual for that. A round drawn
+by hand moves no later fixture: the later rounds are the schedule's. The
+engine never pairs two participants more often than the league has legs,
+so where a round drawn by hand took a meeting from a later round, that
+later round is refused (`RecordedRoundMismatch`; the context names the
+round, the participants who have met already and the schedule's events of
+the round), and you record it by hand as well. `getReadiness()` refuses it
+in the same words rather than call the stage ready; `getStandings()`,
+`getRecordedRounds()`, `isComplete()` and `getOutcome()` read the state as
+it is. An application whose rows hold the fixtures
+builds the state with `StageState::fromHistory()`, as for any stage (see
+[Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows));
+the rows of a round with a participant who sat it out are its fixtures and
+that bye. A state that names a participant outside its entrant list (a
+round recorded with a participant who never entered, or data stored by
+0.2.x, which kept no entrant list, in which a participant had withdrawn) is
+refused with `RecordedRoundMismatch`: the league could not be drawn again
+from the list it was drawn from.
+
+A runnable league run from application rows, with a postponed fixture, a
+withdrawal and an awarded result:
+[`examples/31-league-from-application-rows.php`](../examples/31-league-from-application-rows.php).
 
 ## Pools, Progression, and Multi-Stage Tournaments
 
@@ -8011,8 +8245,8 @@ identifier for logs and stored data):
 | `OddPotWithOddOpponents` | `odd_pot_with_odd_opponents` | A pot of odd size cannot hold an odd number of events per member inside itself |
 | `ConfigurationNotYetSupported` | `configuration_not_yet_supported` | The configuration is feasible and the library has no construction for it yet |
 | `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
-| `PlannedRoundsPlayed` | `planned_rounds_played` | A further round was asked of a Swiss stage that has played all its planned rounds |
-| `RoundPartiallyResolved` | `round_partially_resolved` | An engine was asked for the next round (`pairNextRound()`) while an event of a recorded round still awaits its result: some or all ties of a bracket's current round, or an event of a Swiss round. The exception is an `UnresolvedRoundException`, which carries the events. `isComplete()`, `getOutcome()` and `getReadiness()` do not throw for such a round |
+| `PlannedRoundsPlayed` | `planned_rounds_played` | A further round was asked of a Swiss stage that has played all its planned rounds, or of a round-robin stage that has recorded every round of its schedule |
+| `RoundPartiallyResolved` | `round_partially_resolved` | An engine was asked for the next round (`pairNextRound()`) while an event of a recorded round still awaits its result: some or all ties of a bracket's current round, or an event of a Swiss or a round-robin round. The exception is an `UnresolvedRoundException`, which carries the events. `isComplete()`, `getOutcome()` and `getReadiness()` do not throw for such a round |
 | `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |
 | `InvalidResult` | `invalid_result` | A result cannot belong to the stage it was recorded in |
 | `DuplicateResult` | `duplicate_result` | Two results were recorded for the same match |
@@ -8035,7 +8269,7 @@ identifier for logs and stored data):
 | `RoundSuperseded` | `round_superseded` | A result was to be replaced in a round that a later round was paired from |
 | `EmptyEngineFingerprint` | `empty_engine_fingerprint` | A stage state was to be stamped with an empty engine fingerprint |
 | `EngineFingerprintMismatch` | `engine_fingerprint_mismatch` | A stage state carries the fingerprint of another engine or configuration than the one reading it |
-| `RecordedRoundMismatch` | `recorded_round_mismatch` | A round recorded on a stage state cannot be a round of the bracket reading it: it holds a third-place tie and the single elimination engine has none, it leaves another number of entrants in a double elimination stage than the stage has places for, or it is a round of a re-seeded bracket that an entrant had withdrawn before, in a state that holds an adjustment which does not say after which round it was made ([When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened)). A round that only pairs the entrants otherwise is read and reported as manual |
+| `RecordedRoundMismatch` | `recorded_round_mismatch` | A round recorded on a stage state cannot be a round of the bracket reading it: it holds a third-place tie and the single elimination engine has none, it leaves another number of entrants in a double elimination stage than the stage has places for, or it is a round of a re-seeded bracket that an entrant had withdrawn before, in a state that holds an adjustment which does not say after which round it was made ([When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened)). A round-robin engine refuses a state that names a participant outside its entrant list, from which it could not draw the league again, and one with an event of other than two participants; and `pairNextRound()` and `getReadiness()` refuse a next round that would pair two participants more often than the league has legs, where the recorded rounds are not the schedule's ([Leagues Run Round by Round](#leagues-run-round-by-round)). A round that only pairs the entrants otherwise is read and reported as manual |
 | `EmptyEventId` | `empty_event_id` | A movable or pinned event has an empty ID |
 | `IdenticalParticipants` | `identical_participants` | An event names the same participant on both sides |
 | `DuplicateEventId` | `duplicate_event_id` | Two events of one repack request share an ID |
@@ -8300,7 +8534,11 @@ Three things to know beside that:
   (`new SwissPairingEngine(seed: 2026)`): it builds the `Randomizer` of a
   round from the seed and the round number on every call, so the same
   state gives the same round, on one engine or on many, and is refused a
-  seed together with a `Randomizer`.
+  seed together with a `Randomizer`. A `RoundRobinEngine` built with a seed
+  (`new RoundRobinEngine(seed: 2026)`) takes nothing else: it gives the
+  scheduler a `Randomizer` on the `Xoshiro256StarStar` engine built from the
+  seed on every call, so every call draws the same schedule (see
+  [Leagues Run Round by Round](#leagues-run-round-by-round)).
 
 ## Real-World Examples
 
