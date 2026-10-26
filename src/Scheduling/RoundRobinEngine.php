@@ -388,9 +388,9 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
         $field = $this->field($state);
 
         try {
-            $schedule = $this->schedule($field);
+            $rounds = $this->roundsOf($this->schedule($field));
         } catch (IncompleteScheduleException) {
-            $schedule = null;
+            $rounds = null;
         }
 
         $active = $this->activeIds($state);
@@ -405,12 +405,12 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
             }
         }
 
-        $rounds = [];
+        $read = [];
         foreach ($state->getRoundsPlayed() as $pairing) {
             $number = $pairing->getRoundNumber();
-            $derivation = $schedule === null ? null : $this->roundOf($schedule, $number, false);
+            $derivation = $rounds === null ? null : $this->roundOf($rounds, $number, false);
 
-            $rounds[] = new RecordedRound(
+            $read[] = new RecordedRound(
                 $pairing,
                 $derivation,
                 $derivation instanceof RoundPairing && $this->meetings($pairing, $state, $number) !== $this->meetings($derivation, $state, $number),
@@ -419,7 +419,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
             );
         }
 
-        return $rounds;
+        return $read;
     }
 
     /**
@@ -508,15 +508,14 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      */
     private function pair(StageState $state, array $field, bool $onIncompleteResults): RoundPairing
     {
-        $schedule = $this->schedule($field);
+        $rounds = $this->roundsOf($this->schedule($field));
         $next = $state->getNextRoundNumber();
-        $total = $schedule->getMetadataValue('total_rounds');
 
-        $pairing = $this->roundOf($schedule, $next, $onIncompleteResults);
+        $pairing = $this->roundOf($rounds, $next, $onIncompleteResults);
         if (!$pairing instanceof RoundPairing) {
             throw new InvalidConfigurationException(
                 'Every round of the round robin has been recorded; no further round exists',
-                ['planned_rounds' => $total, 'next_round' => $next],
+                ['planned_rounds' => $rounds['total'], 'next_round' => $next],
                 reason: InvalidConfigurationReason::PlannedRoundsPlayed
             );
         }
@@ -525,21 +524,39 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
     }
 
     /**
-     * The round of the given number in the schedule, as a pairing; null when
-     * the schedule has no such round.
+     * The rounds of a schedule, grouped once: the events and the byes by
+     * round number, and the number of rounds.
+     *
+     * @return array{events: array<int, array<Event>>, byes: array<int, list<Participant>>, total: int}
      */
-    private function roundOf(Schedule $schedule, int $number, bool $onIncompleteResults): ?RoundPairing
+    private function roundsOf(Schedule $schedule): array
     {
         $total = $schedule->getMetadataValue('total_rounds');
-        if ($number < 1 || !is_int($total) || $number > $total) {
+
+        return [
+            'events' => $schedule->getEventsByRound(),
+            'byes' => $schedule->getByesByRound(),
+            'total' => is_int($total) ? $total : 0,
+        ];
+    }
+
+    /**
+     * The round of the given number in the schedule, as a pairing; null when
+     * the schedule has no such round.
+     *
+     * @param array{events: array<int, array<Event>>, byes: array<int, list<Participant>>, total: int} $rounds
+     */
+    private function roundOf(array $rounds, int $number, bool $onIncompleteResults): ?RoundPairing
+    {
+        if ($number < 1 || $number > $rounds['total']) {
             return null;
         }
 
         return new RoundPairing(
             $number,
             null,
-            $schedule->getEventsByRound()[$number] ?? [],
-            $schedule->getByesByRound()[$number] ?? [],
+            $rounds['events'][$number] ?? [],
+            $rounds['byes'][$number] ?? [],
             $onIncompleteResults
         );
     }
