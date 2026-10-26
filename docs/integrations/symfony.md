@@ -408,9 +408,9 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     adjustments made before it was paired. Once your rows hold a round,
     an adjustment without it is refused (`AdjustmentWithoutRound`).
 
-  `fromHistory()` checks what rows can get wrong and a stored state
-  cannot: round numbers that are not 1, 2, 3 and so on
-  (`RoundOutOfSequence`), a participant who is not an entrant
+  `fromHistory()` checks round numbers that are not 1, 2, 3 and so on
+  (`RoundOutOfSequence`), as the verbs and a stored state do, and what rows
+  can get wrong and a stored state cannot: a participant who is not an entrant
   (`ParticipantNotAnEntrant`), a participant in a round twice
   (`ParticipantTwiceInRound`) and two results for one event
   (`DuplicateResult`). A round that only pairs the entrants otherwise than

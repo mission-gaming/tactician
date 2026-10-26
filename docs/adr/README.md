@@ -16,7 +16,7 @@ there is not repeated here.
 | [0004](0004-position-decides-where-results-do-not.md) | Position decides where results do not |
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
 | [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
-| [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived |
+| [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived (amended by 0018 for round numbers) |
 | [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
 | [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says (amended by 0014; narrowed by 0017 for a league) |
 | [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table (amended by 0014) |
@@ -27,6 +27,7 @@ there is not repeated here.
 | [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md) | An engine fingerprint versions the rules of each configuration |
 | [0016](0016-qualifiers-for-a-bracket-keep-their-tiers.md) | Qualifiers for a bracket keep their tiers |
 | [0017](0017-a-league-rest-earns-nothing.md) | A league rest earns nothing (narrows 0009) |
+| [0018](0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md) | The rounds of a stage state are numbered 1, 2, 3 (amends 0007) |
 
 ## Adding a record
 

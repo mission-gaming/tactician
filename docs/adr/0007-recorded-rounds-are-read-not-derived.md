@@ -9,7 +9,9 @@ again. What it says of a tie both entrants left is replaced by
 withdrawal without its round is narrowed by
 [0012](0012-a-withdrawal-states-its-round.md), and what it says of an
 adjustment without its round is replaced by the amendment of 0012 (no state
-holds one any more).
+holds one any more); what point 8 says of a gap in the round
+numbers is replaced by [0018](0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md):
+the verbs and `fromArray()` refuse it too.
 
 ## Context
 
