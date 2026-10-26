@@ -1504,7 +1504,9 @@ entry on the engine fingerprint.
     and an adjustment without `madeAfterRound()` in a history with rounds
     (the new reason `AdjustmentWithoutRound`, `adjustment_without_round`,
     the same context; ADR 0012, amended).
-    `fromArray()`, `fromJson()` and the verbs accept what they accepted.
+    `fromArray()`, `fromJson()` and the verbs are not held to the two
+    rules: they accept what they accepted, bar a gap in the round numbers
+    (see the entry on the rounds of a stage state under **Changed**).
   - **History is supplied, never recomputed.** An engine reads the rounds
     recorded on a state as they are and derives only the round that does
     not exist yet (ADR 0007,
@@ -2914,15 +2916,17 @@ entry on the engine fingerprint.
   an event or a result that does not belong to its round, a result of a
   round that is not recorded and a result that does not stand with the
   results of its round, and `EventWithoutRoundNumber` for an event or a
-  result's event with no round. What the verbs accept still loads: a gap in
-  the round numbers, a pairing whose participants are not active, and two
-  results of one event, which has to load so that `withResultReplaced()`
-  can repair it. Who is affected: an application whose stored states were
-  written or edited by something other than `toArray()` or `toJson()` (a
-  migration script, a hand-built array), and code that catches only
-  `InvalidInputException` around `fromArray()`. A state the library wrote
-  is always one the verbs recorded and loads as before, whichever release
-  wrote it. What to change: catch `InvalidConfigurationException` as well
+  result's event with no round. What the verbs accept still loads: a
+  pairing whose participants are not active, and two results of one event,
+  which has to load so that `withResultReplaced()` can repair it. (A gap
+  in the round numbers no longer loads: the verbs refuse it now; see the
+  entry on the rounds of a stage state.) Who is affected: an application
+  whose stored states were written or edited by something other than
+  `toArray()` or `toJson()` (a migration script, a hand-built array), and
+  code that catches only `InvalidInputException` around `fromArray()`. A
+  state the library wrote is one the verbs recorded and loads as before,
+  whichever release wrote it, bar one whose round numbers leave one out,
+  which the verbs of 0.2.x recorded. What to change: catch `InvalidConfigurationException` as well
   (`catch (TacticianException)` covers both), and rebuild a refused state
   from your own rows with `StageState::start()` and `withRoundPlayed()`.
   Before: `StageState::fromArray(['rounds' => [$roundTwo, $roundOne], ...])`
@@ -3775,6 +3779,7 @@ entry on the engine fingerprint.
   takes `$state->getNextRoundNumber()` as its number. Before you upgrade, a
   stored state that no longer loads is rebuilt with its rounds renumbered
   1, 2, 3, through the verbs or `fromHistory()`.
+
 ### Deprecated
 
 - **The `'tie_winner'` metadata of a result, and

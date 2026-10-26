@@ -7871,7 +7871,8 @@ not write, and holds them to
 repaired: see [Correcting a Recorded Result](#correcting-a-recorded-result).
 A state that `toArray()` or `toJson()` wrote is always one the verbs
 recorded, so stored states are affected only where something else wrote or
-edited the data.
+edited the data, or where the verbs of 0.2.x recorded a round that left one
+out.
 
 ## Schedule Validation
 
