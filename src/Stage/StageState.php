@@ -244,14 +244,18 @@ final readonly class StageState
             static fn(RoundPairing $first, RoundPairing $second): int => $first->getRoundNumber() <=> $second->getRoundNumber()
         );
 
+        // A round numbered below 1 sorts first and is left to
+        // withRoundPlayed(), which refuses it with a reason of its own
+        // (`ValueOutOfRange`) before any order of the rounds is read, so
+        // their order is not checked here then: rounds 0 and 1 would
+        // otherwise be refused as round 1 given after round 1.
+        $sequenced = $rounds === [] || $rounds[0]->getRoundNumber() >= 1;
+
         $positions = [];
         foreach ($rounds as $index => $pairing) {
-            $number = $pairing->getRoundNumber();
-            // A number below 1 is left to withRoundPlayed(), which has a
-            // reason of its own for it.
-            if ($number >= 1) {
+            if ($sequenced) {
                 // The rounds before it are 1 to $index, checked already
-                self::requireNextRound($index, $number, [
+                self::requireNextRound($index, $pairing->getRoundNumber(), [
                     'round_numbers' => array_map(
                         static fn(RoundPairing $round): int => $round->getRoundNumber(),
                         $rounds

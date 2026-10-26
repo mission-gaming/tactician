@@ -490,6 +490,24 @@ describe('a state built from a history', function (): void {
                 InvalidConfigurationReason::ValueOutOfRange,
                 ['pairing_round' => 0],
             ],
+            // A round below 1 is refused for its number, whatever follows
+            // it, and not as round 1 given after round 1: it is no round
+            // of the stage, so nothing is out of sequence after it
+            'a round numbered 0, supplied after round 1' => [
+                fn() => StageState::fromHistory($entrants, [$roundOne, new RoundPairing(0, null, [])]),
+                InvalidConfigurationReason::ValueOutOfRange,
+                ['pairing_round' => 0],
+            ],
+            'rounds numbered -1, 0 and 1' => [
+                fn() => StageState::fromHistory($entrants, [new RoundPairing(0, null, []), $roundOne, new RoundPairing(-1, null, [])]),
+                InvalidConfigurationReason::ValueOutOfRange,
+                ['pairing_round' => -1],
+            ],
+            'a round numbered 0 and a round 3 with round 1 left out' => [
+                fn() => StageState::fromHistory($entrants, [new RoundPairing(0, null, []), $roundThree]),
+                InvalidConfigurationReason::ValueOutOfRange,
+                ['pairing_round' => 0],
+            ],
             'an event with a participant who is no entrant' => [
                 fn() => StageState::fromHistory($entrants, [new RoundPairing(1, null, [new Event([$one, $stranger], $first)])]),
                 InvalidConfigurationReason::ParticipantNotAnEntrant,
