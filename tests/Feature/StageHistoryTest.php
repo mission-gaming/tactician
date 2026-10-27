@@ -2393,3 +2393,147 @@ describe('a round left out of the round numbers', function (): void {
         'double elimination of eight, losers rounds and grand final among them' => [new DoubleEliminationEngine(), 8, 8],
     ]);
 });
+
+/**
+ * What building a state ends in: the reason, the issue and the context of
+ * the refusal, or null where the state is built.
+ *
+ * @param Closure(): mixed $build
+ *
+ * @return array{InvalidConfigurationReason|null, string, array<string, mixed>}|null
+ */
+function historyRefusal(Closure $build): ?array
+{
+    try {
+        $build();
+    } catch (InvalidConfigurationException $exception) {
+        return [$exception->getReason(), $exception->getConfigurationIssue(), $exception->getContext()];
+    }
+
+    return null;
+}
+
+/**
+ * The round an engine paired, changed by hand: with one of its events
+ * listed again (as it is, with its participants the other way round, or
+ * with a tie leg it leaves out stated as leg 1, or a leg 1 it states left
+ * out), with a participant of an event given a second opponent or a bye as
+ * well, or with a further leg of one of its ties, which is no second
+ * appearance.
+ *
+ * @return array<string, RoundPairing>
+ */
+function historyRoundsByHand(RoundPairing $pairing): array
+{
+    $events = array_values($pairing->getEvents());
+    $byes = array_values($pairing->getByes());
+    if ($events === []) {
+        return [];
+    }
+
+    $first = $events[0];
+    $round = $first->getRound();
+    $participants = array_values($first->getParticipants());
+    $metadata = $first->getMetadata();
+    $leg = $first->getMetadataValue('tie_leg');
+    $with = static fn(array $more, array $moreByes = []): RoundPairing => new RoundPairing(
+        $pairing->getRoundNumber(),
+        $pairing->getLabel(),
+        [...$events, ...$more],
+        [...$byes, ...$moreByes]
+    );
+
+    $variants = [
+        'an event listed twice' => $with([$first]),
+        'an event listed twice, the participants the other way round' => $with([new Event(array_reverse($participants), $round, $metadata)]),
+        'a participant of an event given a bye as well' => $with([], [$participants[0]]),
+    ];
+    if ($leg === null) {
+        $variants['an event without a leg listed again as leg 1'] = $with([new Event($participants, $round, [...$metadata, 'tie_leg' => 1])]);
+    } elseif ($leg === 1) {
+        $variants['leg 1 of a tie listed again without its leg'] = $with([new Event($participants, $round, array_diff_key($metadata, ['tie_leg' => true]))]);
+    }
+    foreach ($events as $other) {
+        $opponent = array_values($other->getParticipants())[1];
+        if (!in_array($opponent->getId(), historyIds($participants), true)) {
+            $variants['a participant against a second opponent'] = $with([new Event([$participants[0], $opponent], $round)]);
+            break;
+        }
+    }
+
+    // The tie of the first event, and the last of its legs in the round
+    $tie = static fn(Event $event): string => explode(' leg ', historyPairs([$event])[0])[0];
+    $lastLeg = 1;
+    foreach ($events as $event) {
+        $tieLeg = $event->getMetadataValue('tie_leg');
+        if ($tie($event) === $tie($first) && is_int($tieLeg)) {
+            $lastLeg = max($lastLeg, $tieLeg);
+        }
+    }
+    $variants['a further leg of a tie'] = $with([new Event($participants, $round, [...$metadata, 'tie_leg' => $lastLeg + 1])]);
+
+    return $variants;
+}
+
+// Issue #197: the verbs recorded a round that held one event twice, or a
+// participant in two events, which fromHistory() refused. The engines read
+// such a state, and the bracket view showed one result on both events of
+// the pair, because a result names its event by round, pair and leg. Every
+// state the verbs build is now one fromHistory() builds in this respect
+// too, and stored data that holds such a round is refused, so no engine is
+// handed one.
+describe('a round that holds a participant twice', function (): void {
+    it('is refused by the verbs, fromArray() and fromJson() exactly where fromHistory() refuses it, with its reason', function (string $name): void {
+        $engine = historyEngines()[$name];
+        $refused = 0;
+        $accepted = 0;
+
+        foreach ([5, 8] as $size) {
+            $entrants = historyField($size);
+            $rng = new Randomizer(new Mt19937(19 * $size));
+            $state = StageState::start($entrants);
+
+            for ($round = 1; !$engine->isComplete($state); ++$round) {
+                if ($round > 40) {
+                    throw new LogicException('The stage did not complete.');
+                }
+
+                try {
+                    $pairing = $engine->pairNextRound($state);
+                } catch (NoValidPairingException) {
+                    break;
+                }
+
+                foreach (historyRoundsByHand($pairing) as $change => $byHand) {
+                    $stored = $state->withRoundPaired($pairing)->toArray();
+                    $form = $byHand->toArray();
+                    unset($form['format_version']);
+                    $stored['rounds'][count($stored['rounds']) - 1] = $form;
+
+                    $history = historyRefusal(static fn() => StageState::fromHistory($entrants, [...$state->getRoundsPlayed(), $byHand], $state->getResults()));
+                    $paths = [
+                        'withRoundPlayed()' => historyRefusal(static fn() => $state->withRoundPlayed($byHand, [])),
+                        'withRoundPaired()' => historyRefusal(static fn() => $state->withRoundPaired($byHand)),
+                        'fromArray()' => historyRefusal(static fn() => StageState::fromArray($stored)),
+                        'fromJson()' => historyRefusal(static fn() => StageState::fromJson(json_encode($stored, JSON_THROW_ON_ERROR))),
+                    ];
+
+                    $where = "{$name}, {$size} entrants, round {$round}: {$change}";
+                    expect($paths)->toBe(array_fill_keys(array_keys($paths), $history), $where);
+                    if ($change === 'a further leg of a tie') {
+                        expect($history)->toBeNull($where);
+                        ++$accepted;
+                    } else {
+                        expect($history[0] ?? null)->toBe(InvalidConfigurationReason::ParticipantTwiceInRound, $where);
+                        ++$refused;
+                    }
+                }
+
+                $state = $state->withRoundPlayed($pairing, historyResults($pairing, $rng));
+            }
+        }
+
+        expect($refused)->toBeGreaterThan(10)
+            ->and($accepted)->toBeGreaterThan(2);
+    })->with(array_keys(historyEngines()));
+});

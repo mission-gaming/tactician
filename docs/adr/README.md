@@ -16,7 +16,7 @@ there is not repeated here.
 | [0004](0004-position-decides-where-results-do-not.md) | Position decides where results do not |
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
 | [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
-| [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived (amended by 0018 for round numbers) |
+| [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived (amended by 0018 for round numbers and by 0020 for a participant twice in a round) |
 | [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
 | [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says (amended by 0014 and 0019; narrowed by 0017 for a league) |
 | [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table (amended by 0014) |
@@ -29,6 +29,7 @@ there is not repeated here.
 | [0017](0017-a-league-rest-earns-nothing.md) | A league rest earns nothing (narrows 0009) |
 | [0018](0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md) | The rounds of a stage state are numbered 1, 2, 3 (amends 0007) |
 | [0019](0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md) | A Swiss bye under a strategy without a bye value is worth nothing (amends 0009) |
+| [0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md) | Nobody is in a round of a stage state twice (amends 0007) |
 
 ## Adding a record
 

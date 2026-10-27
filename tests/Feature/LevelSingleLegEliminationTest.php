@@ -719,14 +719,19 @@ describe('input that worked before level events could be decided', function (): 
     it('counts a level result the bracket never reads as the draw it is', function (): void {
         // A result for an event the bracket did not make is not a tie of
         // the bracket: nothing decides it, and the standings keep it level.
+        // It is played by the two losers of the semifinals, who are in no
+        // other event of the round: a participant is in a round once.
         $engine = new SingleEliminationEngine();
-        [$p1, $p2, $p3] = $field = levelEventField(3);
+        [$p1, $p2, $p3, $p4] = $field = levelEventField(4);
         $state = StageState::start($field);
 
         $semifinal = $engine->pairNextRound($state);
-        $state = $state->withRoundPlayed($semifinal, [decisiveResult($semifinal->getEvents()[0], 'p2')]);
+        $state = $state->withRoundPlayed($semifinal, [
+            decisiveResult($semifinal->getEvents()[0], 'p1'),
+            decisiveResult($semifinal->getEvents()[1], 'p2'),
+        ]);
         $final = $engine->pairNextRound($state);
-        $stray = new Event([$p3, $p2], new Round(2));
+        $stray = new Event([$p3, $p4], new Round(2));
         $state = $state->withRoundPlayed(
             new RoundPairing(2, 'final', [...$final->getEvents(), $stray]),
             [decisiveResult($final->getEvents()[0], 'p1'), levelResult($stray, 'p3')]
@@ -737,6 +742,8 @@ describe('input that worked before level events could be decided', function (): 
         assert($outcome !== null);
         expect($outcome->getStandings()->getEntryFor($p3)?->getDraws())->toBe(1);
         expect($outcome->getStandings()->getEntryFor($p3)?->getWins())->toBe(0);
-        expect($outcome->getStandings()->getEntryFor($p1)?->getWins())->toBe(1);
+        expect($outcome->getStandings()->getEntryFor($p4)?->getDraws())->toBe(1);
+        // The semifinal and the final
+        expect($outcome->getStandings()->getEntryFor($p1)?->getWins())->toBe(2);
     });
 });

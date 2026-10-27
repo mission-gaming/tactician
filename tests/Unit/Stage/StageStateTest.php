@@ -152,6 +152,92 @@ describe('StageState', function (): void {
         'round 5 after rounds 1 and 2' => [[1, 2], 5, ['last_round' => 2, 'pairing_round' => 5, 'expected_round' => 3]],
     ]);
 
+    // Issue #197: nobody is in a round twice, wherever a state is built. A
+    // round that holds one event twice was recorded, and an engine and the
+    // bracket view then matched one result to both events, because a result
+    // names its event by round, pair and leg. The verbs refuse a participant
+    // twice in a round where fromHistory() refuses it, with its exception;
+    // the entrant check stays fromHistory()'s own.
+    it('refuses a round that holds a participant twice, as fromHistory() refuses it', function (string $verb, int $number, Closure $round, string $twice): void {
+        $earlier = [];
+        $state = StageState::start($this->participants);
+        for ($played = 1; $played < $number; ++$played) {
+            $earlier[] = $pairing = new RoundPairing($played, null, [new Event([$this->alice, $this->bob], new Round($played))]);
+            $state = $state->withRoundPaired($pairing);
+        }
+        [$events, $byes] = $round($this, new Round($number));
+        $pairing = new RoundPairing($number, null, $events, $byes);
+
+        $refusals = [];
+        foreach ([
+            'verb' => static fn() => $verb === 'played' ? $state->withRoundPlayed($pairing, []) : $state->withRoundPaired($pairing),
+            'fromHistory()' => fn() => StageState::fromHistory($this->participants, [...$earlier, $pairing]),
+        ] as $path => $build) {
+            try {
+                $build();
+                $refusals[$path] = null;
+            } catch (InvalidConfigurationException $exception) {
+                $refusals[$path] = [$exception->getReason(), $exception->getConfigurationIssue(), $exception->getContext()];
+            }
+        }
+
+        $refusal = [
+            InvalidConfigurationReason::ParticipantTwiceInRound,
+            "Participant {$twice} is in round {$number} twice",
+            ['round' => $number, 'participant' => $twice],
+        ];
+        expect($refusals)->toBe(['verb' => $refusal, 'fromHistory()' => $refusal]);
+    })->with(['played', 'paired'])->with(['round 1' => 1, 'round 3' => 3])->with([
+        'one event listed twice' => [
+            fn($test, Round $round) => [[new Event([$test->alice, $test->bob], $round), new Event([$test->alice, $test->bob], $round)], []],
+            'p1',
+        ],
+        'one event listed twice, the participants named either way round' => [
+            fn($test, Round $round) => [[new Event([$test->alice, $test->bob], $round), new Event([$test->bob, $test->alice], $round)], []],
+            'p2',
+        ],
+        // An event without a tie leg is leg 1 of its tie
+        'an event without a leg and the same pair as leg 1' => [
+            fn($test, Round $round) => [[new Event([$test->alice, $test->bob], $round), new Event([$test->alice, $test->bob], $round, ['tie_leg' => 1])], []],
+            'p1',
+        ],
+        'one leg of a tie listed twice' => [
+            fn($test, Round $round) => [[
+                new Event([$test->alice, $test->bob], $round, ['tie_leg' => 2]),
+                new Event([$test->bob, $test->alice], $round, ['tie_leg' => 2]),
+            ], []],
+            'p2',
+        ],
+        'a participant in two events against different opponents' => [
+            fn($test, Round $round) => [[new Event([$test->alice, $test->bob], $round), new Event([$test->carol, $test->alice], $round)], []],
+            'p1',
+        ],
+        'a participant in an event and among the byes' => [
+            fn($test, Round $round) => [[new Event([$test->alice, $test->bob], $round)], [$test->carol, $test->bob]],
+            'p2',
+        ],
+        'a participant with two byes' => [
+            fn($test, Round $round) => [[new Event([$test->alice, $test->bob], $round)], [$test->carol, $test->carol]],
+            'p3',
+        ],
+    ]);
+
+    // The two legs of a tie are one appearance: the verbs record them in one
+    // round, as fromHistory() does, and each leg keeps a result of its own
+    it('records the two legs of a tie in one round, as fromHistory() does', function (string $verb): void {
+        $round = new Round(1);
+        $legs = [new Event([$this->alice, $this->bob], $round, ['tie_leg' => 1]), new Event([$this->bob, $this->alice], $round, ['tie_leg' => 2])];
+        $pairing = new RoundPairing(1, 'final', [...$legs, new Event([$this->carol, $this->dave], $round)]);
+        $results = [new Result($legs[1], $this->bob)];
+
+        $state = $verb === 'played'
+            ? StageState::start($this->participants)->withRoundPlayed($pairing, $results)
+            : StageState::start($this->participants)->withRoundPaired($pairing)->withAdditionalResults($results);
+
+        expect($state->toArray())->toBe(StageState::fromHistory($this->participants, [$pairing], $results)->toArray())
+            ->and($state->getEventsWithoutResult())->toBe([$legs[0], $pairing->getEvents()[2]]);
+    })->with(['played', 'paired']);
+
     it('records the rounds 1, 2, 3 and so on, one after the other', function (): void {
         $state = StageState::start($this->participants);
         foreach ([1, 2, 3] as $number) {
@@ -226,7 +312,7 @@ describe('StageState', function (): void {
                 new Event([$this->alice, $this->carol], new Round(2)),
             ], [$this->bob]), [])
             ->withRoundPlayed(new RoundPairing(3, null, [
-                new Event([$this->bob, $this->carol], new Round(3)),
+                new Event([$this->bob, $this->alice], new Round(3)),
             ], [$this->carol]), []);
 
         expect($state->getByeIds())->toBe(['p3', 'p2', 'p3']);

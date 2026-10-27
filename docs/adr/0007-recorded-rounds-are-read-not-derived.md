@@ -10,8 +10,10 @@ withdrawal without its round is narrowed by
 [0012](0012-a-withdrawal-states-its-round.md), and what it says of an
 adjustment without its round is replaced by the amendment of 0012 (no state
 holds one any more); what point 8 says of a gap in the round
-numbers is replaced by [0018](0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md):
-the verbs and `fromArray()` refuse it too.
+numbers is replaced by [0018](0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md),
+and what it says of a participant twice in a round by
+[0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md): the verbs and
+`fromArray()` refuse both too.
 
 ## Context
 

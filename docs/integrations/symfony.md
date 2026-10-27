@@ -409,10 +409,10 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     an adjustment without it is refused (`AdjustmentWithoutRound`).
 
   `fromHistory()` checks round numbers that are not 1, 2, 3 and so on
-  (`RoundOutOfSequence`), as the verbs and a stored state do, and what rows
-  can get wrong and a stored state cannot: a participant who is not an entrant
-  (`ParticipantNotAnEntrant`), a participant in a round twice
-  (`ParticipantTwiceInRound`) and two results for one event
+  (`RoundOutOfSequence`) and a participant in a round twice
+  (`ParticipantTwiceInRound`), as the verbs and a stored state do, and what
+  rows can get wrong and a stored state cannot: a participant who is not an
+  entrant (`ParticipantNotAnEntrant`) and two results for one event
   (`DuplicateResult`). A round that only pairs the entrants otherwise than
   the engine would have, because an organiser drew it by hand, is not an
   error: `getRecordedRounds()` reports it as manual

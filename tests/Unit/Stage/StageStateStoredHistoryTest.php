@@ -282,6 +282,68 @@ describe('a stored stage state', function (): void {
             ->and($refusal->getContext())->toBe(['last_round' => 0, 'pairing_round' => 2, 'expected_round' => 1]);
     });
 
+    // The verbs refuse a round that holds a participant twice, as
+    // fromHistory() does (issue #197), so a stored state with such a round
+    // is one no verb records. The engines and the bracket view matched one
+    // result to both events of an event listed twice. 0.2.x recorded such a
+    // state and stored it without a format version; it is refused all the
+    // same (the changelog says so).
+    it('is refused with a participant twice in a round, with or without a format version', function (Closure $change, string $twice, bool $versioned): void {
+        $stored = $change(storedHistory());
+        if (!$versioned) {
+            unset($stored['format_version']);
+        }
+
+        $refusal = storedHistoryRefusal($stored);
+
+        expect($refusal->getReason())->toBe(InvalidConfigurationReason::ParticipantTwiceInRound)
+            ->and($refusal->getConfigurationIssue())->toBe("Participant {$twice} is in round 2 twice")
+            ->and($refusal->getContext())->toBe(['round' => 2, 'participant' => $twice]);
+    })->with([
+        'one event listed twice' => [
+            function (array $stored): array {
+                $stored['rounds'][1]['events'][1] = $stored['rounds'][1]['events'][0];
+
+                return $stored;
+            },
+            'a',
+        ],
+        'one event listed twice, the participants named either way round' => [
+            function (array $stored): array {
+                $stored['rounds'][1]['events'][1] = $stored['rounds'][1]['events'][0];
+                $stored['rounds'][1]['events'][1]['participants'] = ['c', 'a'];
+
+                return $stored;
+            },
+            'c',
+        ],
+        'an event without a leg and the same pair as leg 1' => [
+            function (array $stored): array {
+                $stored['rounds'][1]['events'][1] = $stored['rounds'][1]['events'][0];
+                $stored['rounds'][1]['events'][1]['metadata'] = ['tie_leg' => 1];
+
+                return $stored;
+            },
+            'a',
+        ],
+        'a participant in two events against different opponents' => [
+            function (array $stored): array {
+                $stored['rounds'][1]['events'][1]['participants'] = ['a', 'd'];
+
+                return $stored;
+            },
+            'a',
+        ],
+        'a participant in an event and among the byes' => [
+            function (array $stored): array {
+                $stored['rounds'][1]['byes'] = ['b'];
+
+                return $stored;
+            },
+            'b',
+        ],
+    ])->with(['format version 1' => true, 'no format version, as 0.2.x wrote it' => false]);
+
     it('is read with two results of one event, which withResultReplaced() repairs', function (): void {
         $stored = storedHistory();
         $stored['results'][] = $stored['results'][1];
