@@ -1087,6 +1087,18 @@ function stageStateMistakes(): array
             'Rounds must be recorded in play order and numbered 1, 2, 3 and so on: the next round is round 2, not round 3',
             ['last_round' => 1, 'pairing_round' => 3, 'expected_round' => 2],
         ],
+        'a round that holds one event twice, the participants named either way round' => [
+            fn() => $start()->withRoundPaired(new RoundPairing(1, null, [$first, new Event([$bob, $alice], new Round(1))])),
+            InvalidConfigurationReason::ParticipantTwiceInRound,
+            'Participant b is in round 1 twice',
+            ['round' => 1, 'participant' => 'b'],
+        ],
+        'a round that gives a bye to a participant of one of its events' => [
+            fn() => $start()->withRoundPlayed(new RoundPairing(1, null, [$first], [$carol, $alice]), []),
+            InvalidConfigurationReason::ParticipantTwiceInRound,
+            'Participant a is in round 1 twice',
+            ['round' => 1, 'participant' => 'a'],
+        ],
         'a pairing of round 1 that holds an event of round 2' => [
             fn() => $start()->withRoundPlayed(new RoundPairing(1, null, [$first, $second]), []),
             InvalidConfigurationReason::EventNotInRound,

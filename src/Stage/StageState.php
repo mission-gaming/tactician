@@ -132,18 +132,16 @@ final readonly class StageState
      *
      * The round numbers are 1, 2, 3 and so on, with none left out or
      * given twice (`RoundOutOfSequence`), as the verbs require; the context
-     * of the refusal lists them under `round_numbers` as well. Two rules
-     * are checked that the verbs do not check, because rows can state what
-     * no engine paired:
-     *
-     * - every participant of an event, a bye, a result, a withdrawal or an
-     *   adjustment is one of the entrants, by ID
-     *   (`ParticipantNotAnEntrant`);
-     * - nobody is in a round twice: in two events against different
-     *   opponents, in an event and among the byes, or in one event listed
-     *   twice (`ParticipantTwiceInRound`). The two legs of a tie, marked 1
-     *   and 2 under `tie_leg` in the metadata of their events, are one
-     *   appearance.
+     * of the refusal lists them under `round_numbers` as well. Nobody is in
+     * a round twice: in two events against different opponents, in an
+     * event and among the byes, or in one event listed twice, the same pair
+     * in either order with the same tie leg (`ParticipantTwiceInRound`),
+     * as the verbs require too. The two legs of a tie, marked 1 and 2 under
+     * `tie_leg` in the metadata of their events, are one appearance. One
+     * rule is checked that the verbs do not check, because rows can state
+     * what no engine paired: every participant of an event, a bye, a
+     * result, a withdrawal or an adjustment is one of the entrants, by ID
+     * (`ParticipantNotAnEntrant`).
      *
      * An event with two results is refused as well (`DuplicateResult`).
      * Everything withRoundPlayed() checks is checked by it here too, with
@@ -199,8 +197,9 @@ final readonly class StageState
      *
      * @throws InvalidConfigurationException When two entrants share an ID
      *                                       (`DuplicateParticipantIds`), the round numbers are not
-     *                                       1, 2, 3 and so on (`RoundOutOfSequence`), one of the
-     *                                       two rules above is broken, an event has two results
+     *                                       1, 2, 3 and so on (`RoundOutOfSequence`), a participant
+     *                                       is no entrant (`ParticipantNotAnEntrant`) or is in a
+     *                                       round twice (`ParticipantTwiceInRound`), an event has two results
      *                                       (`DuplicateResult`), the history holds rounds and a
      *                                       withdrawal that does not say its round
      *                                       (`WithdrawalWithoutRound`, with the participant and
@@ -263,7 +262,7 @@ final readonly class StageState
                 ]);
             }
 
-            $positions += $state->positionsOfSoundRound($pairing, $requireEntrant);
+            $positions += self::positionsOfSoundRound($pairing, $requireEntrant);
         }
 
         // The results in the order the verbs would have recorded them:
@@ -397,17 +396,34 @@ final readonly class StageState
     }
 
     /**
-     * Check one round of a supplied history against the rules that concern
-     * it alone, and say where each of its events stands.
+     * The one check that nobody is in a round twice, which the verbs,
+     * fromHistory() and fromArray() share, and where each event of the
+     * round stands.
      *
-     * @param \Closure(Participant, string, int|null): void $requireEntrant
+     * A participant is in a round once: in one event, or among the byes
+     * once. In two events against different opponents, in an event and
+     * among the byes, and in one event listed twice (the same pair in
+     * either order, with the same tie leg, an event without a leg being
+     * leg 1) it is in the round twice. The legs of one tie, which differ
+     * in their tie leg, are one appearance. A result names its event by
+     * round, pair and leg (EventKey), so one event listed twice would be
+     * given the result of the other.
+     *
+     * fromHistory() passes a check that each participant is an entrant,
+     * which is made of each participant as it is met, so that a round that
+     * breaks both rules is refused for whichever comes first in it.
+     *
+     * @param (\Closure(Participant, string, int|null): void)|null $requireEntrant
      *
      * @return array<string, array{int, int}> The round number and the place in the round of
      *                                        every event, by event key
      *
-     * @throws InvalidConfigurationException When a participant is no entrant or is in the round twice
+     * @throws InvalidConfigurationException When a participant is no entrant
+     *                                       (`ParticipantNotAnEntrant`) or is in the round twice
+     *                                       (`ParticipantTwiceInRound`, with `round` and
+     *                                       `participant` in the context)
      */
-    private function positionsOfSoundRound(RoundPairing $pairing, \Closure $requireEntrant): array
+    private static function positionsOfSoundRound(RoundPairing $pairing, ?\Closure $requireEntrant = null): array
     {
         $number = $pairing->getRoundNumber();
         $positions = [];
@@ -422,7 +438,9 @@ final readonly class StageState
             $key = EventKey::of($event);
 
             foreach ($event->getParticipants() as $participant) {
-                $requireEntrant($participant, 'in an event', $number);
+                if ($requireEntrant !== null) {
+                    $requireEntrant($participant, 'in an event', $number);
+                }
 
                 // The same opponents again are the other leg of the tie,
                 // unless it is the same leg again
@@ -438,7 +456,9 @@ final readonly class StageState
         }
 
         foreach ($pairing->getByes() as $bye) {
-            $requireEntrant($bye, 'with a bye', $number);
+            if ($requireEntrant !== null) {
+                $requireEntrant($bye, 'with a bye', $number);
+            }
             if (isset($tieOf[$bye->getId()])) {
                 throw self::twiceInRound($bye, $number);
             }
@@ -484,7 +504,8 @@ final readonly class StageState
      *
      * @throws InvalidConfigurationException When withRoundPlayed() refuses the pairing (a round
      *                                       number below 1, `ValueOutOfRange`; not the next round,
-     *                                       `RoundOutOfSequence`; an event of another round, or an
+     *                                       `RoundOutOfSequence`; a participant in the round twice,
+     *                                       `ParticipantTwiceInRound`; an event of another round, or an
      *                                       event the pairing says awaited a result that no earlier
      *                                       round holds, `EventNotInRound` or
      *                                       `EventWithoutRoundNumber`)
@@ -514,10 +535,18 @@ final readonly class StageState
      * must carry that round number, so the history can never contradict
      * itself. A round given twice, a round before the last and a round that
      * leaves one out are refused alike, with the reason fromHistory() gives
-     * for them: every state the verbs build is one fromHistory() builds.
+     * for them. Nobody is in the round twice: a participant in two events
+     * against different opponents, in an event and among the byes, or in
+     * one event listed twice (the same pair in either order with the same
+     * tie leg, an event without one being leg 1) is refused with the
+     * exception fromHistory() gives (`ParticipantTwiceInRound`). The legs
+     * of one tie are one appearance. A result names its event by round,
+     * pair and leg, so an event listed twice would take the result of the
+     * other.
      *
      * What is not checked: that the participants of the pairing are
-     * active, and that an event has only one result.
+     * active or entrants of the stage (fromHistory() refuses a participant
+     * who is no entrant), and that an event has only one result.
      * The results are appended to getResults() in the order given.
      *
      * @param array<Result> $results
@@ -525,7 +554,9 @@ final readonly class StageState
      *                                       (`ValueOutOfRange`), the pairing is not the next round:
      *                                       round 1 first, then the round after the last recorded
      *                                       (`RoundOutOfSequence`, with `last_round`, `pairing_round`
-     *                                       and `expected_round` in the context), an event or result
+     *                                       and `expected_round` in the context), a participant is in
+     *                                       the round twice (`ParticipantTwiceInRound`, with `round`
+     *                                       and `participant` in the context), an event or result
      *                                       belongs to a different round or is not in the pairing
      *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
      *                                       event carries no round number at all), or an event the
@@ -546,6 +577,7 @@ final readonly class StageState
         }
 
         self::requireNextRound($this->getLastRound()?->getRoundNumber() ?? 0, $pairing->getRoundNumber());
+        self::positionsOfSoundRound($pairing);
 
         foreach ($pairing->getEvents() as $event) {
             $eventRound = $event->getRound()?->getNumber();
@@ -1657,23 +1689,28 @@ final readonly class StageState
      * This is the reader of what toArray() wrote. An application that
      * holds its rounds and results in rows of its own does not build this
      * array: it calls fromHistory(), which records the history through the
-     * same verbs and checks two rules more.
+     * same verbs and checks more than they do (every participant an
+     * entrant, and one result for an event, among others).
      *
      * The history is checked as the verbs check it, because it is
      * recorded again through withRoundPlayed(): rounds in play order,
-     * numbered 1, 2, 3 and so on, every event of a pairing carrying the
+     * numbered 1, 2, 3 and so on, nobody twice in a round, every event of a
+     * pairing carrying the
      * pairing's round number, and every result standing with the results
      * of its round and belonging to an event of that round. Stored data
      * that states a history no sequence of verbs could have recorded is
      * refused with the reason the verb gives (`ValueOutOfRange` for a
-     * round below 1, `RoundOutOfSequence`, `EventNotInRound`,
-     * `EventWithoutRoundNumber`), where it used to load and be replayed by
-     * an engine as if it were sound. A state whose round numbers leave one
-     * out, or do not start at 1, is refused too (`RoundOutOfSequence`),
-     * whatever its format version: 0.2.x recorded and stored such a state,
-     * and an engine read it as if the missing round had been played. What
-     * the verbs do not check is not checked here either: the participants of
-     * a pairing being active, and an event with more than one result (the
+     * round below 1, `RoundOutOfSequence`, `ParticipantTwiceInRound`,
+     * `EventNotInRound`, `EventWithoutRoundNumber`), where it used to load
+     * and be replayed by an engine as if it were sound. A state whose round
+     * numbers leave one out, or do not start at 1, is refused too
+     * (`RoundOutOfSequence`), and so is a state with a participant twice in
+     * a round (`ParticipantTwiceInRound`), whatever its format version:
+     * 0.2.x recorded and stored such states, and an engine read the first
+     * as if the missing round had been played and matched one result to
+     * both events of an event listed twice. What the verbs do not check is
+     * not checked here either: the participants of a pairing being active,
+     * and an event with more than one result (the
      * standings and the bracket engines refuse that one, and
      * withResultReplaced() repairs it).
      *

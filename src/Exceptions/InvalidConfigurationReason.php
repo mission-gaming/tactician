@@ -251,9 +251,12 @@ enum InvalidConfigurationReason: string
     case ParticipantNotAnEntrant = 'participant_not_an_entrant';
 
     /**
-     * A round of a history supplied to `StageState::fromHistory()` holds
-     * one participant twice: in two events against different opponents, in
-     * an event and among the byes, or in an event listed twice.
+     * A round holds one participant twice: in two events against different
+     * opponents, in an event and among the byes, or in an event listed
+     * twice (the same pair in either order with the same tie leg). The round
+     * is one of a history supplied to `StageState::fromHistory()`, one given
+     * to `StageState::withRoundPlayed()` or `withRoundPaired()`, or one of
+     * stored data read by `StageState::fromArray()`.
      */
     case ParticipantTwiceInRound = 'participant_twice_in_round';
 

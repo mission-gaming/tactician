@@ -380,11 +380,13 @@ describe('TacticianException', function (): void {
                     // whose history no verb would have recorded: a round
                     // number changed under its events, a round numbered
                     // below 1, a result moved to a round that is not
-                    // recorded. It is refused with the reason the verb
+                    // recorded, a bye given to a participant of an event
+                    // of the round. It is refused with the reason the verb
                     // gives.
                     expect($refused->getReason())->toBeIn([
                         InvalidConfigurationReason::ValueOutOfRange,
                         InvalidConfigurationReason::RoundOutOfSequence,
+                        InvalidConfigurationReason::ParticipantTwiceInRound,
                         InvalidConfigurationReason::EventNotInRound,
                         InvalidConfigurationReason::EventWithoutRoundNumber,
                     ], implode('.', $path));
