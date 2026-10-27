@@ -700,9 +700,11 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      *
      * A state whose rounds or results name a participant outside that list
      * cannot say where the participant was drawn, and the schedule could
-     * not be drawn again as it was: a round recorded with a participant who
-     * is no entrant, or data stored before the entrant list was kept (0.2.x)
-     * in which a participant has withdrawn. It is refused, and so is a state
+     * not be drawn again as it was: data stored before the entrant list was
+     * kept (0.2.x) in which a participant has withdrawn, or stored data
+     * whose first round names a participant who is no entrant, which
+     * StageState::fromArray() reads as such a withdrawal (the verbs refuse a
+     * round that names one). It is refused, and so is a state
      * with a recorded event that does not have two participants. A
      * participant named by an adjustment alone, who withdrew before the
      * draw, was drawn nowhere and is not refused (see tableList()).
