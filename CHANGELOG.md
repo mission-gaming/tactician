@@ -3909,8 +3909,13 @@ entry on the engine fingerprint.
 
   **Who is affected.** An application that draws a round by hand with a
   participant who never entered, and one whose history names, after round
-  1, an entrant it says withdrew before the draw. One that records the
-  rounds an engine pairs is not affected. **What to check.** A round you
+  1, an entrant it says withdrew before the draw. So is a state 0.2.x
+  stored from rounds drawn by hand in which an entrant sat out round 1
+  without a bye listed, played a later round and then withdrew: that round
+  names it, the first does not, and the data keeps no entrant list, so it
+  is read as a participant who never entered. One that records the rounds
+  an engine pairs is not affected: every engine names each entrant in the
+  draw in round 1, in an event or among the byes. **What to check.** A round you
   build with `new RoundPairing()` names only participants the stage was
   started with. A stored state that no longer loads is rebuilt with the
   participant among the entrants, through `StageState::start()` or

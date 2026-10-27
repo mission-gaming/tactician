@@ -100,6 +100,11 @@ adjustment happened after) concern what the verbs record by themselves.
   longer loads where a round after the first names the participant. It is
   rebuilt with the participant among the entrants, through `start()` or
   `fromHistory()`, or without it.
+- A state 0.2.x stored from rounds drawn by hand, in which an entrant sat
+  out round 1 without a bye listed, played a later round and then withdrew,
+  no longer loads: only that later round names it, and the data cannot tell
+  it from a participant who never entered. No engine pairs such a round 1;
+  each names every entrant in the draw, in an event or among the byes.
 - A history that names, after round 1, an entrant it says withdrew before
   the draw is refused by `fromHistory()` now.
 - No line of `tests/Fixtures/stored-by-0.2/` holds such a round: the one
