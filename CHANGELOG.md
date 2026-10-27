@@ -1519,10 +1519,11 @@ entry on the engine fingerprint.
     and an adjustment without `madeAfterRound()` in a history with rounds
     (the new reason `AdjustmentWithoutRound`, `adjustment_without_round`,
     the same context; ADR 0012, amended).
-    `fromArray()`, `fromJson()` and the verbs are not held to the two
-    rules: they accept what they accepted, bar a gap in the round numbers
-    and a participant twice in a round (see the entries on the rounds of a
-    stage state under **Changed**).
+    `fromArray()`, `fromJson()` and the verbs accept what they accepted,
+    bar a gap in the round numbers, a participant twice in a round and a
+    round that names a participant who is not an entrant (see the entries
+    on the rounds of a stage state under **Changed**). Of the rules above,
+    the one they are not held to is one result for an event.
   - **History is supplied, never recomputed.** An engine reads the rounds
     recorded on a state as they are and derives only the round that does
     not exist yet (ADR 0007,
@@ -2935,15 +2936,17 @@ entry on the engine fingerprint.
   result's event with no round. What the verbs accept still loads: a
   pairing whose participants are not active, and two results of one event,
   which has to load so that `withResultReplaced()` can repair it. (A gap
-  in the round numbers, and a participant twice in a round, no longer
-  load: the verbs refuse them now; see the entries on the rounds of a stage
+  in the round numbers, a participant twice in a round, and a round after
+  the first that names a participant who is not an entrant no longer load:
+  the verbs refuse them now; see the entries on the rounds of a stage
   state.) Who is affected: an application
   whose stored states were written or edited by something other than
   `toArray()` or `toJson()` (a migration script, a hand-built array), and
   code that catches only `InvalidInputException` around `fromArray()`. A
   state the library wrote is one the verbs recorded and loads as before,
-  whichever release wrote it, bar one whose round numbers leave one out or
-  that holds a participant twice in a round, which the verbs of 0.2.x
+  whichever release wrote it, bar one whose round numbers leave one out,
+  that holds a participant twice in a round, or whose round after the first
+  names a participant who is not an entrant, which the verbs of 0.2.x
   recorded. What to change: catch `InvalidConfigurationException` as well
   (`catch (TacticianException)` covers both), and rebuild a refused state
   from your own rows with `StageState::start()` and `withRoundPlayed()`.
@@ -3860,6 +3863,65 @@ entry on the engine fingerprint.
   a participant of one of its events. A stored state that no longer loads
   is rebuilt from the round as it was meant, through the verbs or
   `fromHistory()`.
+- **Breaking: everyone in a round of a stage state is an entrant, and a
+  stored stage state whose round after the first names somebody else no
+  longer loads ([#199](https://github.com/mission-gaming/tactician/issues/199)).**
+  `StageState::withRoundPlayed()` and `withRoundPaired()` accepted a round
+  drawn by hand that named a participant the stage was not started with,
+  in an event or among the byes. `StageState::fromHistory()` refused the
+  same round. The verbs now refuse it with the refusal `fromHistory()`
+  gives: `InvalidConfigurationException` with the reason
+  `ParticipantNotAnEntrant`, the message "The history names participant X
+  (in an event), who is not one of the entrants" (or "with a bye"), and
+  `participant`, `role` and `round` in the context. The check is made in
+  the one check of 0.3.0 that nobody is in a round twice, so a round that
+  breaks both rules is refused for whichever comes first in it, by every
+  way in. An entrant who withdraws from the live stage keeps its place and
+  may still be named by a later round, as a league's fixtures are; one who
+  withdraws before the first round is an entrant for that round, and one
+  that round does not name withdrew before the draw and is no entrant from
+  then on. `fromHistory()` used to accept a later round that named such an
+  entrant, given with a `Withdrawal` after round 0, and built a state whose
+  rounds named somebody outside its entrant list; it refuses that round
+  now, as the verbs do. With this, two results of one event
+  (`DuplicateResult`) are the one thing `fromHistory()` refuses and the
+  verbs accept. No engine pairs a round that names somebody who is not an
+  entrant: a sweep of every engine, 2 to 16 entrants, three seeds, with no
+  withdrawal, a withdrawal before the draw and withdrawals from the live
+  stage, refused none of 8,214 rounds it paired.
+
+  **A stored state with such a round is refused.** `StageState::fromArray()`
+  and `fromJson()` record the stored rounds again through
+  `withRoundPlayed()`, so a stored state whose round after the first names
+  a participant who is neither in its entrant list (the active list where
+  the data has none) nor named by its first round is now refused with
+  `ParticipantNotAnEntrant`. This includes data stored by 0.2.x, without a
+  format version, whose verbs recorded such a round. A participant the
+  first stored round names is read as an entrant who withdrew and whose
+  place is not known: 0.2.x stored every withdrawal that way, and nothing
+  in the data tells it from a participant who never entered. The stage
+  state form keeps format version 1, for the reason the entries above give:
+  no key and no meaning changes. 0.2.x documented that its verbs did not
+  check this, so this is a deliberate break. This is decided in ADR 0021
+  (`docs/adr/0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md`),
+  which amends point 8 of ADR 0007 and ADR 0020. None of the 0.2.3
+  fixtures holds such a round.
+
+  **Who is affected.** An application that draws a round by hand with a
+  participant who never entered, and one whose history names, after round
+  1, an entrant it says withdrew before the draw. One that records the
+  rounds an engine pairs is not affected. **What to check.** A round you
+  build with `new RoundPairing()` names only participants the stage was
+  started with. A stored state that no longer loads is rebuilt with the
+  participant among the entrants, through `StageState::start()` or
+  `fromHistory()`, or without it.
+- The documents say that the `tie_leg` of an event is an integer. Wherever
+  the library reads it, anything else is read as leg 1, as an event without
+  one is: a string such as `"2"` included. So legs `"1"` and `"2"` of one
+  tie are one event, and a stage state refuses the round as one event
+  listed twice (`ParticipantTwiceInRound`). Nothing changes in what the
+  library does; an application that stores the leg hands it back as an
+  integer ([#199](https://github.com/mission-gaming/tactician/issues/199)).
 
 ### Deprecated
 
