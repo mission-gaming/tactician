@@ -64,6 +64,15 @@ final class FormatMetadataKey
      * Event: which leg of a two-legged knockout tie the event is, 1 or 2.
      * Written by the elimination engines on both events of such a tie, and
      * on no other event.
+     *
+     * The value is an integer. Wherever the library reads it (EventKey,
+     * which matches a result to its event and tells the events of a round
+     * apart, the bracket engines and the standings), anything else is read
+     * as leg 1, as an event without the key is: a string such as '2'
+     * included. So legs '1' and '2' of one tie are one event, and a stage
+     * state refuses the round as one event listed twice
+     * (`ParticipantTwiceInRound`). An application that stores the leg
+     * hands it back as an integer.
      */
     public const string TIE_LEG = 'tie_leg';
 
