@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Award;
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -567,6 +569,185 @@ describe('a double elimination bracket', function (): void {
             'winners round 1', 'losers round 1', 'winners round 2', 'losers round 2', 'losers round 3',
             'winners final', 'losers final', 'grand final', 'grand final reset',
         ]);
+    });
+});
+
+describe('the results of a node (#181)', function (): void {
+    it('shows the result of each leg in leg order, a tie with only its first leg recorded included', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2, thirdPlace: true));
+        [$p1, $p2, $p3, $p4] = bracketViewField(4);
+        $state = bracketViewPlay($engine, StageState::start([$p1, $p2, $p3, $p4]), bracketViewTopWins());
+
+        // The final is played to its end; the third-place tie has its first leg only
+        $last = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($last);
+        [$finalFirst, $finalSecond, $thirdFirst, $thirdSecond] = $last->getEvents();
+        $finalLeg1 = new Result($finalFirst, $p2, ['p1' => 1, 'p2' => 2]);
+        $finalLeg2 = new Result($finalSecond, null, ['p1' => 0, 'p2' => 0]);
+        $thirdLeg1 = new Result($thirdFirst, $p4, ['p3' => 0, 'p4' => 3]);
+        $state = $state->withAdditionalResults([$finalLeg1, $finalLeg2, $thirdLeg1]);
+
+        $bracket = $engine->getBracket($state);
+        $final = $bracket->getNode('main:2:1');
+        $third = $bracket->getNode('main:2:2');
+        assert($final instanceof BracketNode && $third instanceof BracketNode);
+
+        expect($final->getEvents())->toBe([$finalFirst, $finalSecond])
+            ->and($final->getResults())->toBe([$finalLeg1, $finalLeg2])
+            ->and($final->getStatus())->toBe(BracketNodeStatus::Decided)
+            ->and($third->getEvents())->toBe([$thirdFirst, $thirdSecond])
+            ->and($third->getResults())->toBe([$thirdLeg1, null])
+            ->and($third->getStatus())->toBe(BracketNodeStatus::InPlay)
+            ->and($third->getResults()[0]?->getScoreFor($p4))->toBe(3)
+            // The semifinals were played whole, with no scores
+            ->and(array_map(
+                static fn(?Result $result): ?string => $result?->getWinner()?->getId(),
+                $bracket->getNode('main:1:2')?->getResults() ?? []
+            ))->toBe(['p2', 'p2']);
+    });
+
+    it('has a null for every event of a round recorded when it was paired, and no result where there is no event', function (): void {
+        $engine = new SingleEliminationEngine();
+        $state = StageState::start(bracketViewField(5));
+        $state = $state->withRoundPaired($engine->pairNextRound($state));
+        $bracket = $engine->getBracket($state);
+
+        $results = [];
+        foreach ($bracket->getNodes() as $node) {
+            $results[$node->getId()] = [count($node->getEvents()), $node->getResults()];
+        }
+
+        // main:1:2 (p4 v p5) is the round's one event; the byes and the rounds to come have none
+        expect($results)->toBe([
+            'main:1:1' => [0, []],
+            'main:1:2' => [1, [null]],
+            'main:1:3' => [0, []],
+            'main:1:4' => [0, []],
+            'main:2:1' => [0, []],
+            'main:2:2' => [0, []],
+            'main:3:1' => [0, []],
+        ])->and($bracket->getNode('main:1:1')?->getStatus())->toBe(BracketNodeStatus::Bye)
+            ->and($bracket->getNode('main:1:4')?->getStatus())->toBe(BracketNodeStatus::Bye);
+
+        // Two byes meet in the first losers round of a double elimination bracket of 5: an empty node
+        $double = new DoubleEliminationEngine();
+        $state = StageState::start(bracketViewField(5));
+        $state = $state->withRoundPaired($double->pairNextRound($state));
+        $empty = $double->getBracket($state)->getNode('losers:1:2');
+        expect($empty?->getStatus())->toBe(BracketNodeStatus::Empty)
+            ->and($empty?->getResults())->toBe([]);
+    });
+
+    it('shows what was recorded of a tie an entrant left while it was played, and of a void tie', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        [$p1, $p2, $p3, $p4] = bracketViewField(4);
+        $state = StageState::start([$p1, $p2, $p3, $p4]);
+        $pairing = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($pairing);
+
+        // p1 v p4 has its first leg, then p4 leaves; p2 and p3 both leave before either leg
+        $legs = array_values(array_filter(
+            $pairing->getEvents(),
+            static fn(Event $event): bool => $event->hasParticipant($p1)
+        ));
+        $first = new Result($legs[0], $p1, ['p1' => 1, 'p4' => 0]);
+        $state = $state->withAdditionalResults([$first])
+            ->withoutParticipant($p4)
+            ->withoutParticipant($p2)
+            ->withoutParticipant($p3);
+
+        $bracket = $engine->getBracket($state);
+        $uncontested = $bracket->getNode('main:1:1');
+        $void = $bracket->getNode('main:1:2');
+        assert($uncontested instanceof BracketNode && $void instanceof BracketNode);
+
+        expect($uncontested->getStatus())->toBe(BracketNodeStatus::Uncontested)
+            ->and($uncontested->getResults())->toBe([$first, null])
+            ->and($void->getStatus())->toBe(BracketNodeStatus::Void)
+            ->and($void->getEvents())->toHaveCount(2)
+            ->and($void->getResults())->toBe([null, null])
+            ->and($bracket->getNode('main:2:1')?->getResults())->toBe([]);
+    });
+
+    it('shows a result recorded after an entrant left the tie, and the status still says how the tie was settled', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        [$p1, $p2, $p3, $p4] = bracketViewField(4);
+        $state = StageState::start([$p1, $p2, $p3, $p4]);
+        $pairing = $engine->pairNextRound($state);
+        $state = $state->withRoundPaired($pairing);
+
+        // p1 v p4: the first leg, then p4 leaves, then the second leg's result comes in all the same
+        [$firstLeg, $secondLeg] = array_values(array_filter(
+            $pairing->getEvents(),
+            static fn(Event $event): bool => $event->hasParticipant($p1)
+        ));
+        $first = new Result($firstLeg, $p1, ['p1' => 2, 'p4' => 0]);
+        $second = new Result($secondLeg, $p4, ['p1' => 0, 'p4' => 5]);
+        $state = $state->withAdditionalResults([$first])
+            ->withoutParticipant($p4)
+            ->withAdditionalResults([$second]);
+
+        $node = $engine->getBracket($state)->getNode('main:1:1');
+        assert($node instanceof BracketNode);
+
+        // The results are what the state holds, whenever they were recorded; the status and the
+        // advancer, not the results, say that p1 went through uncontested
+        expect($node->getResults())->toBe([$first, $second])
+            ->and($node->getStatus())->toBe(BracketNodeStatus::Uncontested)
+            ->and($node->getAdvancer())->toBe($p1);
+    });
+
+    it('shows an awarded result and a decider as recorded, and the result that replaced another', function (): void {
+        $engine = new SingleEliminationEngine();
+        [$p1, $p2, $p3, $p4] = bracketViewField(4);
+        $state = StageState::start([$p1, $p2, $p3, $p4]);
+        $pairing = $engine->pairNextRound($state);
+        [$top, $bottom] = $pairing->getEvents();
+
+        // The top tie is awarded to p1; the bottom one is level and awaits its decider
+        $awarded = new Result($top, $p1, [], [], new Award('walkover'));
+        $level = new Result($bottom, null, ['p2' => 1, 'p3' => 1]);
+        $state = $state->withRoundPlayed($pairing, [$awarded, $level]);
+        $node = static fn(StageState $state, string $id): BracketNode => $engine->getBracket($state)->getNode($id) ?? throw new LogicException($id);
+
+        expect($node($state, 'main:1:1')->getResults())->toBe([$awarded])
+            ->and($node($state, 'main:1:1')->getResults()[0]?->isAwarded())->toBeTrue()
+            ->and($node($state, 'main:1:2')->getResults())->toBe([$level])
+            ->and($node($state, 'main:1:2')->getStatus())->toBe(BracketNodeStatus::AwaitingDecision);
+
+        // The level result is replaced by the same scores with a decider for p3
+        $decided = new Result($bottom, null, ['p2' => 1, 'p3' => 1], [], null, new Decider(['p3'], 'penalties'));
+        $state = $state->withResultReplaced($decided);
+
+        expect($node($state, 'main:1:2')->getResults())->toBe([$decided])
+            ->and($node($state, 'main:1:2')->getResults()[0]?->getDecider()?->getLabel())->toBe('penalties')
+            ->and($node($state, 'main:1:2')->getAdvancer())->toBe($p3)
+            ->and($node($state, 'main:1:2')->getStatus())->toBe(BracketNodeStatus::Decided);
+    });
+
+    it('shows the results of a grand final and of its reset, and none for a reset not played', function (): void {
+        $engine = new DoubleEliminationEngine();
+
+        // The second-named always wins: the losers champion takes the grand final, and the reset is played
+        $state = StageState::start(bracketViewField(4));
+        while (!$engine->isComplete($state)) {
+            $state = bracketViewPlay($engine, $state, static fn(Participant $first, Participant $second): Participant => $second);
+        }
+        $results = array_values($state->getResults());
+        $bracket = $engine->getBracket($state);
+        expect($bracket->getNode('grand-final:1:1')?->getResults())->toBe([$results[count($results) - 2]])
+            ->and($bracket->getNode('grand-final:2:1')?->getResults())->toBe([$results[count($results) - 1]])
+            ->and($bracket->getNode('grand-final:2:1')?->getResults()[0]?->getWinner()?->getId())->toBe('p2');
+
+        // The first-named always wins: the reset is not played and has no result
+        $state = StageState::start(bracketViewField(4));
+        while (!$engine->isComplete($state)) {
+            $state = bracketViewPlay($engine, $state, bracketViewTopWins());
+        }
+        $bracket = $engine->getBracket($state);
+        expect($bracket->getNode('grand-final:1:1')?->getResults())->toHaveCount(1)
+            ->and($bracket->getNode('grand-final:2:1')?->getStatus())->toBe(BracketNodeStatus::NotPlayed)
+            ->and($bracket->getNode('grand-final:2:1')?->getResults())->toBe([]);
     });
 });
 

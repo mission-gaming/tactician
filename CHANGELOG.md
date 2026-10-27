@@ -1047,7 +1047,8 @@ entry on the engine fingerprint.
     no reason is new.
 - **The structured bracket view: `getBracket()`
   ([#57](https://github.com/mission-gaming/tactician/issues/57),
-  [#93](https://github.com/mission-gaming/tactician/issues/93)).** Both
+  [#93](https://github.com/mission-gaming/tactician/issues/93),
+  [#181](https://github.com/mission-gaming/tactician/issues/181)).** Both
   elimination engines implement a new capability interface,
   `Stage\BracketViewEngine`, whose one method `getBracket(StageState)`
   returns a `Stage\Bracket`: every round of every side of the bracket, the
@@ -1063,7 +1064,8 @@ entry on the engine fingerprint.
     `getNode()`, `getNextRound()`, `isComplete()`), `BracketRound` (side,
     structural round, slot count, label, round number, `isManual()`,
     `isNext()`), `BracketNode` (ID `<side>:<round>:<position>`, kind,
-    slots, status, advancer, losers, recorded events) and `BracketSlot`
+    slots, status, advancer, losers, recorded events, and the result of
+    each event, `getResults()`) and `BracketSlot`
     (entrant or placeholder, source, source nodes, re-seeded, draw
     position, withdrawn);
   - the enums `BracketSide` (`Main`, `Winners`, `Losers`, `GrandFinal`),
@@ -1080,9 +1082,16 @@ entry on the engine fingerprint.
   in the last round, after the final, of kind `BracketTie::ThirdPlace`, its
   slots filled from the losers of the two nodes before the final (#93). The
   reset of a double elimination grand final is shown as its second round,
-  with the status `NotPlayed` where it is not due. The view is never
-  stored: it has no `toArray()`. See the usage guide, "Drawing the
-  Bracket", and example 30.
+  with the status `NotPlayed` where it is not due. A node carries the
+  result the state holds for each of its events, at the place of its
+  event (so in leg order), or `null` where the event has none yet, as
+  recorded (scores, award and decider included, and the replacement of a
+  result replaced): a bracket with scores, or with the one leg of a
+  two-legged tie that has a result, is drawn from the view alone (#181).
+  `BracketNode`'s constructor refuses results that are not one per event
+  or not of the event at their place (`InvalidInputException`). The view is
+  never stored: it has no `toArray()`. See the usage guide, "Drawing the
+  Bracket", and example 30, which now shows the score of every leg.
 
 - **The round labels are a rendering of the bracket view.** Both
   elimination engines now label the rounds they pair with

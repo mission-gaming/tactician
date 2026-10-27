@@ -22,10 +22,11 @@ use MissionGaming\Tactician\Stage\StageState;
 
 // A bracket drawn from its view, and from nothing else. getBracket() gives
 // every round of every side, the rounds still to come included: each node
-// with its slots, where it stands and who went through. The closure below
-// turns a view into rows, one for each node: it reads labels, slots,
-// placeholders and statuses, and never the engine, the state or a result.
-// The rows are shown as tables.
+// with its slots, where it stands and who went through, and the result of
+// each of its legs. The closure below turns a view into rows, one for each
+// node: it reads labels, slots, placeholders, statuses and the scores of
+// the results the nodes carry, and never the engine or the state. The rows
+// are shown as tables.
 //
 // The engines label the rounds they pair from the same view, so the labels
 // here are the ones on the rounds the engines pair.
@@ -59,6 +60,22 @@ $drawBracket = static function (Bracket $bracket): array {
         };
     };
 
+    // The score of each leg in slot order, from the results the node
+    // carries: a leg with no result yet is still to play
+    $scoreText = static function (BracketNode $node): string {
+        $legs = [];
+        foreach ($node->getResults() as $result) {
+            $legs[] = $result instanceof Result
+                ? implode('-', array_map(
+                    static fn(Participant $participant): string => (string) ($result->getScoreFor($participant) ?? '?'),
+                    $node->getParticipants()
+                ))
+                : 'to play';
+        }
+
+        return implode(', ', $legs);
+    };
+
     $rows = [];
     foreach ($bracket->getRounds() as $round) {
         foreach ($round->getNodes() as $node) {
@@ -75,6 +92,7 @@ $drawBracket = static function (Bracket $bracket): array {
                 'Tie' => $node->getKind() === BracketTie::ThirdPlace ? 'third place' : (string) $node->getPosition(),
                 'First' => $slots[0] ?? '',
                 'Second' => $slots[1] ?? '',
+                'Score' => $scoreText($node),
                 'Where it stands' => match ($node->getStatus()) {
                     BracketNodeStatus::Decided => "{$advancer} through" . ($legs > 1 ? " over {$legs} legs" : ''),
                     BracketNodeStatus::Uncontested => "{$advancer} through, uncontested",
@@ -96,7 +114,7 @@ $drawBracket = static function (Bracket $bracket): array {
 
 // Pair the next round and record it, then the results: the entrant named
 // first in a tie's first leg wins every leg, unless the other is one of the
-// upsets
+// upsets, 2-1 in a single or first leg and 1-0 in a second leg
 $playRound = static function (StageEngineInterface $engine, StageState $state, array $upsets = []): StageState {
     $pairing = $engine->pairNextRound($state);
     $state = $state->withRoundPaired($pairing);
@@ -107,7 +125,9 @@ $playRound = static function (StageEngineInterface $engine, StageState $state, a
         if ($event->getMetadataValue('tie_leg') === 2) {
             [$first, $second] = [$second, $first];
         }
-        $results[] = new Result($event, in_array($second->getId(), $upsets, true) ? $second : $first);
+        [$winner, $loser] = in_array($second->getId(), $upsets, true) ? [$second, $first] : [$first, $second];
+        $secondLeg = $event->getMetadataValue('tie_leg') === 2;
+        $results[] = new Result($event, $winner, [$winner->getId() => $secondLeg ? 1 : 2, $loser->getId() => $secondLeg ? 0 : 1]);
     }
 
     return $state->withAdditionalResults($results);
@@ -130,7 +150,8 @@ $cupState = $cupState->withRoundPaired($semifinals);
 $firstLegs = [];
 foreach ($semifinals->getEvents() as $event) {
     if ($event->getMetadataValue('tie_leg') === 1) {
-        $firstLegs[] = new Result($event, $event->getParticipants()[0]);
+        [$home, $away] = $event->getParticipants();
+        $firstLegs[] = new Result($event, $home, [$home->getId() => 3, $away->getId() => 1]);
     }
 }
 $cupState = $cupState->withAdditionalResults($firstLegs);
@@ -165,7 +186,7 @@ if ($outcome === null) {
 //    known only once the round is settled.
 $reseeded = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
 
-return Example::present(__FILE__, 'Drawing a bracket', 'Brackets drawn from the structured view alone: byes, two-legged ties and a third-place tie; a losers bracket with a withdrawal, in play and finished; and a re-seeded bracket whose later rounds wait for the draw.', [
+return Example::present(__FILE__, 'Drawing a bracket', 'Brackets drawn from the structured view alone, scores included: byes, two-legged ties and a third-place tie; a losers bracket with a withdrawal, in play and finished; and a re-seeded bracket whose later rounds wait for the draw.', [
     'Single elimination, two legs, third place' => $drawBracket($cup->getBracket($cupState)),
     'The semifinal first legs' => $firstLegs,
     'Double elimination, Merlins withdrawn, in play' => $inPlay,

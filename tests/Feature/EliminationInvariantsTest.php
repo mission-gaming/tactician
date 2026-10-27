@@ -1137,6 +1137,11 @@ function knownThenTiers(SingleEliminationEngine|DoubleEliminationEngine $engine,
  * played, and after the bracket is over. The check is given every state
  * the bracket goes through.
  *
+ * Where the legs are recorded one by one ($legByLeg), each leg of a tie
+ * is its own step, with a score for each of the two, so that the check
+ * also sees a tie with some of its legs recorded. That draws nothing more
+ * from the seed: the bracket is played as it is without.
+ *
  * @param array<Participant> $field
  * @param Closure(StageState): void $check
  *
@@ -1149,7 +1154,8 @@ function knownThenPlay(
     SingleEliminationEngine|DoubleEliminationEngine $engine,
     array $field,
     int $seed,
-    Closure $check
+    Closure $check,
+    bool $legByLeg = false
 ): array {
     $rng = new Randomizer(new Mt19937($seed));
     $field = array_values($field);
@@ -1204,8 +1210,17 @@ function knownThenPlay(
 
             // One of the two wins every leg
             $winner = $entrants[$rng->getInt(0, 1)];
-            $state = $state->withAdditionalResults(array_map(static fn(Event $leg): Result => new Result($leg, $winner), $legs));
-            $check($state);
+            if (!$legByLeg) {
+                $state = $state->withAdditionalResults(array_map(static fn(Event $leg): Result => new Result($leg, $winner), $legs));
+                $check($state);
+
+                continue;
+            }
+            foreach (array_values($legs) as $index => $leg) {
+                $loser = $entrants[0]->getId() === $winner->getId() ? $entrants[1] : $entrants[0];
+                $state = $state->withAdditionalResults([new Result($leg, $winner, [$winner->getId() => $index + 2, $loser->getId() => $index])]);
+                $check($state);
+            }
         }
 
         $state = $disturb($state);
@@ -1582,7 +1597,22 @@ it('reads a bracket the same whether a round or the withdrawals during it are re
 // the same events and labels, the round to pair next as the engine pairs it,
 // each slot filled by the node it names, each node settled as its status
 // says, the first round as the entry fold, and a finished bracket won by the
-// entrant its outcome names. Reading it never throws.
+// entrant its outcome names. Reading it never throws. Every node carries the
+// result the state holds for each of its events (issue #181), and every
+// result the state holds is on exactly one node, at the place of its event.
+
+/**
+ * The key of an event that a result names, worked out apart from the
+ * library: the round number, the two participants sorted, and the leg.
+ */
+function bracketViewResultKey(Event $event): string
+{
+    $ids = array_map(static fn(Participant $participant): string => $participant->getId(), array_values($event->getParticipants()));
+    sort($ids);
+    $leg = $event->getMetadataValue('tie_leg');
+
+    return ($event->getRound()?->getNumber() ?? 0) . ' ' . implode(' v ', $ids) . ' leg ' . (is_int($leg) ? $leg : 1);
+}
 
 /**
  * The events as sorted keys: the two participants in their order, and the leg.
@@ -1680,6 +1710,36 @@ function bracketViewInvariants(
             expect($nodeOf[spl_object_id($event)]->getStatus())->toBeIn([BracketNodeStatus::Uncontested, BracketNodeStatus::Void], $where);
         }
     }
+
+    // The results of the nodes are the state's: one for each event, at its
+    // place, null where the state holds none; every result of the state on
+    // exactly one node
+    $resultOf = [];
+    foreach ($state->getResults() as $result) {
+        $resultOf[bracketViewResultKey($result->getEvent())] = $result;
+    }
+    $shown = [];
+    foreach ($bracket->getNodes() as $node) {
+        $events = $node->getEvents();
+        $results = $node->getResults();
+        expect(array_keys($results))->toBe(array_keys($events), "{$where}: {$node->getId()}")
+            ->and(array_map(static fn(Event $event): mixed => $event->getMetadataValue('tie_leg') ?? 1, $events))
+            ->toBe($events === [] ? [] : range(1, count($events)), "{$where}: {$node->getId()}");
+        foreach ($events as $index => $event) {
+            $key = bracketViewResultKey($event);
+            expect($results[$index])->toBe($resultOf[$key] ?? null, "{$where}: {$node->getId()}, {$key}");
+            if ($results[$index] instanceof Result) {
+                $shown[$key] = ($shown[$key] ?? 0) + 1;
+            }
+        }
+        $recorded = count(array_filter($results, static fn(?Result $result): bool => $result instanceof Result));
+        if ($recorded > 0) {
+            ++$seen[$recorded < count($results) ? 'some legs recorded' : 'every leg recorded'];
+        }
+    }
+    ksort($shown);
+    ksort($resultOf);
+    expect($shown)->toBe(array_fill_keys(array_keys($resultOf), 1), $where);
 
     // The round to pair next, as the engine pairs it
     $next = $bracket->getNextRound();
@@ -1832,6 +1892,8 @@ it('shows the bracket as the engine reads it after every step, whatever happens 
             ...array_map(static fn(BracketNodeStatus $status): string => $status->value, BracketNodeStatus::cases()),
             ...array_map(static fn(SlotPlaceholder $placeholder): string => 'placeholder ' . $placeholder->value, SlotPlaceholder::cases()),
             'complete',
+            'some legs recorded',
+            'every leg recorded',
         ],
         0
     );
@@ -1850,7 +1912,7 @@ it('shows the bracket as the engine reads it after every step, whatever happens 
                 ++$states;
             };
             $check(StageState::start($entrants));
-            [$state] = knownThenPlay($engine, $entrants, 700 * $fieldSize + $seed, $check);
+            [$state] = knownThenPlay($engine, $entrants, 700 * $fieldSize + $seed, $check, legByLeg: true);
             $check($state);
 
             // The rows of an application show the same bracket
@@ -1866,7 +1928,12 @@ it('shows the bracket as the engine reads it after every step, whatever happens 
         ->and($seen['in-play'])->toBeGreaterThan(0)
         ->and($seen['awaiting-entrants'])->toBeGreaterThan(0)
         ->and($seen['to-be-paired'])->toBeGreaterThan(0)
-        ->and($seen['complete'])->toBeGreaterThan(20);
+        ->and($seen['complete'])->toBeGreaterThan(20)
+        ->and($seen['every leg recorded'])->toBeGreaterThan(0);
+    if (str_contains($variant, 'two legs')) {
+        // A tie with its first leg recorded and not its second
+        expect($seen['some legs recorded'])->toBeGreaterThan(0);
+    }
     if (str_contains($variant, 're-seeded')) {
         expect($seen['placeholder reseeded'])->toBeGreaterThan(0);
     } else {

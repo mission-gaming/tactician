@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Stage\Bracket;
 use MissionGaming\Tactician\Stage\BracketFold;
 use MissionGaming\Tactician\Stage\BracketNode;
@@ -14,6 +15,7 @@ use MissionGaming\Tactician\Stage\BracketRound;
 use MissionGaming\Tactician\Stage\BracketSide;
 use MissionGaming\Tactician\Stage\BracketSlot;
 use MissionGaming\Tactician\Stage\BracketTie;
+use MissionGaming\Tactician\Stage\EventKey;
 use MissionGaming\Tactician\Stage\SlotPlaceholder;
 use MissionGaming\Tactician\Stage\SlotSource;
 
@@ -26,7 +28,8 @@ use MissionGaming\Tactician\Stage\SlotSource;
  * single elimination, halving the nodes of the last round it reached; for
  * double elimination, the fixed sequence of stages the engine walks. Every
  * slot is given its source, and a slot without an entrant its placeholder,
- * from the node it is filled from as that node now stands.
+ * from the node it is filled from as that node now stands. Every event of
+ * a node is shown with the result the state holds for it, if any.
  *
  * @internal Not public API: the bracket view of the two elimination engines.
  *
@@ -605,6 +608,14 @@ final class BracketViewBuilder
 
         $revived = self::revivals($drafts);
 
+        // The results the walk read, by the key the state matches a result
+        // to its event by: the state refuses a result of an event it does
+        // not hold, and the walk two results of one event
+        $results = [];
+        foreach ($reading->resultIndex as $result) {
+            $results[EventKey::of($result->getEvent())] = $result;
+        }
+
         $settled = [];
         foreach ($drafts as $round) {
             foreach ($round['nodes'] as $node) {
@@ -665,6 +676,10 @@ final class BracketViewBuilder
                     $advancer,
                     $losers,
                     $node['events'],
+                    array_map(
+                        static fn(Event $event): ?Result => $results[EventKey::of($event)] ?? null,
+                        $node['events']
+                    ),
                     $node['number']
                 );
             }

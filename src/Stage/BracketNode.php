@@ -6,6 +6,8 @@ namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * One node of a bracket (see Bracket): a tie at its place in the bracket,
@@ -23,6 +25,11 @@ use MissionGaming\Tactician\DTO\Participant;
  * a third-place tie has one node more in its last round, after the final,
  * whose kind is BracketTie::ThirdPlace.
  *
+ * A node carries the recorded events of its tie and, beside them, the
+ * result the state holds for each (getResults()), so that a bracket with
+ * scores, or with the legs of a tie that have a result, can be drawn from
+ * the view alone.
+ *
  * Built by the elimination engines (BracketViewEngine::getBracket()).
  *
  * @experimental
@@ -38,6 +45,9 @@ final readonly class BracketNode
     /** @var list<Event> */
     private array $events;
 
+    /** @var list<Result|null> */
+    private array $results;
+
     /**
      * @param int $round The structural round of the node on its side, 1-based
      * @param int $position The position of the node in its round, 1-based, top of the bracket first
@@ -47,7 +57,15 @@ final readonly class BracketNode
      * @param Participant|null $advancer The entrant who went on from the node, or null
      * @param array<Participant> $losers The entrants of the node who did not go on
      * @param array<Event> $events The recorded events of the node, in leg order
+     * @param array<Result|null>|null $results The result of each event, at the place of its
+     *                                         event, or null where the event has none: as
+     *                                         many as there are events. Null for no result
+     *                                         of any event
      * @param int|null $roundNumber The number of the recorded round the node was played in
+     *
+     * @throws InvalidInputException When the results are not one per event, or a result is not
+     *                                  of the event at its place (the same round number, the
+     *                                  same participants in either order, the same tie leg)
      */
     public function __construct(
         private BracketSide $side,
@@ -59,11 +77,30 @@ final readonly class BracketNode
         private ?Participant $advancer = null,
         array $losers = [],
         array $events = [],
+        ?array $results = null,
         private ?int $roundNumber = null
     ) {
         $this->slots = array_values($slots);
         $this->losers = array_values($losers);
         $this->events = array_values($events);
+        $this->results = $results === null ? array_fill(0, count($this->events), null) : array_values($results);
+
+        if (count($this->results) !== count($this->events)) {
+            throw new InvalidInputException(sprintf(
+                'A bracket node holds one result or null for each event: %d events, %d results.',
+                count($this->events),
+                count($this->results)
+            ));
+        }
+
+        foreach ($this->results as $index => $result) {
+            if ($result instanceof Result && EventKey::of($result->getEvent()) !== EventKey::of($this->events[$index])) {
+                throw new InvalidInputException(sprintf(
+                    'The result at place %d of a bracket node is not of the event at its place.',
+                    $index + 1
+                ));
+            }
+        }
     }
 
     /**
@@ -192,6 +229,36 @@ final readonly class BracketNode
     public function getEvents(): array
     {
         return $this->events;
+    }
+
+    /**
+     * The result of each event of the node, at the place of its event
+     * (getEvents()), so in leg order: the result the state holds for the
+     * event, or null where it holds none yet. As many as there are events,
+     * and none for a node with no event.
+     *
+     * The result is the one the state holds now, a result replaced with
+     * StageState::withResultReplaced() included, as it was recorded: its
+     * winner, its scores, its award (an awarded result) and its decider (a
+     * level tie settled by a decision) are all there, and nothing is
+     * worked out from them. Who went on is getAdvancer().
+     *
+     * Of a two-legged tie with only its first leg recorded, the first entry
+     * is a result and the second null. A node of a round recorded when it
+     * was paired, with no result yet, has null for every event. A node with
+     * an event and a status that settles it without its results (an
+     * uncontested tie, or a void one, left by an entrant or by both while it
+     * was played) shows the results the state holds for its events like
+     * any other, whether they were recorded before the withdrawal or after
+     * it: the status and the advancer say how the tie was settled.
+     * A bye, an empty node, a node of a round still to come and a node not
+     * played have no event and so no result.
+     *
+     * @return list<Result|null>
+     */
+    public function getResults(): array
+    {
+        return $this->results;
     }
 
     /**
