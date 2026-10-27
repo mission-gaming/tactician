@@ -405,6 +405,36 @@ describe('a stored stage state', function (): void {
             ->and($state->withRoundPaired($roundThree)->getNextRoundNumber())->toBe(4);
     })->with(['format version 1' => true, 'no format version, as 0.2.x wrote it' => false]);
 
+    // The cost of reading the first round as the draw: in data 0.2.x wrote,
+    // an entrant who sat out round 1 without a bye listed, played a later
+    // round and then withdrew is named by that later round alone, as a
+    // participant who never entered would be, and is refused with it (ADR
+    // 0021). The same stage stored with its entrant list, or with the bye
+    // listed in round 1, is read.
+    it('is refused where a participant who withdrew is first named after round 1 and the data lists no entrants', function (bool $byeInRoundOne): void {
+        [$a, $b, $c, $d, $e] = array_map(
+            static fn(string $id): Participant => new Participant($id, strtoupper($id)),
+            ['a', 'b', 'c', 'd', 'e']
+        );
+        $state = StageState::start([$a, $b, $c, $d, $e])
+            ->withRoundPaired(new RoundPairing(1, null, [new Event([$a, $b], new Round(1)), new Event([$c, $d], new Round(1))], $byeInRoundOne ? [$e] : []))
+            ->withRoundPaired(new RoundPairing(2, null, [new Event([$a, $c], new Round(2)), new Event([$b, $e], new Round(2))], [$d]))
+            ->withoutParticipant($e);
+        $stored = $state->toArray();
+        $asWrittenBy02 = $stored;
+        unset($asWrittenBy02['format_version'], $asWrittenBy02['entrants'], $asWrittenBy02['withdrawals']);
+
+        expect(StageState::fromArray($stored)->toArray())->toBe($stored);
+        if ($byeInRoundOne) {
+            expect(StageState::fromArray($asWrittenBy02)->getParticipants())->toEqual([$a, $b, $c, $d]);
+
+            return;
+        }
+        $refusal = storedHistoryRefusal($asWrittenBy02);
+        expect($refusal->getReason())->toBe(InvalidConfigurationReason::ParticipantNotAnEntrant)
+            ->and($refusal->getContext())->toBe(['participant' => 'e', 'role' => 'in an event', 'round' => 2]);
+    })->with(['sat out round 1' => false, 'had a bye in round 1' => true]);
+
     it('is read with two results of one event, which withResultReplaced() repairs', function (): void {
         $stored = storedHistory();
         $stored['results'][] = $stored['results'][1];
