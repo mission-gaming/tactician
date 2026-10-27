@@ -1521,7 +1521,8 @@ entry on the engine fingerprint.
     the same context; ADR 0012, amended).
     `fromArray()`, `fromJson()` and the verbs are not held to the two
     rules: they accept what they accepted, bar a gap in the round numbers
-    (see the entry on the rounds of a stage state under **Changed**).
+    and a participant twice in a round (see the entries on the rounds of a
+    stage state under **Changed**).
   - **History is supplied, never recomputed.** An engine reads the rounds
     recorded on a state as they are and derives only the round that does
     not exist yet (ADR 0007,
@@ -2934,14 +2935,16 @@ entry on the engine fingerprint.
   result's event with no round. What the verbs accept still loads: a
   pairing whose participants are not active, and two results of one event,
   which has to load so that `withResultReplaced()` can repair it. (A gap
-  in the round numbers no longer loads: the verbs refuse it now; see the
-  entry on the rounds of a stage state.) Who is affected: an application
+  in the round numbers, and a participant twice in a round, no longer
+  load: the verbs refuse them now; see the entries on the rounds of a stage
+  state.) Who is affected: an application
   whose stored states were written or edited by something other than
   `toArray()` or `toJson()` (a migration script, a hand-built array), and
   code that catches only `InvalidInputException` around `fromArray()`. A
   state the library wrote is one the verbs recorded and loads as before,
-  whichever release wrote it, bar one whose round numbers leave one out,
-  which the verbs of 0.2.x recorded. What to change: catch `InvalidConfigurationException` as well
+  whichever release wrote it, bar one whose round numbers leave one out or
+  that holds a participant twice in a round, which the verbs of 0.2.x
+  recorded. What to change: catch `InvalidConfigurationException` as well
   (`catch (TacticianException)` covers both), and rebuild a refused state
   from your own rows with `StageState::start()` and `withRoundPlayed()`.
   Before: `StageState::fromArray(['rounds' => [$roundTwo, $roundOne], ...])`
@@ -3818,6 +3821,45 @@ entry on the engine fingerprint.
   takes `$state->getNextRoundNumber()` as its number. Before you upgrade, a
   stored state that no longer loads is rebuilt with its rounds renumbered
   1, 2, 3, through the verbs or `fromHistory()`.
+- **Breaking: nobody is in a round of a stage state twice, and a stored
+  stage state with such a round no longer loads
+  ([#197](https://github.com/mission-gaming/tactician/issues/197)).**
+  `StageState::withRoundPlayed()` and `withRoundPaired()` accepted a round
+  drawn by hand that held a participant twice: one event listed twice
+  (`a v b` twice, `a v b` and `b v a`, or an event without a tie leg
+  beside the same pair marked as leg 1), a participant in two events
+  against different opponents, or a participant in an event and among the
+  byes. `StageState::fromHistory()` refused the same round. A result names
+  its event by round, pair in either order and tie leg, so the engines and
+  the bracket view read an event listed twice as one event and showed its
+  result on both. The verbs now refuse such a round with the refusal
+  `fromHistory()` gives: `InvalidConfigurationException` with the reason
+  `ParticipantTwiceInRound`, the message "Participant X is in round N
+  twice", and `round` and `participant` in the context. The two legs of a
+  tie, which differ in their tie leg, are one appearance, as before. The
+  three ways in share one check, so they cannot disagree again. No engine
+  pairs such a round: a sweep of every engine, 2 to 16 entrants, with and
+  without withdrawals, refused none of 5,321 rounds it paired.
+
+  **A stored state with such a round is refused.** `StageState::fromArray()`
+  and `fromJson()` record the stored rounds again through
+  `withRoundPlayed()`, so a stored state with a participant twice in a round
+  is now refused with `ParticipantTwiceInRound`. This includes data stored
+  by 0.2.x, without a format version, whose verbs recorded such a round.
+  The stage state form keeps format version 1, for the reason the entry
+  above gives: no key and no meaning changes. 0.2.x documented that its
+  verbs did not check this, so this is a deliberate break. This is decided
+  in ADR 0020 (`docs/adr/0020-nobody-is-in-a-round-of-a-stage-state-twice.md`),
+  which amends point 8 of ADR 0007. None of the 0.2.3 fixtures holds such a
+  round.
+
+  **Who is affected.** An application that draws a round by hand and lists a
+  participant in it twice. One that records the rounds an engine pairs is
+  not affected. **What to check.** A round you build with
+  `new RoundPairing()` lists each pair once per tie leg and gives no bye to
+  a participant of one of its events. A stored state that no longer loads
+  is rebuilt from the round as it was meant, through the verbs or
+  `fromHistory()`.
 
 ### Deprecated
 
