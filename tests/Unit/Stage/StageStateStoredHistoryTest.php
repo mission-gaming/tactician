@@ -344,6 +344,67 @@ describe('a stored stage state', function (): void {
         ],
     ])->with(['format version 1' => true, 'no format version, as 0.2.x wrote it' => false]);
 
+    // The verbs refuse a round that names a participant who is no entrant,
+    // as fromHistory() does (issue #199), so a stored state with such a
+    // round is one no verb records. 0.2.x recorded such a state and stored
+    // it without a format version; it is refused all the same (the
+    // changelog says so).
+    it('is refused with a participant who is no entrant in a round after the first, with or without a format version', function (Closure $change, string $role, bool $versioned): void {
+        $stored = storedHistory();
+        $stored['participants'][] = ['id' => 'z', 'label' => 'Zed', 'seed' => null, 'metadata' => []];
+        $stored = $change($stored);
+        if (!$versioned) {
+            unset($stored['format_version']);
+        }
+
+        $refusal = storedHistoryRefusal($stored);
+
+        expect($refusal->getReason())->toBe(InvalidConfigurationReason::ParticipantNotAnEntrant)
+            ->and($refusal->getConfigurationIssue())->toBe("The history names participant z ({$role}), who is not one of the entrants")
+            ->and($refusal->getContext())->toBe(['participant' => 'z', 'role' => $role, 'round' => 2]);
+    })->with([
+        'in an event' => [
+            function (array $stored): array {
+                $stored['rounds'][1]['events'][1]['participants'] = ['b', 'z'];
+
+                return $stored;
+            },
+            'in an event',
+        ],
+        'with a bye' => [
+            function (array $stored): array {
+                $stored['rounds'][1]['byes'] = ['z'];
+
+                return $stored;
+            },
+            'with a bye',
+        ],
+    ])->with(['format version 1' => true, 'no format version, as 0.2.x wrote it' => false]);
+
+    // Data 0.2.x wrote does not list a participant who withdrew: it is named
+    // by the rounds and not by the active list, as a participant who is no
+    // entrant would be. The first round says who was in the draw, so a
+    // participant it names is read as an entrant whose place is not known,
+    // and a later round may name it too. 0.2.x stored every withdrawal so.
+    it('is read with a participant the first round names and the active list does not, with or without a format version', function (bool $versioned): void {
+        $stored = storedHistory();
+        $stored['participants'][] = ['id' => 'z', 'label' => 'Zed', 'seed' => null, 'metadata' => []];
+        $stored['rounds'][0]['byes'] = ['z'];
+        $stored['rounds'][1]['byes'] = ['z'];
+        if (!$versioned) {
+            unset($stored['format_version']);
+        }
+
+        $state = StageState::fromArray($stored);
+        $zed = $state->getAllSeenParticipants()[4];
+        $roundThree = new RoundPairing(3, null, [new Event([$state->getParticipants()[0], $zed], new Round(3))]);
+
+        expect($state->toArray())->toBe($versioned ? $stored : ['format_version' => 1, ...$stored])
+            ->and($zed->getId())->toBe('z')
+            ->and(array_map(fn(Participant $participant): string => $participant->getId(), $state->getEntrants()))->toBe(['a', 'b', 'c', 'd'])
+            ->and($state->withRoundPaired($roundThree)->getNextRoundNumber())->toBe(4);
+    })->with(['format version 1' => true, 'no format version, as 0.2.x wrote it' => false]);
+
     it('is read with two results of one event, which withResultReplaced() repairs', function (): void {
         $stored = storedHistory();
         $stored['results'][] = $stored['results'][1];

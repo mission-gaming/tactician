@@ -2475,65 +2475,140 @@ function historyRoundsByHand(RoundPairing $pairing): array
     return $variants;
 }
 
+/**
+ * The round an engine paired, changed by hand to name somebody it did not:
+ * the opponent in its first event replaced, or a bye added. The somebody is
+ * a participant who is no entrant, or one who withdrew before the first
+ * round and is not named by it.
+ *
+ * @return array<string, RoundPairing>
+ */
+function historyRoundsNaming(RoundPairing $pairing, Participant $somebody, string $who): array
+{
+    $events = array_values($pairing->getEvents());
+    $byes = array_values($pairing->getByes());
+    if ($events === []) {
+        return [];
+    }
+
+    $first = $events[0];
+    $replaced = new Event([array_values($first->getParticipants())[0], $somebody], $first->getRound(), $first->getMetadata());
+
+    return [
+        "{$who} in an event" => new RoundPairing($pairing->getRoundNumber(), $pairing->getLabel(), [$replaced, ...array_slice($events, 1)], $byes),
+        "{$who} with a bye" => new RoundPairing($pairing->getRoundNumber(), $pairing->getLabel(), $events, [...$byes, $somebody]),
+    ];
+}
+
 // Issue #197: the verbs recorded a round that held one event twice, or a
 // participant in two events, which fromHistory() refused. The engines read
 // such a state, and the bracket view showed one result on both events of
-// the pair, because a result names its event by round, pair and leg. Every
-// state the verbs build is now one fromHistory() builds in this respect
-// too, and stored data that holds such a round is refused, so no engine is
-// handed one.
-describe('a round that holds a participant twice', function (): void {
+// the pair, because a result names its event by round, pair and leg. Issue
+// #199: they recorded a round that named a participant who is no entrant,
+// which fromHistory() refused too. Every state the verbs build is now one
+// fromHistory() builds in both respects, and stored data that holds such a
+// round is refused, so no engine is handed one.
+//
+// Stored data has one exception, which the data imposes: 0.2.x stored a
+// participant who had withdrawn by its rounds alone, as it stored one who
+// is no entrant, so a participant the first round names is read as an
+// entrant whose place is not known (ADR 0021).
+describe('a round that holds a participant twice, or one who is no entrant', function (): void {
     it('is refused by the verbs, fromArray() and fromJson() exactly where fromHistory() refuses it, with its reason', function (string $name): void {
         $engine = historyEngines()[$name];
-        $refused = 0;
+        $refused = ['twice' => 0, 'no entrant' => 0];
         $accepted = 0;
+        $stranger = new Participant('z', 'Not an entrant');
 
         foreach ([5, 8] as $size) {
-            $entrants = historyField($size);
-            $rng = new Randomizer(new Mt19937(19 * $size));
-            $state = StageState::start($entrants);
-
-            for ($round = 1; !$engine->isComplete($state); ++$round) {
-                if ($round > 40) {
-                    throw new LogicException('The stage did not complete.');
+            foreach ([false, true] as $withdrawal) {
+                $entrants = historyField($size);
+                $rng = new Randomizer(new Mt19937(19 * $size));
+                $state = StageState::start($entrants);
+                // One entrant withdraws before the draw: no round the engine
+                // pairs names it, so it is no entrant once round 1 is recorded
+                $outOfTheDraw = $entrants[$size - 1];
+                $withdrawals = [];
+                if ($withdrawal) {
+                    $state = $state->withoutParticipant($outOfTheDraw);
+                    $withdrawals = [new Withdrawal($outOfTheDraw, 0)];
                 }
 
-                try {
-                    $pairing = $engine->pairNextRound($state);
-                } catch (NoValidPairingException) {
-                    break;
-                }
-
-                foreach (historyRoundsByHand($pairing) as $change => $byHand) {
-                    $stored = $state->withRoundPaired($pairing)->toArray();
-                    $form = $byHand->toArray();
-                    unset($form['format_version']);
-                    $stored['rounds'][count($stored['rounds']) - 1] = $form;
-
-                    $history = historyRefusal(static fn() => StageState::fromHistory($entrants, [...$state->getRoundsPlayed(), $byHand], $state->getResults()));
-                    $paths = [
-                        'withRoundPlayed()' => historyRefusal(static fn() => $state->withRoundPlayed($byHand, [])),
-                        'withRoundPaired()' => historyRefusal(static fn() => $state->withRoundPaired($byHand)),
-                        'fromArray()' => historyRefusal(static fn() => StageState::fromArray($stored)),
-                        'fromJson()' => historyRefusal(static fn() => StageState::fromJson(json_encode($stored, JSON_THROW_ON_ERROR))),
-                    ];
-
-                    $where = "{$name}, {$size} entrants, round {$round}: {$change}";
-                    expect($paths)->toBe(array_fill_keys(array_keys($paths), $history), $where);
-                    if ($change === 'a further leg of a tie') {
-                        expect($history)->toBeNull($where);
-                        ++$accepted;
-                    } else {
-                        expect($history[0] ?? null)->toBe(InvalidConfigurationReason::ParticipantTwiceInRound, $where);
-                        ++$refused;
+                for ($round = 1; !$engine->isComplete($state); ++$round) {
+                    if ($round > 40) {
+                        throw new LogicException('The stage did not complete.');
                     }
-                }
 
-                $state = $state->withRoundPlayed($pairing, historyResults($pairing, $rng));
+                    try {
+                        $pairing = $engine->pairNextRound($state);
+                    } catch (NoValidPairingException) {
+                        break;
+                    }
+
+                    $changes = [
+                        ...historyRoundsByHand($pairing),
+                        ...historyRoundsNaming($pairing, $stranger, 'one who is no entrant'),
+                        ...($withdrawal ? historyRoundsNaming($pairing, $outOfTheDraw, 'one who withdrew before the draw') : []),
+                    ];
+                    foreach ($changes as $change => $byHand) {
+                        $stored = $state->withRoundPaired($pairing)->toArray();
+                        $form = $byHand->toArray();
+                        unset($form['format_version']);
+                        $stored['rounds'][count($stored['rounds']) - 1] = $form;
+                        // The registry holds whoever the round names
+                        foreach ([$stranger, $outOfTheDraw] as $named) {
+                            if (!in_array($named->getId(), array_column($stored['participants'], 'id'), true)) {
+                                $participant = $named->toArray();
+                                unset($participant['format_version']);
+                                $stored['participants'][] = $participant;
+                            }
+                        }
+
+                        $history = historyRefusal(static fn() => StageState::fromHistory($entrants, [...$state->getRoundsPlayed(), $byHand], $state->getResults(), $withdrawals));
+                        $verbs = [
+                            'withRoundPlayed()' => historyRefusal(static fn() => $state->withRoundPlayed($byHand, [])),
+                            'withRoundPaired()' => historyRefusal(static fn() => $state->withRoundPaired($byHand)),
+                        ];
+                        $storage = [
+                            'fromArray()' => historyRefusal(static fn() => StageState::fromArray($stored)),
+                            'fromJson()' => historyRefusal(static fn() => StageState::fromJson(json_encode($stored, JSON_THROW_ON_ERROR))),
+                        ];
+
+                        $where = "{$name}, {$size} entrants" . ($withdrawal ? ', one withdrawn before the draw' : '') . ", round {$round}: {$change}";
+                        expect($verbs)->toBe(array_fill_keys(array_keys($verbs), $history), $where);
+                        // From storage, one the first round names is read as
+                        // an entrant whose place is not known
+                        $fromStorage = $round === 1 && str_starts_with($change, 'one who is no entrant')
+                            ? historyRefusal(static fn() => StageState::fromHistory([...$entrants, $stranger], [$byHand], [], $withdrawals))
+                            : $history;
+                        expect($storage)->toBe(array_fill_keys(array_keys($storage), $fromStorage), $where);
+
+                        if ($change === 'a further leg of a tie') {
+                            expect($history)->toBeNull($where);
+                            ++$accepted;
+                        } elseif ($round === 1 && str_starts_with($change, 'one who withdrew before the draw')) {
+                            // The first round says who was in the draw, so it
+                            // may name the entrant; the other leg of a tie
+                            // whose opponent was replaced still holds its
+                            // participant twice
+                            expect($history === null || $history[0] === InvalidConfigurationReason::ParticipantTwiceInRound)->toBeTrue($where);
+                            $history === null ? ++$accepted : ++$refused['twice'];
+                        } elseif (str_starts_with($change, 'one who')) {
+                            expect($history[0] ?? null)->toBe(InvalidConfigurationReason::ParticipantNotAnEntrant, $where);
+                            ++$refused['no entrant'];
+                        } else {
+                            expect($history[0] ?? null)->toBe(InvalidConfigurationReason::ParticipantTwiceInRound, $where);
+                            ++$refused['twice'];
+                        }
+                    }
+
+                    $state = $state->withRoundPlayed($pairing, historyResults($pairing, $rng));
+                }
             }
         }
 
-        expect($refused)->toBeGreaterThan(10)
+        expect($refused['twice'])->toBeGreaterThan(10)
+            ->and($refused['no entrant'])->toBeGreaterThan(10)
             ->and($accepted)->toBeGreaterThan(2);
     })->with(array_keys(historyEngines()));
 });

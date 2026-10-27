@@ -542,8 +542,19 @@ describe('a league paired round by round', function (): void {
         [$one, $two] = $field = leagueField(4);
         $stranger = new Participant('z', 'Not entered');
 
-        // The verbs record a round as given; a history would refuse it
-        $state = StageState::start($field)->withRoundPaired(new RoundPairing(1, null, [new Event([$one, $stranger], new Round(1))]));
+        // The verbs refuse such a round, as a history does (issue #199)...
+        $round = new RoundPairing(1, null, [new Event([$one, $stranger], new Round(1))]);
+        expect(leagueRefusal(fn() => StageState::start($field)->withRoundPaired($round))->getReason())
+            ->toBe(InvalidConfigurationReason::ParticipantNotAnEntrant);
+
+        // ...and stored data can still hold it: a participant the first
+        // round names and the entrant list does not is read as an entrant
+        // who withdrew where the data does not say its place, as 0.2.x stored
+        // every withdrawal
+        $stored = StageState::start($field)->withRoundPaired(new RoundPairing(1, null, [new Event([$one, $two], new Round(1))]))->toArray();
+        $stored['participants'][] = ['id' => 'z', 'label' => 'Not entered', 'seed' => null, 'metadata' => []];
+        $stored['rounds'][0]['events'][0]['participants'] = [$one->getId(), 'z'];
+        $state = StageState::fromArray($stored);
 
         foreach ([
             fn() => $engine->pairNextRound($state),
