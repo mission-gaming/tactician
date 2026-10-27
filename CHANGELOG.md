@@ -3788,7 +3788,7 @@ entry on the engine fingerprint.
   round 1, and each after it is `getNextRoundNumber()`. The refusal is the
   one `StageState::fromHistory()` gives a history with a round left out,
   `InvalidConfigurationException` with the reason `RoundOutOfSequence`, so
-  every state the verbs build is one `fromHistory()` builds. The three ways
+  the verbs refuse every round number `fromHistory()` refuses. The three ways
   in share one check. Its context is `last_round`, `pairing_round` and
   `expected_round`, and `fromHistory()` adds `round_numbers`. Its message
   says which round was expected. The verbs' refusal of a round that was

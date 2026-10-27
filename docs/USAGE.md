@@ -2594,9 +2594,9 @@ leg, an event without one being leg 1) is refused
 The legs of one tie, marked 1 and 2 under `tie_leg`, are one appearance. A
 result finds its event by round, pair and leg, so an event listed twice
 would take the result of the other. No engine pairs such a round: only a
-round drawn by hand can hold one. A round the verbs record is therefore one
-`fromHistory()` records, bar a participant who is not an entrant, which only
-`fromHistory()` checks.
+round drawn by hand can hold one. The verbs do not check everything
+`fromHistory()` checks: a participant who is not an entrant and two results
+of one event are refused by `fromHistory()` only.
 
 The outcome's standings are the table the rounds were paired from. A bye
 counts in it as it counts for pairing: the ranking value of an entry

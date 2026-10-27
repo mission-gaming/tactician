@@ -152,11 +152,12 @@ describe('StageState', function (): void {
         'round 5 after rounds 1 and 2' => [[1, 2], 5, ['last_round' => 2, 'pairing_round' => 5, 'expected_round' => 3]],
     ]);
 
-    // Issue #197: every state the verbs build is one fromHistory() builds, so
-    // nobody is in a round twice. A round that holds one event twice was
-    // recorded, and an engine and the bracket view then matched one result
-    // to both events, because a result names its event by round, pair and
-    // leg. The verbs refuse what fromHistory() refuses, with its exception.
+    // Issue #197: nobody is in a round twice, wherever a state is built. A
+    // round that holds one event twice was recorded, and an engine and the
+    // bracket view then matched one result to both events, because a result
+    // names its event by round, pair and leg. The verbs refuse a participant
+    // twice in a round where fromHistory() refuses it, with its exception;
+    // the entrant check stays fromHistory()'s own.
     it('refuses a round that holds a participant twice, as fromHistory() refuses it', function (string $verb, int $number, Closure $round, string $twice): void {
         $earlier = [];
         $state = StageState::start($this->participants);
