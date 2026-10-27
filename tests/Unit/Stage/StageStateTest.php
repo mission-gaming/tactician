@@ -442,6 +442,29 @@ describe('StageState', function (): void {
         ],
     ]);
 
+    // A history can name an entrant who withdrew before the draw in a result
+    // of an event that no round holds. The result is refused for naming
+    // somebody who is no entrant, as a round that names it is, and not only
+    // later for belonging to no event of its round.
+    it('refuses a result in a history that names an entrant who withdrew before the draw', function (): void {
+        $round = new Round(1);
+        $pairing = new RoundPairing(1, null, [new Event([$this->alice, $this->bob], $round)], [$this->carol]);
+        $result = new Result(new Event([$this->carol, $this->dave], $round), $this->carol);
+
+        try {
+            StageState::fromHistory($this->participants, [$pairing], [$result], [new Withdrawal($this->dave, 0)]);
+            $refusal = null;
+        } catch (InvalidConfigurationException $exception) {
+            $refusal = [$exception->getReason(), $exception->getConfigurationIssue(), $exception->getContext()];
+        }
+
+        expect($refusal)->toBe([
+            InvalidConfigurationReason::ParticipantNotAnEntrant,
+            'The history names participant p4 (in a result), who is not one of the entrants',
+            ['participant' => 'p4', 'role' => 'in a result', 'round' => 1],
+        ]);
+    });
+
     it('records the rounds 1, 2, 3 and so on, one after the other', function (): void {
         $state = StageState::start($this->participants);
         foreach ([1, 2, 3] as $number) {
