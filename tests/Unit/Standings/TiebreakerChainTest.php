@@ -37,6 +37,32 @@ function chainRefusal(Closure $call): InvalidConfigurationException
     throw new LogicException('The call was not refused.');
 }
 
+/**
+ * A tiebreaker of the application's that takes the name of one of the
+ * library's: the name is no identifier of plain data.
+ */
+function chainTiebreakerOfTheApplication(string $name): TiebreakerInterface
+{
+    return new readonly class ($name) implements TiebreakerInterface {
+        public function __construct(private string $name) {}
+
+        #[Override]
+        public function getName(): string
+        {
+            return $this->name;
+        }
+
+        /**
+         * @param array<string, StandingEntry> $entries
+         */
+        #[Override]
+        public function calculate(Participant $participant, array $results, array $entries): float
+        {
+            return 0.0;
+        }
+    };
+}
+
 describe('a tiebreaker chain built from plain data', function (): void {
     it('is built from an array of identifiers, in their order', function (): void {
         $chain = TiebreakerChain::fromIdentifiers(['wins', 'score-difference', 'scores-for', 'buchholz', 'sonneborn-berger', 'ranking-value']);
@@ -168,8 +194,7 @@ describe('a tiebreaker chain built from plain data', function (): void {
                 return 0.0;
             }
         }],
-        'a subclass of one of the library' => [new readonly class extends BuchholzTiebreaker {}],
-        'a measure of the application between the tied' => [new BetweenTiedParticipants(new readonly class extends BuchholzTiebreaker {})],
+        'a measure of the application between the tied' => [new BetweenTiedParticipants(chainTiebreakerOfTheApplication('buchholz'))],
         'a measure with an option between the tied' => [new BetweenTiedParticipants(new BuchholzTiebreaker(ByeTreatment::Zero))],
     ]);
 });
@@ -238,7 +263,6 @@ describe('a standings calculator built from plain data', function (): void {
                 return 0.0;
             }
         })],
-        'a subclass' => [new readonly class extends StandingsCalculator {}],
-        'a tiebreaker of the application' => [new StandingsCalculator(tiebreakers: [new readonly class extends WinsTiebreaker {}])],
+        'a tiebreaker of the application' => [new StandingsCalculator(tiebreakers: [chainTiebreakerOfTheApplication('wins')])],
     ]);
 });

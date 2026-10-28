@@ -104,16 +104,16 @@ describe('NoRepeatPairings', function (): void {
         expect(new NoRepeatPairings()->getName())->toBe('No Repeat Pairings');
     });
 
-    // Event refuses a participant paired with itself. An event of another
-    // class can still answer with one, and such a degenerate event can never
-    // count as a repeat meeting
+    // Event refuses a participant paired with itself; an event built past
+    // its constructor (UncheckedEvent) holds one, and such a degenerate
+    // event can never count as a repeat meeting
     it('ignores self-pairings when checking repeats', function (): void {
         $constraint = new NoRepeatPairings();
         $context = roundRobinContext($this->participants, [
-            new UncheckedEvent([$this->alice, $this->alice], new Round(1)),
+            UncheckedEvent::of([$this->alice, $this->alice], new Round(1)),
         ]);
 
-        expect($constraint->isSatisfied(new UncheckedEvent([$this->alice, $this->alice], new Round(2)), $context))
+        expect($constraint->isSatisfied(UncheckedEvent::of([$this->alice, $this->alice], new Round(2)), $context))
             ->toBeTrue();
     });
 });

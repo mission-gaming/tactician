@@ -26,7 +26,7 @@ use MissionGaming\Tactician\Stage\StagePlan;
  *           the exception it throws carries the resulting
  *           {@see DiagnosticReport}.
  */
-class SchedulingDiagnostics
+final class SchedulingDiagnostics
 {
     /**
      * Analyze a scheduling failure and provide comprehensive diagnostics.

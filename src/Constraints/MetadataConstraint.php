@@ -15,7 +15,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class MetadataConstraint implements ConstraintInterface
+final readonly class MetadataConstraint implements ConstraintInterface
 {
     /**
      * @param string $metadataKey The participant metadata key the rule reads

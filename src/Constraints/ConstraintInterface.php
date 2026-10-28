@@ -40,10 +40,10 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * ask fewer questions: the round-robin scheduler builds no failure analysis
  * for an ordering it goes on from, and the Swiss round search skips
  * branches that hold no complete pairing. Both are taken only for a
- * `ConstraintSet` (not a subclass) that holds nothing but
- * `NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
- * `RoleBalanceConstraint` and `SeedProtectionConstraint` objects (not
- * subclasses), which run no code of the caller's and keep no state. Any
+ * `ConstraintSet` that holds nothing but `NoRepeatPairings`,
+ * `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+ * `SeedProtectionConstraint` objects, which run no code of the caller's
+ * and keep no state. Any
  * other set, one that holds a `CallableConstraint`, a `MetadataConstraint`,
  * a `ConsecutiveRoleConstraint` or a class of your own included, is asked
  * every question it was asked before those shortcuts existed, so what such

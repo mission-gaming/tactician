@@ -20,10 +20,6 @@ use MissionGaming\Tactician\Scheduling\ConstraintPurity;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 
-final readonly class PurityTestConstraintSet extends ConstraintSet {}
-
-final readonly class PurityTestRoleBalance extends RoleBalanceConstraint {}
-
 final class PurityTestConstraint implements ConstraintInterface
 {
     #[Override]
@@ -66,8 +62,6 @@ describe('ConstraintPurity', function (): void {
         'a role extractor, even a built-in one' => [fn(): ConstraintSet => new ConstraintSet([ConsecutiveRoleConstraint::homeAway(2)])],
         'a metadata validator, even a built-in one' => [fn(): ConstraintSet => new ConstraintSet([MetadataConstraint::requireSameValue('group')])],
         'a class of the caller\'s' => [fn(): ConstraintSet => new ConstraintSet([new PurityTestConstraint()])],
-        'a subclass of a listed class' => [fn(): ConstraintSet => new ConstraintSet([new PurityTestRoleBalance(1)])],
-        'a subclass of the set' => [fn(): ConstraintSet => new PurityTestConstraintSet([new NoRepeatPairings()])],
         'a listed class beside a callable' => [fn(): ConstraintSet => new ConstraintSet([
             new NoRepeatPairings(),
             new CallableConstraint(static fn(): bool => true, 'Yes'),
@@ -122,8 +116,6 @@ describe('ConstraintPurity', function (): void {
             'a callable' => new ConstraintSet([new CallableConstraint(static fn(): bool => true, 'Yes')]),
             'a metadata validator' => new ConstraintSet([MetadataConstraint::requireSameValue('group')]),
             'a class of the caller\'s' => new ConstraintSet([new PurityTestConstraint()]),
-            'a subclass of a known class' => new ConstraintSet([new PurityTestRoleBalance(1)]),
-            'a subclass of the set' => new PurityTestConstraintSet([ConsecutiveRoleConstraint::homeAway(2)]),
             'a consecutive-role limit beside a callable' => new ConstraintSet([
                 ConsecutiveRoleConstraint::homeAway(2),
                 new CallableConstraint(static fn(): bool => true, 'Yes'),
@@ -194,7 +186,6 @@ describe('ConstraintPurity', function (): void {
             new CallableConstraint(static fn(): bool => true, 'Yes'),
             MetadataConstraint::requireSameValue('group'),
             new PurityTestConstraint(),
-            new PurityTestRoleBalance(1),
             // The rule of a role assignment is not a constraint of a set
             new BalancedRoleAssignment()->rule(),
         ];

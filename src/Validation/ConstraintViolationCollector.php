@@ -17,7 +17,7 @@ use MissionGaming\Tactician\DTO\Participant;
  *
  * @experimental
  */
-class ConstraintViolationCollector
+final class ConstraintViolationCollector
 {
     /** @var array<ConstraintViolation> */
     private array $violations = [];

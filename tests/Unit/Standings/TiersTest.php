@@ -5,8 +5,6 @@ declare(strict_types=1);
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Standings\BetweenTiedParticipants;
 use MissionGaming\Tactician\Standings\RankingValueTiebreaker;
 use MissionGaming\Tactician\Standings\Standings;
@@ -106,38 +104,10 @@ describe('a table given tiers', function (): void {
     });
 });
 
-describe('a subclass of the calculator given tiers', function (): void {
-    $subclass = static fn(array $tiebreakers): StandingsCalculator => new readonly class ($tiebreakers) extends StandingsCalculator {
-        /**
-         * @param array<MissionGaming\Tactician\Standings\TiebreakerInterface> $tiebreakers
-         */
-        public function __construct(array $tiebreakers)
-        {
-            parent::__construct(tiebreakers: $tiebreakers);
-        }
-    };
-
-    // Its own calculate() forms the tied sets over the whole table, so it
-    // cannot form them inside a tier
-    it('is refused them with a tiebreaker between the tied participants', function () use ($subclass): void {
+describe('a calculator without a tiebreaker between the tied participants given tiers', function (): void {
+    it('puts the table into tiers, in the order calculate() gave inside each', function (): void {
         [$participants, $results] = tiersCase();
-
-        try {
-            $subclass([new BetweenTiedParticipants(new RankingValueTiebreaker())])
-                ->calculateWith($participants, $results, tiers: ['a' => 0, 'b' => 1]);
-        } catch (InvalidConfigurationException $exception) {
-            expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
-                ->and($exception->getMessage())->toContain('inside a tier');
-
-            return;
-        }
-
-        throw new LogicException('A subclass formed tied sets it cannot form inside a tier.');
-    });
-
-    it('puts its own table into tiers without one, in the order calculate() gave', function () use ($subclass): void {
-        [$participants, $results] = tiersCase();
-        $calculator = $subclass([new WinsTiebreaker()]);
+        $calculator = new StandingsCalculator(tiebreakers: [new WinsTiebreaker()]);
 
         expect(tiersLines($calculator->calculateWith($participants, $results, tiers: ['a' => 1, 'b' => 0, 'c' => 1, 'd' => 0])))
             ->toBe(['b 0 -', 'd 0 -', 'a 1 -', 'c 1 -']);

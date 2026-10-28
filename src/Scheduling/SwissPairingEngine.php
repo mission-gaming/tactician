@@ -133,7 +133,7 @@ use Random\Randomizer;
  *
  * @experimental
  */
-readonly class SwissPairingEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
+final readonly class SwissPairingEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
 {
     /**
      * @param ConstraintSet|null $constraints Asked about every candidate pairing, with a context of
@@ -220,9 +220,6 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * - the tiebreakers, by name and in order (default: none);
      * - each of the two choices of the awarded result policy, when it is
      *   off (default: both on);
-     * - a subclass of StandingsCalculator, stated as custom in place of the
-     *   two above: it may order the table by rules of its own, so nothing
-     *   is read from it, and two subclasses are not told apart;
      * - results-free mode, when it is on (default: off). An engine that
      *   waits for results has the fingerprint it had before the mode
      *   existed;
@@ -238,12 +235,6 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *   engine cannot describe them: a closure and the state of a
      *   Randomizer have no name. Keeping them the same between rounds is
      *   the caller's to do.
-     *
-     * A subclass does not inherit this engine's fingerprint, because it may
-     * pair differently: its fingerprint says that it is a subclass, without
-     * naming the class, so every subclass that does not override this
-     * method has the same one. Override it to return a string of your own
-     * (one that does not begin with `tactician:`) to tell them apart.
      */
     #[Override]
     public function getFingerprint(): string
@@ -255,7 +246,6 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             ->withStandingsRules($this->standingsCalculator)
             ->with('results-free', $this->resultsFree, false)
             ->with('seed', $this->seed ?? 'none', 'none')
-            ->with('subclass', static::class !== self::class, false)
             ->toString();
     }
 
@@ -309,7 +299,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *                                       planned rounds have all been played (reason
      *                                       `PlannedRoundsPlayed`), the state is stamped with
      *                                       another engine's fingerprint, or the standings
-     *                                       calculator refuses the table (a subclass, see
+     *                                       calculator refuses the table (see
      *                                       StandingsCalculator::calculateWith())
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
@@ -476,7 +466,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
      *                                       fingerprint, or the standings calculator refuses the
-     *                                       table (a subclass, see
+     *                                       table (see
      *                                       StandingsCalculator::calculateWith())
      */
     #[Override]
@@ -756,7 +746,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
      *                                       fingerprint, or the standings calculator refuses the
-     *                                       table (a subclass, see
+     *                                       table (see
      *                                       StandingsCalculator::calculateWith())
      */
     #[Override]
@@ -795,9 +785,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * decides an order, and no ID decides one between two active
      * participants.
      *
-     * @throws InvalidConfigurationException When the standings calculator is a subclass that
-     *                                       refuses the byes or the adjustments of the state
-     *                                       (StandingsCalculator::calculateWith())
+     * @throws InvalidConfigurationException Not thrown: a bye is credited with a value only under a
+     *                                       ranking strategy that says what one is worth, which
+     *                                       is the one refusal of
+     *                                       StandingsCalculator::calculateWith()
      */
     private function table(StageState $state): Standings
     {
@@ -936,8 +927,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             ];
         }
 
-        // The library's calculator gives the table in this order already;
-        // a subclass may order its table by rules of its own.
+        // By ranking value, higher first, and by place in the table where
+        // that is the same: the order the calculator gives the table in.
         usort(
             $indexed,
             fn(array $first, array $second): int => ($second['ranking_value'] <=> $first['ranking_value'])

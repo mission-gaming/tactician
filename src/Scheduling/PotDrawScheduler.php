@@ -382,7 +382,7 @@ use Random\Randomizer;
  *
  * @experimental
  */
-class PotDrawScheduler implements SchedulerInterface
+final class PotDrawScheduler implements SchedulerInterface
 {
     use ValidatesScheduleCompleteness;
 

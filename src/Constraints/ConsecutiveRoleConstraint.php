@@ -19,7 +19,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class ConsecutiveRoleConstraint implements ConstraintInterface
+final readonly class ConsecutiveRoleConstraint implements ConstraintInterface
 {
     /**
      * @param int $maxConsecutive The longest run of one role a participant may have

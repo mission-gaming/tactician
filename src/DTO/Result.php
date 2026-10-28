@@ -40,7 +40,7 @@ use MissionGaming\Tactician\Serialization\PlainData;
  *
  * @api
  */
-readonly class Result
+final readonly class Result
 {
     /**
      * The winner and the scores are not checked against each other, and

@@ -271,18 +271,13 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
 
         sort($leaks);
 
-        // The three known ones: the validator each whole-schedule generator
-        // holds comes from the internal trait ValidatesScheduleCompleteness
-        // as a protected property, and the three classes are not final. The
-        // README says that the protected members such a trait supplies are
-        // internal, so a subclass may not rely on them. Nothing else may
-        // join this list.
+        // None: every class of src/ is final, so the protected members the
+        // internal trait ValidatesScheduleCompleteness supplies are seen by
+        // nothing outside the class (until 0.3.0 the three whole-schedule
+        // generators could be extended, and their validators were listed
+        // here).
         expect($members)->toBeGreaterThan(500)
-            ->and($leaks)->toBe([
-                'Scheduling\PotDrawScheduler::$validator is typed Validation\ScheduleValidator',
-                'Scheduling\RoundRobinScheduler::$validator is typed Validation\ScheduleValidator',
-                'Scheduling\SwissScheduler::$validator is typed Validation\ScheduleValidator',
-            ]);
+            ->and($leaks)->toBe([]);
     });
 
     it('is internal wherever README.md names it as an internal class', function () use ($policy, $sourceTypes): void {

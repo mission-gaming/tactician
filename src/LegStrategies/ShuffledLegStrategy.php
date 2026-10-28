@@ -78,7 +78,7 @@ use stdClass;
  *
  * @api
  */
-readonly class ShuffledLegStrategy implements LegStrategyInterface
+final readonly class ShuffledLegStrategy implements LegStrategyInterface
 {
     /**
      * Holds the randomizer of the current run of draws from the seed, as

@@ -19,7 +19,7 @@ use MissionGaming\Tactician\Serialization\PlainData;
  *
  * @api
  */
-readonly class Event
+final readonly class Event
 {
     /**
      * The participants are kept as given: the same order and the same keys.

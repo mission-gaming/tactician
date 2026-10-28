@@ -20,7 +20,7 @@ use Override;
  *
  * @experimental
  */
-readonly class NoRepeatPairings implements ConstraintInterface
+final readonly class NoRepeatPairings implements ConstraintInterface
 {
     /**
      * @param bool $acrossLegs False (the default) forbids a pairing twice within one leg; true
@@ -46,19 +46,12 @@ readonly class NoRepeatPairings implements ConstraintInterface
             ? $context->getExistingEvents()
             : $context->getEventsForLeg($context->getCurrentLeg());
 
-        // A context of exactly this class answers "which events hold both"
-        // from its index, so the check reads the pair's own events. A
-        // subclass may answer getExistingEvents() or getEventsForLeg() its
-        // own way, so for one the events it returned are scanned as before.
-        $indexed = $context::class === SchedulingContext::class;
-
-        // For events with more than 2 participants, check all pairs
+        // The context answers "which events hold both" from its index, so
+        // the check reads the pair's own events. For events with more than
+        // 2 participants, check all pairs.
         for ($i = 0; $i < count($participants) - 1; ++$i) {
             for ($j = $i + 1; $j < count($participants); ++$j) {
-                $played = $indexed
-                    ? $this->havePlayedWithinIndexed($context, $legEvents, $participants[$i], $participants[$j])
-                    : $this->havePlayedWithin($legEvents, $participants[$i], $participants[$j]);
-                if ($played) {
+                if ($this->havePlayedWithin($context, $legEvents, $participants[$i], $participants[$j])) {
                     return false;
                 }
             }
@@ -68,14 +61,14 @@ readonly class NoRepeatPairings implements ConstraintInterface
     }
 
     /**
-     * havePlayedWithin() for the events of the context itself, or of one of
-     * its legs: the pair's events come from the context's index, and one of
-     * them is among $events when its key is, because both are the context's
-     * events under the keys of its event list.
+     * Whether the two have met in the events of the context itself, or of
+     * one of its legs: the pair's events come from the context's index, and
+     * one of them is among $events when its key is, because both are the
+     * context's events under the keys of its event list.
      *
      * @param array<Event> $events The context's events, or those of one leg
      */
-    private function havePlayedWithinIndexed(
+    private function havePlayedWithin(
         SchedulingContext $context,
         array $events,
         Participant $first,
@@ -86,18 +79,6 @@ readonly class NoRepeatPairings implements ConstraintInterface
         }
 
         return array_any($context->getEventsBetween($first, $second), fn($event, $key) => isset($events[$key]));
-    }
-
-    /**
-     * @param array<Event> $events
-     */
-    private function havePlayedWithin(array $events, Participant $first, Participant $second): bool
-    {
-        if ($first->getId() === $second->getId()) {
-            return false;
-        }
-
-        return array_any($events, fn($event) => $event->hasParticipant($first) && $event->hasParticipant($second));
     }
 
     /**

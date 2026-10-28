@@ -3,9 +3,13 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintInterface;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
@@ -16,6 +20,7 @@ use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use Random\Engine\Mt19937;
@@ -158,7 +163,19 @@ describe('RoundRobinOptions', function (): void {
     // Custom strategies have no stable identifier, so serializing them
     // would produce config fromArray() could not rebuild
     it('refuses to serialize a custom strategy', function (): void {
-        $custom = new readonly class extends MirroredLegStrategy {};
+        $custom = new readonly class implements LegStrategyInterface {
+            #[Override]
+            public function planLegs(array $participants, int $legs, ConstraintSet $constraints): LegPlanContribution
+            {
+                return new MirroredLegStrategy()->planLegs($participants, $legs, $constraints);
+            }
+
+            #[Override]
+            public function generateEventForLeg(array $participants, int $leg, int $round, SchedulingContext $context): ?Event
+            {
+                return new MirroredLegStrategy()->generateEventForLeg($participants, $leg, $round, $context);
+            }
+        };
 
         new RoundRobinOptions(legs: 2, strategy: $custom)->toArray();
     })->throws(InvalidConfigurationException::class);

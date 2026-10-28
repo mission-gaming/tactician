@@ -344,25 +344,13 @@ describe('engine fingerprints', function (): void {
             )),
             'tactician:v2:swiss;tiebreakers=head%20to%20head%3Bx%3D1%2Cy',
         ],
-        'Swiss with a calculator of the application' => [
-            fn() => new SwissPairingEngine(standingsCalculator: new readonly class extends StandingsCalculator {}),
-            'tactician:v2:swiss;standings=custom',
-        ],
-        'Swiss with a calculator of the application, built with rules' => [
-            fn() => new SwissPairingEngine(standingsCalculator: new readonly class (WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()]) extends StandingsCalculator {}),
-            'tactician:v2:swiss;standings=custom',
-        ],
-        'a subclass of the Swiss engine' => [
-            fn() => new readonly class extends SwissPairingEngine {},
-            'tactician:v2:swiss;subclass=yes',
-        ],
         'Swiss with the wins tiebreaker' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(tiebreakers: [new WinsTiebreaker()])),
             'tactician:v2:swiss;tiebreakers=wins',
         ],
         'Swiss with every option that is part of it' => [
-            fn() => new readonly class (standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker(), new WinsTiebreaker()])) extends SwissPairingEngine {},
-            'tactician:v2:swiss;ranking=win-draw-loss,1,0.5,0;subclass=yes;tiebreakers=buchholz,sonneborn-berger,wins',
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker(), new WinsTiebreaker()])),
+            'tactician:v2:swiss;ranking=win-draw-loss,1,0.5,0;tiebreakers=buchholz,sonneborn-berger,wins',
         ],
         'Swiss on a scale of tens' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(100.0, 10.0, 0.0))),
@@ -464,13 +452,6 @@ describe('engine fingerprints', function (): void {
                 new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()])
             ),
             'tactician:v2:single-elimination;ranking=win-draw-loss,1,0.5,0;reseed-each-round=yes;tiebreakers=buchholz',
-        ],
-        're-seeded single elimination with a calculator of the application' => [
-            fn() => new SingleEliminationEngine(
-                new EliminationOptions(reseedEachRound: true),
-                new readonly class extends StandingsCalculator {}
-            ),
-            'tactician:v2:single-elimination;reseed-each-round=yes;standings=custom',
         ],
         'single elimination on a fixed path, whatever its calculator' => [
             fn() => new SingleEliminationEngine(
@@ -877,11 +858,6 @@ describe('engine fingerprints', function (): void {
             )),
             'tiebreakers: recorded buchholz,sonneborn-berger, this engine sonneborn-berger,buchholz',
         ],
-        'the library calculator read by one of the application' => [
-            fn() => new SwissPairingEngine(),
-            fn() => new SwissPairingEngine(standingsCalculator: new readonly class extends StandingsCalculator {}),
-            'standings: recorded the default, this engine custom',
-        ],
         'a re-seeded bracket read on another scale' => [
             fn() => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
             fn() => new SingleEliminationEngine(
@@ -889,16 +865,6 @@ describe('engine fingerprints', function (): void {
                 new StandingsCalculator(WinDrawLossRanking::oneHalfZero())
             ),
             'ranking: recorded the default, this engine win-draw-loss,1,0.5,0',
-        ],
-        'the Swiss engine read by a subclass' => [
-            fn() => new SwissPairingEngine(),
-            fn() => new readonly class extends SwissPairingEngine {},
-            'subclass: recorded the default, this engine yes',
-        ],
-        'a subclass read by the Swiss engine' => [
-            fn() => new readonly class extends SwissPairingEngine {},
-            fn() => new SwissPairingEngine(),
-            'subclass: recorded yes, this engine the default',
         ],
         'one seed read with another' => [
             fn() => new SwissPairingEngine(plannedRounds: 3, seed: 1),
@@ -1167,36 +1133,13 @@ describe('engine fingerprints', function (): void {
         ] as $calculator) {
             $fingerprints[] = new SwissPairingEngine(standingsCalculator: $calculator)->getFingerprint();
         }
-        $fingerprints[] = (new readonly class extends SwissPairingEngine {})->getFingerprint();
 
-        expect(array_unique($fingerprints))->toHaveCount(19);
+        expect(array_unique($fingerprints))->toHaveCount(18);
     });
 
-    it('lets a subclass give a fingerprint of its own, which the inherited methods then require', function (): void {
-        $mine = new readonly class (plannedRounds: 3) extends SwissPairingEngine {
-            #[Override]
-            public function getFingerprint(): string
-            {
-                return 'my-swiss';
-            }
-        };
-
-        $own = StageState::start($this->participants)->withEngineFingerprint('my-swiss');
-        $librarys = StageState::start($this->participants)
-            ->withEngineFingerprint(new SwissPairingEngine(plannedRounds: 3)->getFingerprint());
-
-        expect($mine->pairNextRound($own)->getRoundNumber())->toBe(1)
-            ->and(fn() => $mine->pairNextRound($librarys))->toThrow(
-                InvalidConfigurationException::class,
-                "the state is stamped by one of the library's engines and this engine is not one"
-            );
-    });
-
-    it('does not tell two subclasses, or two ranking strategies of the application, apart', function (): void {
+    it('does not tell two ranking strategies of the application apart', function (): void {
         // The limit of a fingerprint the library writes: it cannot describe
         // code it does not own. Stated here so that a change to it is seen.
-        $oneSubclass = new readonly class extends SwissPairingEngine {};
-        $anotherSubclass = new readonly class extends SwissPairingEngine {};
         $anotherRanking = new class implements RankingStrategy {
             #[Override]
             public function rank(Participant $participant, array $results): float
@@ -1205,53 +1148,8 @@ describe('engine fingerprints', function (): void {
             }
         };
 
-        expect($oneSubclass::class)->not->toBe($anotherSubclass::class)
-            ->and($oneSubclass->getFingerprint())->toBe($anotherSubclass->getFingerprint())
-            ->and(new SwissPairingEngine(standingsCalculator: new StandingsCalculator($anotherRanking))->getFingerprint())
+        expect(new SwissPairingEngine(standingsCalculator: new StandingsCalculator($anotherRanking))->getFingerprint())
             ->toBe(new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking()))->getFingerprint());
-    });
-
-    it('reads nothing from a calculator of the application', function (): void {
-        // A subclass whose constructor does not call the one it inherits
-        // has no ranking strategy and no tiebreakers to read: reading them
-        // is an Error. Such a calculator ordered a re-seeded bracket before
-        // the fingerprint existed, and still does, stamped or not. The
-        // object is built without its constructor here to be in that state.
-        $subclass = new readonly class extends StandingsCalculator {
-            #[Override]
-            public function calculate(array $participants, array $results): Standings
-            {
-                return new StandingsCalculator()->calculate($participants, $results);
-            }
-        };
-        $calculator = new ReflectionClass($subclass)->newInstanceWithoutConstructor();
-        expect(fn() => $calculator->getTiebreakers())->toThrow(Error::class);
-
-        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator);
-
-        $state = StageState::start($this->participants);
-        $pairing = $engine->pairNextRound($state);
-        $state = $state->withRoundPlayed($pairing, array_map(
-            fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
-            $pairing->getEvents()
-        ));
-
-        expect($engine->getFingerprint())->toBe('tactician:v2:single-elimination;reseed-each-round=yes;standings=custom')
-            ->and($engine->pairNextRound($state)->getRoundNumber())->toBe(2)
-            ->and($engine->pairNextRound($state->withEngineFingerprint($engine->getFingerprint()))->getRoundNumber())->toBe(2);
-    });
-
-    it('does not tell two calculators of the application apart, whatever they were built with', function (): void {
-        // The same limit as for a ranking strategy of the application: the
-        // library cannot know which of the rules a subclass still applies.
-        $build = fn(StandingsCalculator $calculator): string => new SwissPairingEngine(standingsCalculator: $calculator)
-            ->getFingerprint();
-
-        $onTheChessScale = $build(new readonly class (WinDrawLossRanking::oneHalfZero()) extends StandingsCalculator {});
-        $withATiebreaker = $build(new readonly class (tiebreakers: [new BuchholzTiebreaker()]) extends StandingsCalculator {});
-
-        expect($onTheChessScale)->toBe($withATiebreaker)
-            ->and($onTheChessScale)->not->toBe($build(new StandingsCalculator()));
     });
 
     it('writes a ranking value the same way whatever the float settings and the locale', function (): void {

@@ -15,6 +15,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
@@ -45,26 +46,36 @@ use Random\Randomizer;
 // streak allows.
 
 /**
- * A constraint set of the caller's: not ConstraintSet itself, and it
- * changes nothing. The scheduler cannot know that, so it reasons about no
- * constraint in it, the library's own included, and asks the set as a
- * whole.
+ * A leg strategy of the caller's that hands every call to a shuffled leg
+ * strategy, and so changes nothing. The scheduler cannot know that a clone
+ * of it would draw from the seed again, so it clones only the library's
+ * class. (Until 0.3.0 this was a subclass of ShuffledLegStrategy, which is
+ * final now.).
  */
-final readonly class RoleSweepConstraintSetOfTheCallers extends ConstraintSet {}
+final readonly class RoleSweepShuffledLegsOfTheCallers implements LegStrategyInterface
+{
+    private ShuffledLegStrategy $shuffled;
 
-/**
- * A subclass of one of the library's role limits that changes nothing. The
- * scheduler cannot know that either, and reasons about the limit only where
- * the object is of the library's class itself.
- */
-final readonly class RoleSweepLimitSubclassOfTheCallers extends ConsecutiveRoleConstraint {}
+    /**
+     * @throws InvalidConfigurationException Never: a seed is given
+     */
+    public function __construct(int $seed)
+    {
+        $this->shuffled = new ShuffledLegStrategy(seed: $seed);
+    }
 
-/**
- * A subclass of the shuffled leg strategy that changes nothing. The
- * scheduler cannot know that its clone draws from the seed again, so it
- * clones only the library's class.
- */
-final readonly class RoleSweepShuffledLegsOfTheCallers extends ShuffledLegStrategy {}
+    #[Override]
+    public function planLegs(array $participants, int $legs, ConstraintSet $constraints): LegPlanContribution
+    {
+        return $this->shuffled->planLegs($participants, $legs, $constraints);
+    }
+
+    #[Override]
+    public function generateEventForLeg(array $participants, int $leg, int $round, SchedulingContext $context): ?Event
+    {
+        return $this->shuffled->generateEventForLeg($participants, $leg, $round, $context);
+    }
+}
 
 /**
  * A constraint class of the caller's that answers as the limit it is given
@@ -1301,9 +1312,7 @@ describe('the default, balanced where possible', function (): void {
     // it: a scheduler that asked and caught what was thrown, as the
     // default did while it put a rejected event to the constraint against
     // an empty context, completes the league too.
-    //
-    // The same inside a constraint set of the caller's.
-    it('asks a constraint about an event of a later leg only with the first leg before it', function (int $size, ?RoleFallback $reason, bool $inASetOfTheCallers): void {
+    it('asks a constraint about an event of a later leg only with the first leg before it', function (int $size, ?RoleFallback $reason): void {
         $field = roleSweepField($size);
         $limit = ConsecutiveRoleConstraint::homeAway(2);
         $askedWithoutTheFirstMeeting = 0;
@@ -1328,9 +1337,6 @@ describe('the default, balanced where possible', function (): void {
             },
             'Two in a row, and the return meeting the other way round'
         )->build();
-        if ($inASetOfTheCallers) {
-            $constraints = new RoleSweepConstraintSetOfTheCallers($constraints->getConstraints());
-        }
 
         $underRoundParity = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions(2, null, false, new RoundParityRoleAssignment()));
         $schedule = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions(2));
@@ -1352,18 +1358,15 @@ describe('the default, balanced where possible', function (): void {
     })->with([
         'eight participants: balanced' => [8, null],
         'twelve participants: the bound is reached' => [12, RoleFallback::BalancedRolesRejected],
-    ])->with([
-        'in a ConstraintSet' => [false],
-        'in a constraint set of the caller\'s' => [true],
     ]);
 
     // A limit of two in a row over two mirrored legs that the search of
     // roles cannot see into, in each of the forms a caller can give it: a
-    // closure, a class of the caller's, a subclass of the library's limit,
-    // and the library's limit itself inside a constraint set of the
-    // caller's. The roles of round parity keep it, so that schedule is in
-    // hand when balanced roles are looked for, and the search goes back
-    // one event at a time.
+    // closure and a class of the caller's. (Until 0.3.0 a subclass of the
+    // library's limit and a subclass of ConstraintSet were two more; both
+    // classes are final now.) The roles of round parity keep it, so that
+    // schedule is in hand when balanced roles are looked for, and the
+    // search goes back one event at a time.
     //
     // Eight participants: the search finds balanced roles that keep the
     // limit inside the 4,000 events it has with a schedule in hand, and
@@ -1418,16 +1421,6 @@ describe('the default, balanced where possible', function (): void {
         'a class of the caller\'s' => [static fn(): ConstraintSet => ConstraintSet::create()
             ->add(new RoleSweepLimitOfTheCallers(ConsecutiveRoleConstraint::homeAway(2)))
             ->build()],
-        'a subclass of the library\'s limit' => [static fn(): ConstraintSet => ConstraintSet::create()
-            ->add(new RoleSweepLimitSubclassOfTheCallers(
-                2,
-                static fn(Event $event, Participant $participant): string => $event->getParticipants()[0]->getId() === $participant->getId() ? 'home' : 'away',
-                'Two in a row'
-            ))
-            ->build()],
-        'the library\'s limit in a constraint set of the caller\'s' => [static fn(): ConstraintSet => new RoleSweepConstraintSetOfTheCallers([
-            ConsecutiveRoleConstraint::homeAway(2),
-        ])],
     ])->with([
         'eight participants: balanced' => [8, null],
         'ten participants: the bound is reached' => [10, RoleFallback::BalancedRolesRejected],
@@ -1616,15 +1609,16 @@ describe('the default, balanced where possible', function (): void {
     // about once more, for the record, are counted alike: two for the event
     // each of the two layouts ends on.
     //
-    // Under a subclass of the strategy, which the scheduler does not clone,
+    // Under a strategy of the caller's that shuffles the same way, which the
+    // scheduler does not clone,
     // the first layout is laid out again after round parity, and its later
     // legs are searched within the 4,000 events and not to their own bound.
-    it('holds the search of shuffled later legs to the bound of events once a schedule is in hand', function (bool $theFirstLayoutFailsAtOnce, bool $aSubclassOfTheCallers = false): void {
+    it('holds the search of shuffled later legs to the bound of events once a schedule is in hand', function (bool $theFirstLayoutFailsAtOnce, bool $aStrategyOfTheCallers = false): void {
         $size = 10;
         $legs = 2;
         $roundsPerLeg = $size - 1;
         $field = roleSweepField($size);
-        $strategy = static fn(): ShuffledLegStrategy => $aSubclassOfTheCallers
+        $strategy = static fn(): LegStrategyInterface => $aStrategyOfTheCallers
             ? new RoleSweepShuffledLegsOfTheCallers(seed: 1)
             : new ShuffledLegStrategy(seed: 1);
         $keptOut = $theFirstLayoutFailsAtOnce
@@ -1671,7 +1665,7 @@ describe('the default, balanced where possible', function (): void {
         expect(RoleFallback::of($schedule))->toBe(RoleFallback::BalancedRolesRejected)
             ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray());
 
-        if ($aSubclassOfTheCallers) {
+        if ($aStrategyOfTheCallers) {
             expect(count($before))->toBeGreaterThan(4_000)
                 // The first layout again, from its first question
                 ->and(array_slice($after, 0, 100))->toBe(array_slice($before, 0, 100))
@@ -1699,7 +1693,7 @@ describe('the default, balanced where possible', function (): void {
     })->with([
         'the first layout spends the bound' => [false],
         'the first layout fails at once' => [true],
-        'the first layout spends the bound, under a subclass of the strategy' => [false, true],
+        'the first layout spends the bound, under a strategy of the caller\'s' => [false, true],
     ]);
 
     // The first rotated order of the search for balanced roles with round

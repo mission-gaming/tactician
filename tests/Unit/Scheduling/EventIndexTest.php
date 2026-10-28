@@ -183,7 +183,7 @@ describe('EventIndex', function (): void {
     it('counts an event once for a participant it lists twice', function (): void {
         $first = new Participant('a', 'A');
         $second = new Participant('b', 'B');
-        $events = [new UncheckedEvent([$first, $first]), new UncheckedEvent([$first, $second, $first])];
+        $events = [UncheckedEvent::of([$first, $first]), UncheckedEvent::of([$first, $second, $first])];
         $index = new EventIndex($events);
 
         expect($index->forParticipant('a'))->toBe($events);
@@ -263,28 +263,6 @@ describe('SchedulingContext lookups', function (): void {
     });
 });
 
-/**
- * A context that answers for its events its own way, as an application's
- * subclass may: here it reports a round 1 meeting of the first two
- * participants that the list it was built with does not hold.
- */
-final readonly class RememberedMeetingContext extends SchedulingContext
-{
-    #[Override]
-    public function getExistingEvents(): array
-    {
-        $participants = $this->getParticipants();
-
-        return [...parent::getExistingEvents(), new Event([$participants[0], $participants[1]], new Round(1))];
-    }
-
-    #[Override]
-    public function getEventsForLeg(int $leg): array
-    {
-        return $this->getExistingEvents();
-    }
-}
-
 describe('The pair-history constraints', function (): void {
     it('give the verdict a scan of the context gives', function (): void {
         $randomizer = new Randomizer(new Mt19937(7));
@@ -337,25 +315,5 @@ describe('The pair-history constraints', function (): void {
                 expect(new MinimumRestPeriodsConstraint($minimumRest)->isSatisfied($candidate, $context))->toBe($rested);
             }
         }
-    });
-
-    it('read a subclassed context through the methods it overrides', function (): void {
-        $field = GeneratedEvents::field(4);
-        $plan = new RoundRobinPlan($field, 1);
-        $candidate = new Event([$field[1], $field[0]], new Round(2));
-
-        // No event is recorded, so the two have not met.
-        $plain = new SchedulingContext($field, $plan, []);
-        expect(new NoRepeatPairings()->isSatisfied($candidate, $plain))->toBeTrue();
-        expect(new NoRepeatPairings(acrossLegs: true)->isSatisfied($candidate, $plain))->toBeTrue();
-        expect(new MinimumRestPeriodsConstraint(2)->isSatisfied($candidate, $plain))->toBeTrue();
-
-        // By the subclass's own account they met in round 1. The index knows
-        // only the list the context was built with, so a constraint that
-        // read it here would miss the meeting.
-        $remembering = new RememberedMeetingContext($field, $plan, []);
-        expect(new NoRepeatPairings()->isSatisfied($candidate, $remembering))->toBeFalse();
-        expect(new NoRepeatPairings(acrossLegs: true)->isSatisfied($candidate, $remembering))->toBeFalse();
-        expect(new MinimumRestPeriodsConstraint(2)->isSatisfied($candidate, $remembering))->toBeFalse();
     });
 });

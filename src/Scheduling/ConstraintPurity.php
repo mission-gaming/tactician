@@ -26,9 +26,7 @@ use MissionGaming\Tactician\RoleAssignment\LegBalanceRule;
  * only for a set this class knows; for any other set the constraints are
  * asked exactly as they were before those shortcuts existed.
  *
- * A set is known when it is a ConstraintSet itself (a subclass may override
- * isSatisfied(), getConstraints() or count()) and holds only objects of
- * exactly the classes in KNOWN (a subclass may override isSatisfied()). Each
+ * A set is known when it holds only objects of the classes in KNOWN. Each
  * of those classes:
  *
  * - runs no code of the caller's. That is what keeps out
@@ -82,10 +80,6 @@ final class ConstraintPurity
             return true;
         }
 
-        if ($constraints::class !== ConstraintSet::class) {
-            return false;
-        }
-
         return array_all($constraints->getConstraints(), fn($constraint) => in_array($constraint::class, self::KNOWN, true));
     }
 
@@ -115,10 +109,6 @@ final class ConstraintPurity
     {
         if ($constraints === null) {
             return true;
-        }
-
-        if ($constraints::class !== ConstraintSet::class) {
-            return false;
         }
 
         return array_all($constraints->getConstraints(), fn($constraint) => self::constraintReadsOwnEventsOnly($constraint));

@@ -13,7 +13,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class ConstraintSet
+final readonly class ConstraintSet
 {
     /**
      * @param array<ConstraintInterface> $constraints The constraints, in the order they are asked.

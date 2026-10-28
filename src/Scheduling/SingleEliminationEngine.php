@@ -141,10 +141,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * the ranking scale (the three values of a WinDrawLossRanking, default
      * 3/1/0; any other RankingStrategy is stated as custom and not told
      * apart from another of your own), the tiebreakers by name and in
-     * order, and each choice of the awarded result policy that is off, or,
-     * in their place, that the calculator is a subclass of
-     * StandingsCalculator (stated as custom; nothing is read from it, and
-     * two subclasses are not told apart).
+     * order, and each choice of the awarded result policy that is off.
      *
      * Not part of it: grandFinalReset, which this engine does not read,
      * and the standings calculator of a bracket on a fixed path, which
@@ -257,9 +254,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       event or is recorded twice, a tie carries a decider
      *                                       TieDecision refuses (`InvalidResult`), a recorded
      *                                       round holds a third-place tie where this engine
-     *                                       plays none (reason `RecordedRoundMismatch`), the
-     *                                       calculator is a subclass with a tiebreaker between the
-     *                                       tied participants (`IncompatibleOptions`), or the
+     *                                       plays none (reason `RecordedRoundMismatch`), or the
      *                                       bracket is complete
      */
     #[Override]
@@ -529,10 +524,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * withdrawal after that takes nothing back (see readUntilOver()).
      *
      * @throws InvalidConfigurationException When a tie is broken, a recorded round holds a
-     *                                       third-place tie this engine does not play, the
-     *                                       calculator cannot form the
-     *                                       tied sets of the table, or the state is stamped with
-     *                                       another engine's fingerprint
+     *                                       third-place tie this engine does not play, or the
+     *                                       state is stamped with another engine's fingerprint
      */
     private function resolveBracket(StageState $state, bool $capture = false): BracketReading
     {
@@ -540,7 +533,6 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
-        $this->requireTiedSetsInsideATier($this->standingsCalculator);
         $this->requireAThirdPlaceToDecide(count($entrants));
         $this->requireNoThirdPlaceTieRecorded($state);
 

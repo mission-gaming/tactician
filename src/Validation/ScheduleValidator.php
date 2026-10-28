@@ -21,7 +21,7 @@ use MissionGaming\Tactician\Stage\StagePlan;
  *           schedule. To check a schedule yourself, call the plan's
  *           `validateIntegrity()`.
  */
-class ScheduleValidator
+final class ScheduleValidator
 {
     /**
      * Validate that a generated schedule matches its plan.

@@ -209,12 +209,12 @@ describe('a participant in two events of one round at different times', function
 
 describe('a participant listed twice in one event', function (): void {
     // One event is one place: the participant is not in two events. An
-    // Event refuses such a list when it is built, and a class that extends
-    // it can still answer with one
+    // Event refuses such a list when it is built; one built past its
+    // constructor (UncheckedEvent) holds one
     it('is not a double booking', function (): void {
         $alice = new Participant('a', 'Alice');
         $schedule = new Schedule([
-            new UncheckedEvent([$alice, $alice], new Round(1)),
+            UncheckedEvent::of([$alice, $alice], new Round(1)),
             new Event([new Participant('b', 'Bob'), new Participant('c', 'Carol')], new Round(1)),
         ]);
 
