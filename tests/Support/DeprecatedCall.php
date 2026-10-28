@@ -18,12 +18,11 @@ use Throwable;
  * have to call it. Two things stand in the way, and this class is the one
  * place that deals with both:
  *
- * - The method carries the native `#[\Deprecated]` attribute. From PHP 8.4 a
- *   call emits `E_USER_DEPRECATED`, and the suite fails on any deprecation
- *   (`failOnDeprecation` in `phpunit.xml`). On PHP 8.3 the attribute does
- *   nothing. {@see self::to()} takes the notice of its own call and asserts
- *   it: exactly one, naming the method, from PHP 8.4, and none on PHP 8.3.
- *   Only that notice is taken. A deprecation from anywhere else in the test
+ * - The method carries the native `#[\Deprecated]` attribute. A call emits
+ *   `E_USER_DEPRECATED`, and the suite fails on any deprecation
+ *   (`failOnDeprecation` in `phpunit.xml`). {@see self::to()} takes the
+ *   notice of its own call, the one naming the method. Only that notice is
+ *   taken. A deprecation from anywhere else in the test
  *   still reaches PHPUnit and still fails the run, and so does anything
  *   else raised while the method runs: a warning, a notice, or a second
  *   deprecation from inside its body.

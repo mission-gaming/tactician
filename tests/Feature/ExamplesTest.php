@@ -1652,7 +1652,7 @@ it('pins results, not the page or the printed text', function (string $example):
 // being installed (the CI workflows generate de_DE.UTF-8). Elsewhere they
 // only catch an example that calls setlocale(); the renderer is drawn under
 // a decimal-comma locale in ExampleRendererTest.
-// Gap left knowingly: one PHP version per run - the CI matrix (8.3, 8.4,
+// Gap left knowingly: one PHP version per run - the CI matrix (8.4 and
 // 8.5) is what compares versions.
 it('prints the same text whatever the timezone, locale, precision and working directory', function (string $example): void {
     $script = ExampleResults::directory() . "/{$example}.php";

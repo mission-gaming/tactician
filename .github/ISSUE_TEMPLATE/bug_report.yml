@@ -19,7 +19,7 @@ body:
     attributes:
       label: PHP version
       description: The output of `php -v`.
-      placeholder: "8.3.12"
+      placeholder: "8.4.14"
     validations:
       required: true
   - type: textarea
