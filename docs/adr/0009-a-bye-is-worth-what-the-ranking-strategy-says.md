@@ -6,7 +6,9 @@ bracket credits a bye with nothing, and refuses nothing, under a strategy
 without a bye value, and by [0019](0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md),
 which does the same in a Swiss stage; narrowed by [0017](0017-a-league-rest-earns-nothing.md),
 under which the round a participant of a league rests is counted and
-credited with nothing
+credited with nothing; amended by
+[0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md),
+under which no subclass of `StandingsCalculator` is calculated its own way
 
 ## Context
 

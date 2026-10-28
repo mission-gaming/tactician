@@ -1,6 +1,9 @@
 # 0022. Classes are final, and the interfaces are the extension points
 
-Status: accepted
+Status: accepted. Amends
+[0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) and
+[0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md), whose
+consequences for a subclass of `StandingsCalculator` no longer hold.
 
 ## Context
 
