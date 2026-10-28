@@ -4,14 +4,14 @@
     "license": "MIT",
     "type": "project",
     "require": {
-        "php": "^8.3",
+        "php": "^8.4",
         "phpbench/phpbench": "^1.7"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
     "config": {
         "platform": {
-            "php": "8.3.0"
+            "php": "8.4.0"
         },
         "sort-packages": true
     }

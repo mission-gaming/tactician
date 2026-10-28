@@ -15,10 +15,10 @@ return RectorConfig::configure()
         __DIR__ . '/src',
         __DIR__ . '/tests',
     ])
-    // Every PHP set up to 8.3, the Composer floor. Named, not read from the
-    // running PHP, so that the gate proposes the same changes on 8.3, 8.4
-    // and 8.5 and never syntax from a later version.
-    ->withPhpSets(php83: true)
+    // Every PHP set up to 8.4, the Composer floor. Named, not read from the
+    // running PHP, so that the gate proposes the same changes on 8.4 and
+    // 8.5 and never syntax from a later version.
+    ->withPhpSets(php84: true)
     // The prepared sets that are enabled. Code quality and type declarations
     // are not: the first rewrites null checks and loop bounds across the
     // generators for style alone, the second adds closure types taken from
