@@ -244,9 +244,12 @@ enum InvalidConfigurationReason: string
     case RoundOutOfSequence = 'round_out_of_sequence';
 
     /**
-     * A history supplied to `StageState::fromHistory()` names a participant
-     * who is not one of its entrants: in an event, a bye, a result, a
-     * withdrawal or an adjustment.
+     * A participant who is not one of the entrants is named: by a history
+     * supplied to `StageState::fromHistory()`, in an event, a bye, a result,
+     * a withdrawal or an adjustment; by a round given to
+     * `StageState::withRoundPlayed()` or `withRoundPaired()`, in an event or
+     * a bye; or by a round after the first of stored data read by
+     * `StageState::fromArray()`.
      */
     case ParticipantNotAnEntrant = 'participant_not_an_entrant';
 

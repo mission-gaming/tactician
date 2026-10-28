@@ -395,7 +395,9 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
   - **For every round**, its number and label, the two participants of
     every event, the event's metadata (a two-legged tie carries its leg
     number there as `tie_leg`, a third-place tie its mark as
-    `bracket_tie`, and the engine reads both) and the participants who
+    `bracket_tie`, and the engine reads both; store the leg as an integer
+    and hand it back as one, because a string such as `"2"` is read as
+    leg 1) and the participants who
     had a bye. A bye is no event, so it needs a row of its own (the
     `$byeRows` above): a Swiss table counts it, and a bracket reads from
     it who went on without playing. The rows of a round may come back in
@@ -408,12 +410,14 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     adjustments made before it was paired. Once your rows hold a round,
     an adjustment without it is refused (`AdjustmentWithoutRound`).
 
-  `fromHistory()` checks round numbers that are not 1, 2, 3 and so on
-  (`RoundOutOfSequence`) and a participant in a round twice
-  (`ParticipantTwiceInRound`), as the verbs and a stored state do, and what
-  rows can get wrong and a stored state cannot: a participant who is not an
-  entrant (`ParticipantNotAnEntrant`) and two results for one event
-  (`DuplicateResult`). A round that only pairs the entrants otherwise than
+  `fromHistory()` refuses round numbers that are not 1, 2, 3 and so on
+  (`RoundOutOfSequence`), a participant in a round twice
+  (`ParticipantTwiceInRound`) and a participant of a round who is not an
+  entrant (`ParticipantNotAnEntrant`), as the verbs and a stored state do.
+  Rows can also name somebody who is not an entrant in a result, a
+  withdrawal or an adjustment, which is refused with the same reason, and
+  hold two results for one event (`DuplicateResult`), the one thing the
+  verbs accept and `fromHistory()` refuses. A round that only pairs the entrants otherwise than
   the engine would have, because an organiser drew it by hand, is not an
   error: `getRecordedRounds()` reports it as manual
   (`RecordedRound::isManual()`), with the engine's own round beside it
@@ -1021,8 +1025,9 @@ an operator's to fix: `TooFewParticipants`,
 `UndecidedTie`, `TimelineCapacityExceeded`, `TimeRuleViolation`,
 `UnparseableTime` for a date that was typed in. Some are a programmer's:
 `UnsupportedOptions`, `WrongValueType`, `EngineFingerprintMismatch`,
-`EventNotInRound`, and the reasons a history built from your rows is
-refused with (`ParticipantNotAnEntrant`, `ParticipantTwiceInRound`). One
+`EventNotInRound`, and the reasons a round drawn by hand or a history built
+from your rows is refused with (`ParticipantNotAnEntrant`,
+`ParticipantTwiceInRound`). One
 is neither: `RoundPartiallyResolved` is a round still in play, and
 `getReadiness()` tells you so before you ask for the next one. A `match`
 over the reason needs a `default` arm,

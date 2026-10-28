@@ -137,15 +137,23 @@ final readonly class StageState
      * event and among the byes, or in one event listed twice, the same pair
      * in either order with the same tie leg (`ParticipantTwiceInRound`),
      * as the verbs require too. The two legs of a tie, marked 1 and 2 under
-     * `tie_leg` in the metadata of their events, are one appearance. One
-     * rule is checked that the verbs do not check, because rows can state
-     * what no engine paired: every participant of an event, a bye, a
-     * result, a withdrawal or an adjustment is one of the entrants, by ID
-     * (`ParticipantNotAnEntrant`).
+     * `tie_leg` in the metadata of their events, are one appearance; the
+     * leg is an integer, and anything else is read as leg 1 (see
+     * FormatMetadataKey::TIE_LEG). Every participant of an event or a bye
+     * is one of the entrants, by ID (`ParticipantNotAnEntrant`), as the
+     * verbs require too, and so is every participant of a result, a
+     * withdrawal or an adjustment. An entrant whose Withdrawal is after
+     * round 0 and whom round 1 does not name withdrew before the draw: it
+     * is no entrant, and a later round or a result that names it is refused
+     * so, as the verbs refuse a round that names a participant who withdrew
+     * before the first round and is not named by it.
      *
      * An event with two results is refused as well (`DuplicateResult`).
-     * Everything withRoundPlayed() checks is checked by it here too, with
-     * the reason it gives.
+     * That is the one rule checked here that the verbs do not check: they
+     * accept a second result of an event, and withResultReplaced() repairs
+     * it. A state the verbs build from start() is otherwise one this method
+     * builds from its history. Everything withRoundPlayed() checks is
+     * checked here too, with the reason it gives.
      *
      * The entrants are the list the first round was paired from, in that
      * order: an entrant who has withdrawn since stays in it and is named
@@ -227,15 +235,6 @@ final readonly class StageState
         foreach ($state->entrants as $entrant) {
             $entrantIds[$entrant->getId()] = true;
         }
-        $requireEntrant = static function (Participant $participant, string $role, ?int $round) use ($entrantIds): void {
-            if (!isset($entrantIds[$participant->getId()])) {
-                throw new InvalidConfigurationException(
-                    "The history names participant {$participant->getId()} ({$role}), who is not one of the entrants",
-                    ['participant' => $participant->getId(), 'role' => $role, 'round' => $round],
-                    reason: InvalidConfigurationReason::ParticipantNotAnEntrant
-                );
-            }
-        };
 
         $rounds = array_values($rounds);
         usort(
@@ -249,6 +248,25 @@ final readonly class StageState
         // their order is not checked here then: rounds 0 and 1 would
         // otherwise be refused as round 1 given after round 1.
         $sequenced = $rounds === [] || $rounds[0]->getRoundNumber() >= 1;
+
+        // An entrant who withdrew after round 0 and whom round 1 does not
+        // name withdrew before the draw and is no entrant (see
+        // withoutParticipant()), so no round and no result names it. Round 1
+        // never does; one out of sequence is refused before this is read.
+        $outOfTheDraw = [];
+        if ($sequenced && $rounds !== [] && $rounds[0]->getRoundNumber() === 1) {
+            foreach ($withdrawals as $withdrawal) {
+                if ($withdrawal instanceof Withdrawal && $withdrawal->getAfterRound() === 0
+                    && !self::names($rounds[0], $withdrawal->getParticipant()->getId())) {
+                    $outOfTheDraw[$withdrawal->getParticipant()->getId()] = true;
+                }
+            }
+        }
+        $requireEntrant = static function (Participant $participant, string $role, ?int $round) use ($entrantIds, $outOfTheDraw): void {
+            if (!isset($entrantIds[$participant->getId()]) || isset($outOfTheDraw[$participant->getId()])) {
+                throw self::notAnEntrant($participant->getId(), $role, $round);
+            }
+        };
 
         $positions = [];
         foreach ($rounds as $index => $pairing) {
@@ -325,7 +343,9 @@ final readonly class StageState
         $timed = [];
         foreach (array_values($withdrawals) as $index => $withdrawal) {
             $withdrawn = $withdrawal instanceof Withdrawal ? $withdrawal->getParticipant() : $withdrawal;
-            $requireEntrant($withdrawn, 'as withdrawn', null);
+            if (!isset($entrantIds[$withdrawn->getId()])) {
+                throw self::notAnEntrant($withdrawn->getId(), 'as withdrawn', null);
+            }
 
             if (!$withdrawal instanceof Withdrawal) {
                 if ($lastRound > 0) {
@@ -353,11 +373,7 @@ final readonly class StageState
         foreach ($adjustments as $adjustment) {
             $id = $adjustment->getParticipantId();
             if (!isset($entrantIds[$id])) {
-                throw new InvalidConfigurationException(
-                    "The history names participant {$id} (in an adjustment), who is not one of the entrants",
-                    ['participant' => $id, 'role' => 'in an adjustment', 'round' => null],
-                    reason: InvalidConfigurationReason::ParticipantNotAnEntrant
-                );
+                throw self::notAnEntrant($id, 'in an adjustment', null);
             }
             // Once there are rounds, an adjustment says which it was made
             // after; before them it can only be before the first
@@ -409,11 +425,13 @@ final readonly class StageState
      * round, pair and leg (EventKey), so one event listed twice would be
      * given the result of the other.
      *
-     * fromHistory() passes a check that each participant is an entrant,
-     * which is made of each participant as it is met, so that a round that
-     * breaks both rules is refused for whichever comes first in it.
+     * The caller passes its check that each participant is an entrant
+     * (fromHistory() against the entrants it is given, the verbs against
+     * the entrants of the state), which is made of each participant as it
+     * is met, so that a round that breaks both rules is refused for
+     * whichever comes first in it.
      *
-     * @param (\Closure(Participant, string, int|null): void)|null $requireEntrant
+     * @param \Closure(Participant, string, int|null): void $requireEntrant
      *
      * @return array<string, array{int, int}> The round number and the place in the round of
      *                                        every event, by event key
@@ -423,7 +441,7 @@ final readonly class StageState
      *                                       (`ParticipantTwiceInRound`, with `round` and
      *                                       `participant` in the context)
      */
-    private static function positionsOfSoundRound(RoundPairing $pairing, ?\Closure $requireEntrant = null): array
+    private static function positionsOfSoundRound(RoundPairing $pairing, \Closure $requireEntrant): array
     {
         $number = $pairing->getRoundNumber();
         $positions = [];
@@ -438,9 +456,7 @@ final readonly class StageState
             $key = EventKey::of($event);
 
             foreach ($event->getParticipants() as $participant) {
-                if ($requireEntrant !== null) {
-                    $requireEntrant($participant, 'in an event', $number);
-                }
+                $requireEntrant($participant, 'in an event', $number);
 
                 // The same opponents again are the other leg of the tie,
                 // unless it is the same leg again
@@ -456,9 +472,7 @@ final readonly class StageState
         }
 
         foreach ($pairing->getByes() as $bye) {
-            if ($requireEntrant !== null) {
-                $requireEntrant($bye, 'with a bye', $number);
-            }
+            $requireEntrant($bye, 'with a bye', $number);
             if (isset($tieOf[$bye->getId()])) {
                 throw self::twiceInRound($bye, $number);
             }
@@ -474,6 +488,23 @@ final readonly class StageState
             "Participant {$participant->getId()} is in round {$round} twice",
             ['round' => $round, 'participant' => $participant->getId()],
             reason: InvalidConfigurationReason::ParticipantTwiceInRound
+        );
+    }
+
+    /**
+     * The refusal of a participant who is no entrant, which fromHistory()
+     * and the verbs give alike.
+     *
+     * @param string $role Where the participant is named: 'in an event', 'with a bye', 'in a
+     *                     result', 'as withdrawn' or 'in an adjustment'
+     * @param int|null $round The round that names it, where there is one
+     */
+    private static function notAnEntrant(string $id, string $role, ?int $round): InvalidConfigurationException
+    {
+        return new InvalidConfigurationException(
+            "The history names participant {$id} ({$role}), who is not one of the entrants",
+            ['participant' => $id, 'role' => $role, 'round' => $round],
+            reason: InvalidConfigurationReason::ParticipantNotAnEntrant
         );
     }
 
@@ -505,7 +536,8 @@ final readonly class StageState
      * @throws InvalidConfigurationException When withRoundPlayed() refuses the pairing (a round
      *                                       number below 1, `ValueOutOfRange`; not the next round,
      *                                       `RoundOutOfSequence`; a participant in the round twice,
-     *                                       `ParticipantTwiceInRound`; an event of another round, or an
+     *                                       `ParticipantTwiceInRound`; a participant who is no
+     *                                       entrant, `ParticipantNotAnEntrant`; an event of another round, or an
      *                                       event the pairing says awaited a result that no earlier
      *                                       round holds, `EventNotInRound` or
      *                                       `EventWithoutRoundNumber`)
@@ -540,14 +572,31 @@ final readonly class StageState
      * one event listed twice (the same pair in either order with the same
      * tie leg, an event without one being leg 1) is refused with the
      * exception fromHistory() gives (`ParticipantTwiceInRound`). The legs
-     * of one tie are one appearance. A result names its event by round,
-     * pair and leg, so an event listed twice would take the result of the
-     * other.
+     * of one tie are one appearance; the leg is an integer, and anything
+     * else is read as leg 1 (see FormatMetadataKey::TIE_LEG). A result
+     * names its event by round, pair and leg, so an event listed twice
+     * would take the result of the other.
      *
-     * What is not checked: that the participants of the pairing are
-     * active or entrants of the stage (fromHistory() refuses a participant
-     * who is no entrant), and that an event has only one result.
-     * The results are appended to getResults() in the order given.
+     * Every participant of the round, in an event or among the byes, is an
+     * entrant of the stage (getEntrants()), or is refused with the
+     * exception fromHistory() gives (`ParticipantNotAnEntrant`, with
+     * `participant`, `role` and `round` in the context). An entrant who
+     * withdraws keeps its place once a round is recorded, and a later round
+     * may name it: a league pairs its fixtures to the end. One who
+     * withdraws before the first round is recorded is an entrant for that
+     * round, which says whether it was in the draw; one that round does not
+     * name withdrew before the draw and is no entrant. A round that breaks
+     * this rule and the one before is refused for whichever comes first in
+     * it. A state read from data that did not list the place of a
+     * participant who withdrew (0.2.x stored none) takes a participant its
+     * first round names for an entrant, as fromArray() says.
+     *
+     * What is not checked: that the participants of the pairing are active
+     * (a withdrawn entrant's fixtures can be recorded), and that an event
+     * has only one result. The second is the one thing fromHistory() refuses
+     * that the verbs accept: a state built from start() through the verbs
+     * is otherwise one fromHistory() builds from the same history. The
+     * results are appended to getResults() in the order given.
      *
      * @param array<Result> $results
      * @throws InvalidConfigurationException When the pairing's round number is below 1
@@ -556,7 +605,9 @@ final readonly class StageState
      *                                       (`RoundOutOfSequence`, with `last_round`, `pairing_round`
      *                                       and `expected_round` in the context), a participant is in
      *                                       the round twice (`ParticipantTwiceInRound`, with `round`
-     *                                       and `participant` in the context), an event or result
+     *                                       and `participant` in the context) or is no entrant
+     *                                       (`ParticipantNotAnEntrant`, with `participant`, `role` and
+     *                                       `round` in the context), an event or result
      *                                       belongs to a different round or is not in the pairing
      *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
      *                                       event carries no round number at all), or an event the
@@ -568,6 +619,31 @@ final readonly class StageState
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
+        return $this->recordedRound($pairing, $results, $this->roundsPlayed[0] ?? null);
+    }
+
+    /**
+     * The state with one more round recorded: withRoundPlayed(), with the
+     * first round of the stage given, which says who was in the draw.
+     *
+     * A participant of the round is an entrant when the entrant list holds
+     * it or the first round names it. A state the verbs built from start()
+     * holds everyone its first round names in its entrant list, so for it
+     * the entrant list decides. A state read from data that does not list a
+     * participant who withdrew (0.2.x wrote no entrant list) names such a
+     * participant in its rounds only, as it would name one who is no
+     * entrant; its first round says it was in the draw. fromArray() records
+     * the first stored round with itself as the first round for that
+     * reason.
+     *
+     * @param array<Result> $results
+     * @param RoundPairing|null $firstRound The first round of the stage: the one recorded first,
+     *                                      or this one where none is
+     *
+     * @throws InvalidConfigurationException When withRoundPlayed() refuses the round
+     */
+    private function recordedRound(RoundPairing $pairing, array $results, ?RoundPairing $firstRound): self
+    {
         if ($pairing->getRoundNumber() < 1) {
             throw new InvalidConfigurationException(
                 'Round numbers are 1-based: a round cannot be recorded with a number below 1',
@@ -577,7 +653,20 @@ final readonly class StageState
         }
 
         self::requireNextRound($this->getLastRound()?->getRoundNumber() ?? 0, $pairing->getRoundNumber());
-        self::positionsOfSoundRound($pairing);
+
+        $entrantIds = [];
+        foreach ($this->entrants as $entrant) {
+            $entrantIds[$entrant->getId()] = true;
+        }
+        self::positionsOfSoundRound(
+            $pairing,
+            static function (Participant $participant, string $role, ?int $round) use ($entrantIds, $firstRound): void {
+                if (!isset($entrantIds[$participant->getId()])
+                    && ($firstRound === null || !self::names($firstRound, $participant->getId()))) {
+                    throw self::notAnEntrant($participant->getId(), $role, $round);
+                }
+            }
+        );
 
         foreach ($pairing->getEvents() as $event) {
             $eventRound = $event->getRound()?->getNumber();
@@ -1689,30 +1778,43 @@ final readonly class StageState
      * This is the reader of what toArray() wrote. An application that
      * holds its rounds and results in rows of its own does not build this
      * array: it calls fromHistory(), which records the history through the
-     * same verbs and checks more than they do (every participant an
-     * entrant, and one result for an event, among others).
+     * same verbs and checks one rule more than they do (one result for an
+     * event).
      *
      * The history is checked as the verbs check it, because it is
      * recorded again through withRoundPlayed(): rounds in play order,
-     * numbered 1, 2, 3 and so on, nobody twice in a round, every event of a
-     * pairing carrying the
-     * pairing's round number, and every result standing with the results
-     * of its round and belonging to an event of that round. Stored data
-     * that states a history no sequence of verbs could have recorded is
-     * refused with the reason the verb gives (`ValueOutOfRange` for a
+     * numbered 1, 2, 3 and so on, nobody twice in a round, every
+     * participant of a round an entrant, every event of a pairing carrying
+     * the pairing's round number, and every result standing with the
+     * results of its round and belonging to an event of that round. Stored
+     * data that states a history no sequence of verbs could have recorded
+     * is refused with the reason the verb gives (`ValueOutOfRange` for a
      * round below 1, `RoundOutOfSequence`, `ParticipantTwiceInRound`,
-     * `EventNotInRound`, `EventWithoutRoundNumber`), where it used to load
-     * and be replayed by an engine as if it were sound. A state whose round
-     * numbers leave one out, or do not start at 1, is refused too
-     * (`RoundOutOfSequence`), and so is a state with a participant twice in
-     * a round (`ParticipantTwiceInRound`), whatever its format version:
-     * 0.2.x recorded and stored such states, and an engine read the first
-     * as if the missing round had been played and matched one result to
-     * both events of an event listed twice. What the verbs do not check is
-     * not checked here either: the participants of a pairing being active,
-     * and an event with more than one result (the
-     * standings and the bracket engines refuse that one, and
-     * withResultReplaced() repairs it).
+     * `ParticipantNotAnEntrant`, `EventNotInRound`,
+     * `EventWithoutRoundNumber`), where it used to load and be replayed by
+     * an engine as if it were sound. A state whose round numbers leave one
+     * out, or do not start at 1, is refused too (`RoundOutOfSequence`), and
+     * so is a state with a participant twice in a round
+     * (`ParticipantTwiceInRound`) and a state with a round after the first
+     * that names a participant who is no entrant (`ParticipantNotAnEntrant`),
+     * whatever its format version: 0.2.x recorded and stored such states,
+     * and an engine read the first as if the missing round had been played
+     * and matched one result to both events of an event listed twice.
+     *
+     * The entrants are the `entrants` list, or the active list where the
+     * data has none, and the participants the first round names. The first
+     * round says who was in the draw: data that 0.2.x wrote, and data read
+     * from it and written again, names a participant who withdrew in its
+     * rounds alone, and nothing in the data tells such a participant from
+     * one who is no entrant. A participant the first round names is
+     * therefore read as an entrant who withdrew and whose place is not
+     * known (see getEntrants()), and a later round may name it too. One
+     * that only a later round names is refused.
+     *
+     * What the verbs do not check is not checked here either: the
+     * participants of a pairing being active, and an event with more than
+     * one result (the standings and the bracket engines refuse that one,
+     * and withResultReplaced() repairs it).
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed
@@ -1992,6 +2094,8 @@ final readonly class StageState
      * The state a stored history describes, recorded again through
      * withRoundPlayed(): whatever that verb refuses of a live state is
      * refused of a stored one, by the same check and with the same reason.
+     * The first round is recorded as the first round of the stage, so a
+     * participant it names is an entrant (see fromArray()).
      *
      * The results of a state are in the order they were recorded, and a
      * result can only be recorded with its round or added to the last
@@ -2036,6 +2140,7 @@ final readonly class StageState
 
         $next = 0;
         $count = count($results);
+        $firstRound = null;
         foreach ($rounds as $pairing) {
             $ofRound = [];
             while ($next < $count && $results[$next]->getEvent()->getRound()?->getNumber() === $pairing->getRoundNumber()) {
@@ -2043,7 +2148,9 @@ final readonly class StageState
                 ++$next;
             }
 
-            $state = $state->withRoundPlayed($pairing, $ofRound);
+            // The first round says who was in the draw, itself included
+            $firstRound ??= $pairing;
+            $state = $state->recordedRound($pairing, $ofRound, $firstRound);
         }
 
         if ($next < $count) {

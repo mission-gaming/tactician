@@ -10,7 +10,8 @@ use MissionGaming\Tactician\DTO\Participant;
 /**
  * The one place that tells one recorded event from another: by its round
  * number, its participants in either order (PairKey) and its tie leg
- * (FormatMetadataKey::TIE_LEG, 1 when the event carries none).
+ * (FormatMetadataKey::TIE_LEG, 1 when the event carries none, and 1 when
+ * it carries one that is no integer, a string such as '2' included).
  *
  * A result names its event by value, and object identity does not survive
  * plain data, so a stage state, the engines that read it and the selectors

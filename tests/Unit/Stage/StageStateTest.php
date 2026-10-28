@@ -9,8 +9,11 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Stage\EventKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Stage\Withdrawal;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
 
 describe('StageState', function (): void {
     beforeEach(function (): void {
@@ -156,8 +159,8 @@ describe('StageState', function (): void {
     // round that holds one event twice was recorded, and an engine and the
     // bracket view then matched one result to both events, because a result
     // names its event by round, pair and leg. The verbs refuse a participant
-    // twice in a round where fromHistory() refuses it, with its exception;
-    // the entrant check stays fromHistory()'s own.
+    // twice in a round where fromHistory() refuses it, with its exception
+    // (and, since issue #199, a participant who is no entrant: see below).
     it('refuses a round that holds a participant twice, as fromHistory() refuses it', function (string $verb, int $number, Closure $round, string $twice): void {
         $earlier = [];
         $state = StageState::start($this->participants);
@@ -237,6 +240,230 @@ describe('StageState', function (): void {
         expect($state->toArray())->toBe(StageState::fromHistory($this->participants, [$pairing], $results)->toArray())
             ->and($state->getEventsWithoutResult())->toBe([$legs[0], $pairing->getEvents()[2]]);
     })->with(['played', 'paired']);
+
+    // The tie leg is an integer. Anything else, a string such as '2'
+    // included, is read as leg 1, as an event without one is, so the legs
+    // '1' and '2' of one tie are one event listed twice. The documents say
+    // so where tie_leg is described (FormatMetadataKey::TIE_LEG, Event, the
+    // usage guide); this pins what they say.
+    it('reads a tie leg that is no integer as leg 1, so legs given as strings are one event', function (string $verb): void {
+        $round = new Round(1);
+        $legs = [new Event([$this->alice, $this->bob], $round, ['tie_leg' => '1']), new Event([$this->bob, $this->alice], $round, ['tie_leg' => '2'])];
+        $pairing = new RoundPairing(1, 'final', $legs);
+
+        $refusals = [];
+        foreach ([
+            'verb' => fn() => $verb === 'played'
+                ? StageState::start($this->participants)->withRoundPlayed($pairing, [])
+                : StageState::start($this->participants)->withRoundPaired($pairing),
+            'fromHistory()' => fn() => StageState::fromHistory($this->participants, [$pairing]),
+        ] as $path => $build) {
+            try {
+                $build();
+                $refusals[$path] = null;
+            } catch (InvalidConfigurationException $exception) {
+                $refusals[$path] = [$exception->getReason(), $exception->getConfigurationIssue()];
+            }
+        }
+
+        $refusal = [InvalidConfigurationReason::ParticipantTwiceInRound, 'Participant p2 is in round 1 twice'];
+        expect($refusals)->toBe(['verb' => $refusal, 'fromHistory()' => $refusal])
+            ->and(EventKey::of($legs[1]))->toBe(EventKey::of(new Event([$this->alice, $this->bob], $round)))
+            // The standings read the leg the same way: two results of one event
+            ->and(fn() => (new StandingsCalculator())->calculate([$this->alice, $this->bob], [new Result($legs[0], $this->alice), new Result($legs[1], $this->bob)]))
+            ->toThrow(InvalidInputException::class)
+            // As integers, the two legs are two events of one tie
+            ->and(StageState::start($this->participants)->withRoundPaired(new RoundPairing(1, 'final', [
+                new Event([$this->alice, $this->bob], $round, ['tie_leg' => 1]),
+                new Event([$this->bob, $this->alice], $round, ['tie_leg' => 2]),
+            ]))->getEventsWithoutResult())->toHaveCount(2);
+    })->with(['played', 'paired']);
+
+    // Issue #199: every participant of a round is an entrant, wherever a
+    // state is built. The verbs recorded a round that named a participant
+    // the stage was not started with, which fromHistory() refused. They now
+    // refuse it with the exception fromHistory() gives: the same reason,
+    // message and context. A round that breaks this rule and the rule that
+    // nobody is in it twice is refused for whichever comes first in it.
+    it('refuses a round that names a participant who is no entrant, as fromHistory() refuses it', function (string $verb, int $number, Closure $round, Closure $refusal): void {
+        $earlier = [];
+        $state = StageState::start($this->participants);
+        for ($played = 1; $played < $number; ++$played) {
+            $earlier[] = $pairing = new RoundPairing($played, null, [new Event([$this->alice, $this->bob], new Round($played))]);
+            $state = $state->withRoundPaired($pairing);
+        }
+        $stranger = new Participant('z', 'Not an entrant');
+        [$events, $byes] = $round($this, $stranger, new Round($number));
+        $pairing = new RoundPairing($number, null, $events, $byes);
+
+        $refusals = [];
+        foreach ([
+            'verb' => static fn() => $verb === 'played' ? $state->withRoundPlayed($pairing, []) : $state->withRoundPaired($pairing),
+            'fromHistory()' => fn() => StageState::fromHistory($this->participants, [...$earlier, $pairing]),
+        ] as $path => $build) {
+            try {
+                $build();
+                $refusals[$path] = null;
+            } catch (InvalidConfigurationException $exception) {
+                $refusals[$path] = [$exception->getReason(), $exception->getConfigurationIssue(), $exception->getContext()];
+            }
+        }
+
+        expect($refusals)->toBe(['verb' => $refusal($number), 'fromHistory()' => $refusal($number)]);
+    })->with(['played', 'paired'])->with(['round 1' => 1, 'round 3' => 3])->with(function (): array {
+        $notAnEntrant = static fn(string $role): Closure => static fn(int $number): array => [
+            InvalidConfigurationReason::ParticipantNotAnEntrant,
+            "The history names participant z ({$role}), who is not one of the entrants",
+            ['participant' => 'z', 'role' => $role, 'round' => $number],
+        ];
+
+        return [
+            'in an event' => [
+                fn($test, Participant $stranger, Round $round) => [[new Event([$test->alice, $stranger], $round)], []],
+                $notAnEntrant('in an event'),
+            ],
+            'named first in an event' => [
+                fn($test, Participant $stranger, Round $round) => [[new Event([$test->alice, $test->bob], $round), new Event([$stranger, $test->carol], $round)], [$test->dave]],
+                $notAnEntrant('in an event'),
+            ],
+            'with a bye' => [
+                fn($test, Participant $stranger, Round $round) => [[new Event([$test->alice, $test->bob], $round)], [$test->carol, $stranger]],
+                $notAnEntrant('with a bye'),
+            ],
+            // The participant twice comes first in the round
+            'in an event after a participant twice' => [
+                fn($test, Participant $stranger, Round $round) => [[new Event([$test->alice, $test->bob], $round), new Event([$test->alice, $stranger], $round)], []],
+                static fn(int $number): array => [
+                    InvalidConfigurationReason::ParticipantTwiceInRound,
+                    "Participant p1 is in round {$number} twice",
+                    ['round' => $number, 'participant' => 'p1'],
+                ],
+            ],
+            // The participant who is no entrant comes first in the round
+            'in an event before a participant twice' => [
+                fn($test, Participant $stranger, Round $round) => [[new Event([$test->alice, $test->bob], $round), new Event([$stranger, $test->alice], $round)], []],
+                $notAnEntrant('in an event'),
+            ],
+        ];
+    });
+
+    // Who is an entrant after a withdrawal is what fromHistory() says: an
+    // entrant who withdraws from the live stage keeps its place and can be
+    // named by a later round (a league pairs its fixtures to the end), and
+    // one who withdraws before the first round and is named by it was in the
+    // draw. One who withdraws before the first round and is not named by it
+    // withdrew before the draw and is no entrant: a later round that names
+    // it is refused, by the verbs and by fromHistory().
+    it('takes a withdrawn participant for an entrant exactly where fromHistory() does', function (string $verb, int $withdrawnAfter, Closure $rounds, ?array $refusal): void {
+        $state = StageState::start($this->participants);
+        $pairings = $rounds($this);
+        $refused = null;
+        foreach ($pairings as $index => $pairing) {
+            if ($index === $withdrawnAfter) {
+                $state = $state->withoutParticipant($this->dave);
+            }
+            try {
+                $state = $verb === 'played' ? $state->withRoundPlayed($pairing, []) : $state->withRoundPaired($pairing);
+            } catch (InvalidConfigurationException $exception) {
+                $refused = [$exception->getReason(), $exception->getConfigurationIssue(), $exception->getContext()];
+                break;
+            }
+        }
+
+        $history = null;
+        $built = null;
+        try {
+            $built = StageState::fromHistory($this->participants, $pairings, [], [new Withdrawal($this->dave, $withdrawnAfter)]);
+        } catch (InvalidConfigurationException $exception) {
+            $history = [$exception->getReason(), $exception->getConfigurationIssue(), $exception->getContext()];
+        }
+
+        expect($refused)->toBe($refusal)
+            ->and($history)->toBe($refusal);
+        if ($built !== null) {
+            expect($built->toArray())->toBe($state->toArray())
+                ->and(StageState::fromJson($state->toJson())->toArray())->toBe($state->toArray());
+        }
+    })->with(['played', 'paired'])->with([
+        'withdrawn after round 1, named by round 2' => [
+            1,
+            fn($test) => [
+                new RoundPairing(1, null, [new Event([$test->alice, $test->bob], new Round(1)), new Event([$test->carol, $test->dave], new Round(1))]),
+                new RoundPairing(2, null, [new Event([$test->alice, $test->dave], new Round(2)), new Event([$test->bob, $test->carol], new Round(2))]),
+            ],
+            null,
+        ],
+        'withdrawn after round 1, given a bye in round 2' => [
+            1,
+            fn($test) => [
+                new RoundPairing(1, null, [new Event([$test->alice, $test->bob], new Round(1)), new Event([$test->carol, $test->dave], new Round(1))]),
+                new RoundPairing(2, null, [new Event([$test->alice, $test->carol], new Round(2))], [$test->bob, $test->dave]),
+            ],
+            null,
+        ],
+        'withdrawn before round 1, named by it and by round 2' => [
+            0,
+            fn($test) => [
+                new RoundPairing(1, null, [new Event([$test->alice, $test->bob], new Round(1)), new Event([$test->carol, $test->dave], new Round(1))]),
+                new RoundPairing(2, null, [new Event([$test->alice, $test->dave], new Round(2))]),
+            ],
+            null,
+        ],
+        'withdrawn before round 1, given a bye by it' => [
+            0,
+            fn($test) => [
+                new RoundPairing(1, null, [new Event([$test->alice, $test->bob], new Round(1))], [$test->carol, $test->dave]),
+            ],
+            null,
+        ],
+        'withdrawn before round 1, not named by it, named by round 2' => [
+            0,
+            fn($test) => [
+                new RoundPairing(1, null, [new Event([$test->alice, $test->bob], new Round(1))], [$test->carol]),
+                new RoundPairing(2, null, [new Event([$test->alice, $test->carol], new Round(2)), new Event([$test->bob, $test->dave], new Round(2))]),
+            ],
+            [
+                InvalidConfigurationReason::ParticipantNotAnEntrant,
+                'The history names participant p4 (in an event), who is not one of the entrants',
+                ['participant' => 'p4', 'role' => 'in an event', 'round' => 2],
+            ],
+        ],
+        'withdrawn before round 1, not named by it, given a bye in round 2' => [
+            0,
+            fn($test) => [
+                new RoundPairing(1, null, [new Event([$test->alice, $test->bob], new Round(1))], [$test->carol]),
+                new RoundPairing(2, null, [new Event([$test->alice, $test->carol], new Round(2))], [$test->bob, $test->dave]),
+            ],
+            [
+                InvalidConfigurationReason::ParticipantNotAnEntrant,
+                'The history names participant p4 (with a bye), who is not one of the entrants',
+                ['participant' => 'p4', 'role' => 'with a bye', 'round' => 2],
+            ],
+        ],
+    ]);
+
+    // A history can name an entrant who withdrew before the draw in a result
+    // of an event that no round holds. The result is refused for naming
+    // somebody who is no entrant, as a round that names it is, and not only
+    // later for belonging to no event of its round.
+    it('refuses a result in a history that names an entrant who withdrew before the draw', function (): void {
+        $round = new Round(1);
+        $pairing = new RoundPairing(1, null, [new Event([$this->alice, $this->bob], $round)], [$this->carol]);
+        $result = new Result(new Event([$this->carol, $this->dave], $round), $this->carol);
+
+        try {
+            StageState::fromHistory($this->participants, [$pairing], [$result], [new Withdrawal($this->dave, 0)]);
+            $refusal = null;
+        } catch (InvalidConfigurationException $exception) {
+            $refusal = [$exception->getReason(), $exception->getConfigurationIssue(), $exception->getContext()];
+        }
+
+        expect($refusal)->toBe([
+            InvalidConfigurationReason::ParticipantNotAnEntrant,
+            'The history names participant p4 (in a result), who is not one of the entrants',
+            ['participant' => 'p4', 'role' => 'in a result', 'round' => 1],
+        ]);
+    });
 
     it('records the rounds 1, 2, 3 and so on, one after the other', function (): void {
         $state = StageState::start($this->participants);

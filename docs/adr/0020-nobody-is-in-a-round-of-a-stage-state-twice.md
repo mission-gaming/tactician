@@ -3,7 +3,9 @@
 Status: accepted; amends point 8 of
 [0007](0007-recorded-rounds-are-read-not-derived.md), as
 [0018](0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md) did for the
-round numbers
+round numbers. What it says of a participant who is not an entrant is
+replaced by [0021](0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md):
+the verbs and `fromArray()` check that too, in the same check
 
 ## Context
 
@@ -43,7 +45,8 @@ as one appearance.
 
 The three ways in share one check (a private method of `StageState`):
 
-- the verbs call it once the round number is checked;
+- the verbs call it once the round number is checked (since 0021 with their
+  own check that every participant is an entrant);
 - `fromHistory()` calls it for each round, together with its check that
   every participant is an entrant, so that a round that breaks both rules is
   refused for whichever comes first in it;
@@ -55,8 +58,9 @@ The three ways in share one check (a private method of `StageState`):
 version, so including data 0.2.x wrote without one. This replaces what the
 last sentence of point 8 of 0007 says of this rule. What that point keeps
 accepting is unchanged: a pairing whose participants are no longer active,
-and two results of one event. A participant who is not an entrant is still
-checked by `fromHistory()` only.
+and two results of one event. A participant who is not an entrant was still
+checked by `fromHistory()` only; 0021 brought that rule to the verbs and to
+`fromArray()` as well.
 
 The stage state form takes no new format version, for the reason 0018
 gives: no key is added, removed or renamed, and no value takes another

@@ -11,9 +11,13 @@ withdrawal without its round is narrowed by
 adjustment without its round is replaced by the amendment of 0012 (no state
 holds one any more); what point 8 says of a gap in the round
 numbers is replaced by [0018](0018-the-rounds-of-a-stage-state-are-numbered-1-2-3.md),
-and what it says of a participant twice in a round by
-[0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md): the verbs and
-`fromArray()` refuse both too.
+what it says of a participant twice in a round by
+[0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md), and what it
+says of a participant who is not an entrant by
+[0021](0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md): the
+verbs and `fromArray()` refuse all three too, so none of the three rules of
+point 8 is `fromHistory()`'s own any more, and what it checks of a round
+that the verbs do not is one result for an event.
 
 ## Context
 

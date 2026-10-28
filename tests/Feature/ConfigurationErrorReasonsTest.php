@@ -608,6 +608,24 @@ describe('the reason of a configuration error', function (): void {
             },
             InvalidConfigurationReason::ParticipantNotAnEntrant,
         ],
+        'a round recorded with a participant who is not an entrant' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                StageState::start([$alice, new Participant('b', 'Bob')])
+                    ->withRoundPaired(new RoundPairing(1, null, [new Event([$alice, new Participant('z', 'Zed')], new Round(1))]));
+            },
+            InvalidConfigurationReason::ParticipantNotAnEntrant,
+        ],
+        'a round recorded with a bye for a participant who is not an entrant' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                StageState::start([$alice, $bob])
+                    ->withRoundPaired(new RoundPairing(1, null, [new Event([$alice, $bob], new Round(1))]))
+                    ->withRoundPlayed(new RoundPairing(2, null, [new Event([$bob, $alice], new Round(2))], [new Participant('z', 'Zed')]), []);
+            },
+            InvalidConfigurationReason::ParticipantNotAnEntrant,
+        ],
         'a history with one participant in two events of a round' => [
             function (): void {
                 $alice = new Participant('a', 'Alice');

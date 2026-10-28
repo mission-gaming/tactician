@@ -89,7 +89,7 @@ anything else that competes.
 | **Rest (in a league)** | The round a participant of a league of odd size sits out. It is a **bye** of the round, listed among its byes and counted on the participant's entry (`StandingEntry::getByes()`), and it earns nothing, whatever the ranking strategy says a bye is worth ([ADR 0017](adr/0017-a-league-rest-earns-nothing.md) says why). See [Leagues Run Round by Round](#leagues-run-round-by-round). |
 | **Stage state** | The record of a results-driven stage between rounds (`StageState`): the entrant list, who has withdrawn, the recorded pairings (with byes), results, and adjustments. It is built verb by verb and stored (`toJson()`), or built on each request from a history the application holds (`StageState::fromHistory()`). Withdrawals are `withoutParticipant()`, a result of the last recorded round is corrected with `withResultReplaced()`, and an adjustment is recorded with `withAdjustment()`. |
 | **History (of a stage)** | What an application holds of a stage in its own storage: the entrants in their order, the rounds that were paired, the results recorded so far, who has withdrawn and after which round, the adjustments and after which round. A history is a set of facts. An engine reads the rounds as they are and derives only the round that does not exist yet; `StageState::fromHistory()` builds a stage state from one and refuses a history that breaks a **hard rule**. See [Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows). |
-| **Hard rule** | One of the two things `StageState::fromHistory()` requires of a history beside what recording a round always requires (which includes round numbers 1, 2, 3 with none left out, and nobody in a round twice): every participant an entrant, and one result for an event. A history that breaks one is refused with a reason; a round that only pairs the entrants otherwise than the engine would have is not. |
+| **Hard rule** | One of the two things `StageState::fromHistory()` requires of a history beside what recording a round always requires (which includes round numbers 1, 2, 3 with none left out, nobody in a round twice, and every participant of a round an entrant): every participant of a result, a withdrawal or an adjustment an entrant, and one result for an event. A history that breaks one is refused with a reason; a round that only pairs the entrants otherwise than the engine would have is not. Of the two, only the second is one the verbs do not hold a state to: they accept two results of one event, and refuse or ignore the others. |
 | **Manual round** | A recorded round that is not the round the engine would have paired from the rounds before it: paired by hand, or by other rules. It is read as recorded, never refused for it, and reported by `HistoryReadingEngine::getRecordedRounds()` (`RecordedRound::isManual()`) with the engine's own round beside it (the **derivation**). |
 | **Unresolved event** | An event of a recorded round that still awaits its result. While there is one, the next round is refused (`UnresolvedRoundException`), the stage is not complete, and reading it throws nothing. `HistoryReadingEngine::getReadiness()` lists the events without an exception. A round paired early on purpose (`pairNextRoundOnIncompleteResults()`) is marked and lists the events that were unresolved when it was paired (`RoundPairing::getUnresolvedWhenPaired()`). See [Rounds That Are Not Finished](#rounds-that-are-not-finished). |
 | **After round (of a withdrawal or an adjustment)** | When a withdrawal or an adjustment happened, in the rounds of its stage: the number of the last round that was recorded at that moment, 0 before the first round (`Adjustment::getAfterRound()`, `Withdrawal::getAfterRound()`). The verbs of a stage state record it without being told; a history that holds a round states it for every withdrawal and every adjustment. An engine reads a recorded round from the adjustments made, and the entrants still in the stage, before it was paired, which to a state is before it was recorded, so a round is recorded when it is paired (`withRoundPaired()`); a round that names an entrant was paired while that entrant was in the stage, whatever its withdrawal states. Only a withdrawal stored by 0.2.x has no round: its time is not known and is never read as one that suits. See [When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened). |
@@ -1544,8 +1544,9 @@ Each event may have at most one result, and the calculator throws an
 `InvalidInputException` for two results of one event. Two results are of one
 event when they hold the same `Event` object, or when their events carry the
 same round number, the same participants in either order and the same tie
-leg (the `tie_leg` metadata of a two-legged tie; an event without it is leg
-1). The second rule is the one that holds for stored data: a result recorded
+leg (the `tie_leg` metadata of a two-legged tie, an integer; an event
+without it is leg 1, and so is one whose leg is no integer, a string such as
+`'2'` included). The second rule is the one that holds for stored data: a result recorded
 twice comes back from JSON as two `Event` objects that are equal, and it is
 refused as it was before it was stored. Two things follow:
 
@@ -2591,12 +2592,27 @@ one event listed twice (the same pair in either order with the same tie
 leg, an event without one being leg 1) is refused
 (`InvalidConfigurationException`, reason `ParticipantTwiceInRound`, with
 `round` and `participant` in the context), as `fromHistory()` refuses it.
-The legs of one tie, marked 1 and 2 under `tie_leg`, are one appearance. A
-result finds its event by round, pair and leg, so an event listed twice
-would take the result of the other. No engine pairs such a round: only a
-round drawn by hand can hold one. The verbs do not check everything
-`fromHistory()` checks: a participant who is not an entrant and two results
-of one event are refused by `fromHistory()` only.
+The legs of one tie, marked 1 and 2 under `tie_leg`, are one appearance.
+The leg is an integer: anything else, a string such as `'2'` included, is
+read as leg 1, so legs `'1'` and `'2'` of one tie are one event listed
+twice and are refused. A result finds its event by round, pair and leg, so
+an event listed twice would take the result of the other. No engine pairs
+such a round: only a round drawn by hand can hold one.
+
+**Everyone in a round is an entrant.** A round that names a participant the
+stage was not started with, in an event or among the byes, is refused
+(`InvalidConfigurationException`, reason `ParticipantNotAnEntrant`, with
+`participant`, `role` and `round` in the context), as `fromHistory()`
+refuses it. An entrant who withdraws keeps its place once a round is
+recorded, and a later round may name it: a league pairs its fixtures to the
+end. One who withdraws before the first round is recorded is an entrant for
+that round, which says whether it was in the draw; one the first round does
+not name withdrew before the draw and is no entrant. No engine pairs a
+round that names somebody else.
+
+The one thing `fromHistory()` refuses and the verbs accept is two results
+of one event (`DuplicateResult`): a state the verbs build from `start()` is
+otherwise one `fromHistory()` builds from the same history.
 
 The outcome's standings are the table the rounds were paired from. A bye
 counts in it as it counts for pairing: the ranking value of an entry
@@ -4300,7 +4316,7 @@ being another round than it would have paired.
 | --- | --- |
 | `entrants` | The list the first round was paired from, in its order. An entrant who has withdrawn since stays in it, so that it keeps its place |
 | `rounds` | One `RoundPairing` for each round that was paired: its number, its label, its events and the participants who had a bye. In any order |
-| `results` | The results recorded so far, of any of the rounds, in any order. A result is matched to its event by round number, the two participants in either order and the `tie_leg` of the event's metadata, not by object |
+| `results` | The results recorded so far, of any of the rounds, in any order. A result is matched to its event by round number, the two participants in either order and the `tie_leg` of the event's metadata, not by object. The leg is an integer (a string such as `'2'` is read as leg 1), so hand it back from your rows as one |
 | `withdrawals` | The entrants who have withdrawn, each as a `Withdrawal` with the number of the last round recorded when it withdrew (0 before the first), those after one round in the order they happened. Once `rounds` holds a round every withdrawal says its round; a plain participant is accepted only where no round is supplied |
 | `adjustments` | The [adjustments](#adjustments) made, in the order they are to be kept in, each with the round it was made after (`Adjustment::madeAfterRound()`, 0 before the first). Once `rounds` holds a round every adjustment says its round; one without it is accepted only where no round is supplied |
 
@@ -4315,17 +4331,19 @@ a round is kept as you give it, and no engine reads a recorded round by it:
 the rows may come back from the database in any order.
 
 Rows can state what no engine paired, so a history is held to two **hard
-rules** beside what recording a round always requires (every participant an
-entrant, and one result for an event), and the round numbers, and who is in
-a round, are checked as the verbs check them. Each breach is an
-`InvalidConfigurationException` with a reason, and its context names the
+rules** beside what recording a round always requires (every participant of
+a result, a withdrawal or an adjustment an entrant, and one result for an
+event), and the round numbers, who is in a round, and whether everyone in a
+round is an entrant are checked as the verbs check them. Two results of one
+event are the one thing refused here that the verbs accept. Each breach is
+an `InvalidConfigurationException` with a reason, and its context names the
 round and the participant:
 
 | The history | Reason |
 | --- | --- |
 | Round numbers that are not 1, 2, 3 and so on: one left out, or one given twice (the verbs refuse it too; the context lists the numbers under `round_numbers`) | `RoundOutOfSequence` |
-| A participant of an event, a bye, a result, a withdrawal or an adjustment who is not one of the entrants | `ParticipantNotAnEntrant` |
-| A participant in a round twice: in two events against different opponents, in an event and among the byes, or in one event listed twice (the same pair in either order with the same tie leg, an event without one being leg 1), which the verbs refuse too. The two legs of a tie are one appearance | `ParticipantTwiceInRound` |
+| A participant of an event, a bye, a result, a withdrawal or an adjustment who is not one of the entrants (the verbs refuse it in an event or a bye too). An entrant with a `Withdrawal` after round 0 whom round 1 does not name withdrew before the draw, and is no entrant for a later round or a result | `ParticipantNotAnEntrant` |
+| A participant in a round twice: in two events against different opponents, in an event and among the byes, or in one event listed twice (the same pair in either order with the same tie leg, an event without one being leg 1, and a leg that is no integer being leg 1 too), which the verbs refuse too. The two legs of a tie are one appearance | `ParticipantTwiceInRound` |
 | Two results for one event | `DuplicateResult` |
 | Rounds, and a withdrawal given as a plain participant: it does not say after which round it happened | `WithdrawalWithoutRound` |
 | Rounds, and an adjustment without `madeAfterRound()`: it does not say after which round it was made | `AdjustmentWithoutRound` |
@@ -5110,9 +5128,10 @@ it is. An application whose rows hold the fixtures
 builds the state with `StageState::fromHistory()`, as for any stage (see
 [Stages Resolved from Your Own Rows](#stages-resolved-from-your-own-rows));
 the rows of a round with a participant who sat it out are its fixtures and
-that bye. A state that names a participant outside its entrant list (a
-round recorded with a participant who never entered, or data stored by
-0.2.x, which kept no entrant list, in which a participant had withdrawn) is
+that bye. A state that names a participant outside its entrant list (data
+stored by 0.2.x, which kept no entrant list, in which a participant had
+withdrawn, or stored data whose first round names a participant who never
+entered, which is read the same way; the verbs refuse such a round) is
 refused with `RecordedRoundMismatch`: the league could not be drawn again
 from the list it was drawn from.
 
@@ -7915,6 +7934,7 @@ one, with the same `InvalidConfigurationException` and the same reason:
 | A round numbered below 1 | `ValueOutOfRange` |
 | Rounds not numbered 1, 2, 3 and so on in play order: one out of order, one given twice, one left out, or a first round that is not round 1. This includes data stored by 0.2.x, whose verbs recorded a round that left one out | `RoundOutOfSequence` |
 | A round that holds a participant twice: in two events against different opponents, in an event and among the byes, or in one event listed twice. This includes data stored by 0.2.x, whose verbs recorded such a round | `ParticipantTwiceInRound` |
+| A round after the first that names a participant who is not an entrant, in an event or among the byes. This includes data stored by 0.2.x, whose verbs recorded such a round | `ParticipantNotAnEntrant` |
 | A pairing that holds an event of another round | `EventNotInRound` |
 | A pairing that holds an event with no round | `EventWithoutRoundNumber` |
 | A result for an event its round does not hold | `EventNotInRound` |
@@ -7968,19 +7988,39 @@ try {
 } catch (InvalidConfigurationException $exception) {
     echo $exception->getReason()?->value, "\n"; // participant_twice_in_round
 }
+
+// The same data with a participant who never entered in round 2, as the
+// verbs of 0.2.x could record it
+$stranger = $state->toArray();
+$stranger['participants'][] = ['id' => 'ajax', 'label' => 'Ajax', 'seed' => null, 'metadata' => []];
+$stranger['rounds'][1]['events'][0]['participants'][1] = 'ajax';
+try {
+    StageState::fromArray($stranger);
+} catch (InvalidConfigurationException $exception) {
+    echo $exception->getReason()?->value, ' ', $exception->getContext()['participant'], "\n"; // participant_not_an_entrant ajax
+}
 ```
+
+The entrants of stored data are its `entrants` list (the active list where
+the data has none) and the participants its first round names. The first
+round says who was in the draw, and the data cannot say more: 0.2.x stored a
+participant who had withdrawn by its rounds alone, and nothing in the data
+tells such a participant from one who never entered. So a participant the
+first round names is read as an entrant who withdrew and whose place is not
+known, and a later round may name it too; a participant that only a later
+round names is refused.
 
 What the verbs accept is accepted from storage too: a pairing whose
 participants are no longer active, and two results of one event.
-(`StageState::fromHistory()` refuses the last: it reads rows the verbs did
-not write, and holds them to
-[more rules](#stages-resolved-from-your-own-rows).) Two results of one event are a state to repair and not one to read tables from
+(`StageState::fromHistory()` refuses the last, the one thing it holds
+[rows](#stages-resolved-from-your-own-rows) to that the verbs do not.) Two results of one event are a state to repair and not one to read tables from
 (the standings and the bracket engines refuse it), and it has to load to be
 repaired: see [Correcting a Recorded Result](#correcting-a-recorded-result).
 A state that `toArray()` or `toJson()` wrote is always one the verbs
 recorded, so stored states are affected only where something else wrote or
 edited the data, or where the verbs of 0.2.x recorded a round that left one
-out or held a participant twice.
+out, held a participant twice or named a participant who was not an
+entrant.
 
 ## Schedule Validation
 
@@ -8428,7 +8468,7 @@ identifier for logs and stored data):
 | `PoolComparisonRequired` | `pool_comparison_required` | A selection that compares entrants of different pools was asked of pools of unequal size, with no comparison method chosen. The context lists the pool sizes (`pool_sizes`) |
 | `PoolMatesInFirstRound` | `pool_mates_in_first_round` | A selection placed for a bracket (`BracketQualifiersSelector`) was asked of an outcome of one pool, whose qualifiers meet each other in the first round however they are placed. The context holds the number of pools (`pools`) |
 | `RoundOutOfSequence` | `round_out_of_sequence` | A round is not the next one: the rounds of a stage state are numbered 1, 2, 3 and so on in play order, and the round recorded, the rounds of a history (`StageState::fromHistory()`) or the rounds of stored data (`StageState::fromArray()`) leave one out, give one twice or are out of order |
-| `ParticipantNotAnEntrant` | `participant_not_an_entrant` | A history given to `StageState::fromHistory()` names a participant who is not one of its entrants |
+| `ParticipantNotAnEntrant` | `participant_not_an_entrant` | A participant who is not one of the entrants is named: by a history given to `StageState::fromHistory()` (in an event, a bye, a result, a withdrawal or an adjustment), by a round given to `StageState::withRoundPlayed()` or `withRoundPaired()`, or by a round after the first of stored data read by `StageState::fromArray()` (in an event or a bye) |
 | `ParticipantTwiceInRound` | `participant_twice_in_round` | A round holds one participant twice: a round of a history given to `StageState::fromHistory()`, one given to `withRoundPlayed()` or `withRoundPaired()`, or one of stored data read by `StageState::fromArray()`. The context names the round (`round`) and the participant (`participant`) |
 | `WithdrawalWithoutRound` | `withdrawal_without_round` | A history given to `StageState::fromHistory()` holds rounds and a withdrawal that does not say after which round it happened |
 | `AdjustmentWithoutRound` | `adjustment_without_round` | A history given to `StageState::fromHistory()` holds rounds and an adjustment that does not say after which round it was made |

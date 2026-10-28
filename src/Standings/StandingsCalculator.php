@@ -269,8 +269,9 @@ readonly class StandingsCalculator
      * An event has one result. Two results are of one event, and are
      * refused, when they hold the same Event object, or when their events
      * carry the same round number, the same participants in any order and
-     * the same tie leg (the `tie_leg` metadata of a two-legged tie; an
-     * event without it is leg 1). The second rule is what holds after
+     * the same tie leg (the `tie_leg` metadata of a two-legged tie, an
+     * integer; an event without it is leg 1, and so is one whose leg is no
+     * integer, a string such as '2' included). The second rule is what holds after
      * storage: results read back from JSON hold Event objects of their
      * own, so a result recorded twice is two objects and one match. An
      * event with no round has nothing but the object to tell it from
