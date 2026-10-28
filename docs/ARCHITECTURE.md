@@ -340,8 +340,8 @@ what the role search can know about the constraints
   constraints.** Steps 2 to 8 with the balanced roles; if they fail, steps 2
   to 8 with the roles the generator proposes, whose failure is the failure
   of the call.
-- **Anything else** (a closure, a metadata rule, a class of the caller's, a
-  subclass). The balanced roles as given in the first layout; then steps 2
+- **Anything else** (a closure, a metadata rule, a class of the caller's).
+  The balanced roles as given in the first layout; then steps 2
   to 8 with the roles the generator proposes; then steps 2 to 8 with the
   balanced roles. With a schedule in hand that last run is held to 4,000
   events put to the constraints and makes a backtracking search only where

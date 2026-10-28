@@ -100,10 +100,11 @@ written before is unchanged.
   value depends on the byes (a treatment other than `Uncounted`) or on who
   is level ([0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md))
   they refuse, and `calculateWith()` is the call.
-- A subclass of `StandingsCalculator` is calculated through its own
+- A subclass of `StandingsCalculator` was calculated through its own
   `calculate()`, `withByesCredited()` and `withAdjustments()`, as it was
-  before `calculateWith()` existed, so one that orders a table by rules of
-  its own is still asked.
+  before `calculateWith()` existed, so one that ordered a table by rules of
+  its own was still asked. No longer: the class is final from 0.3.0
+  ([0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md)).
 - `OwnRankingValue` counts a bye in full in Sonneborn-Berger, as an
   opponent beaten, whatever the strategy says a bye is worth. A competition
   that values a bye as a draw and wants half of it there has no case for

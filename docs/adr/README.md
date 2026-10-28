@@ -31,6 +31,7 @@ there is not repeated here.
 | [0019](0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md) | A Swiss bye under a strategy without a bye value is worth nothing (amends 0009) |
 | [0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md) | Nobody is in a round of a stage state twice (amends 0007; amended by 0021) |
 | [0021](0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md) | Everyone in a round of a stage state is an entrant (amends 0007 and 0020) |
+| [0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md) | Classes are final, and the interfaces are the extension points |
 
 ## Adding a record
 
