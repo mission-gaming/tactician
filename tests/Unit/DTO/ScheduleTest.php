@@ -6,6 +6,8 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Quality\RoleBalanceMetric;
+use MissionGaming\Tactician\Quality\ScheduleScorer;
 
 describe('Schedule', function (): void {
     beforeEach(function (): void {
@@ -96,6 +98,27 @@ describe('Schedule', function (): void {
         }
 
         expect($pairs)->toBe([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]]);
+    });
+
+    // The case issue #54 names: a quality metric that loops over the
+    // schedule (RoleBalanceMetric does) measured inside a loop over the
+    // same schedule. The outer loop visits every event, and every
+    // measurement reads the whole schedule.
+    it('lets a metric that loops over the schedule measure it inside a loop over it', function (): void {
+        $event3 = new Event([$this->participant3, $this->participant1], $this->round2);
+        $schedule = new Schedule([$this->event1, $this->event2, $event3]);
+        $scorer = ScheduleScorer::of(new RoleBalanceMetric());
+        $alone = $scorer->score($schedule);
+
+        $visited = [];
+        $scores = [];
+        foreach ($schedule as $index => $event) {
+            $visited[] = $index;
+            $scores[] = $scorer->score($schedule);
+        }
+
+        expect($visited)->toBe([0, 1, 2])
+            ->and($scores)->toBe([$alone, $alone, $alone]);
     });
 
     it('hands out an iterator of its own on every call, which a loop elsewhere does not move', function (): void {
