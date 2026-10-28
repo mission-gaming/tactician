@@ -473,7 +473,7 @@ readonly class StandingsCalculator
     private static function hasTiebreakersToRead(self $calculator): bool
     {
         try {
-            return (new ReflectionProperty(self::class, 'tiebreakers'))->isInitialized($calculator);
+            return new ReflectionProperty(self::class, 'tiebreakers')->isInitialized($calculator);
         } catch (ReflectionException) {
             // Not thrown: the class declares the property
             return true;

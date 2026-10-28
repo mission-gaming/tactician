@@ -93,7 +93,7 @@ describe('a table given tiers', function (): void {
     it('reads a numeric ID as the same key as its string', function (): void {
         $one = new Participant('1', 'One');
         $two = new Participant('2', 'Two');
-        $table = (new StandingsCalculator())->calculateWith([$one, $two], [new Result(new Event([$one, $two]), $one)], tiers: [2 => 0, 1 => 1]);
+        $table = new StandingsCalculator()->calculateWith([$one, $two], [new Result(new Event([$one, $two]), $one)], tiers: [2 => 0, 1 => 1]);
 
         expect(tiersLines($table))->toBe(['2 0 -', '1 1 -']);
     });

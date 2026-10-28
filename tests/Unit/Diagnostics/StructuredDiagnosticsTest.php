@@ -40,7 +40,7 @@ describe('The typed findings of a failure analysis', function (): void {
     });
 
     it('lists the missing pairings by ID and leg, in the order of the lines', function (): void {
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $this->field,
             ConstraintSet::create()->build(),
             [new Event([$this->alice, $this->bob], new Round(1))],
@@ -67,7 +67,7 @@ describe('The typed findings of a failure analysis', function (): void {
             ->custom(static fn(Event $event): bool => !structuredPairs($event, 'p1', 'p2'), 'Derby Ban')
             ->build();
 
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $this->field,
             $noDerby,
             [new Event([$this->alice, $this->carol], new Round(1))],
@@ -93,7 +93,7 @@ describe('The typed findings of a failure analysis', function (): void {
             ->custom(static fn(Event $event): bool => !structuredPairs($event, 'p1', 'p2') || $event->getRoundNumber() % 2 === 1, 'Odd Rounds Only')
             ->build();
 
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure($this->field, $alternate, [], new RoundRobinPlan($this->field, 1));
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure($this->field, $alternate, [], new RoundRobinPlan($this->field, 1));
 
         $blocked = $report->getBlockedPairings();
         expect($blocked)->toEqual([new BlockedPairing('p1', 'p2', [])])
@@ -118,7 +118,7 @@ describe('The typed findings of a failure analysis', function (): void {
             ->custom(static fn(Event $event): bool => !structuredPairs($event, 'p2', 'p3'), 'No Bob v Carol')
             ->build();
 
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure($field, $constraints, [], new RoundRobinPlan($field, 1));
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure($field, $constraints, [], new RoundRobinPlan($field, 1));
 
         expect($report->getConstraintViolations())->toBe([
             'Alice Rests First rejects Alice vs Bob in 1 of 3 rounds; Alice vs Carol in 1 of 3 rounds; Alice vs Dave in 1 of 3 rounds',
@@ -138,7 +138,7 @@ describe('The typed findings of a failure analysis', function (): void {
             ->custom(static fn(Event $event): bool => !structuredPairs($event, 'p1', 'p2') || $event->getRound()?->getNumber() === 1, 'Round One Derby')
             ->build();
 
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $field,
             $roundOne,
             [new Event([$this->alice, $this->carol], new Round(1)), new Event([$this->bob, $dave], new Round(1))],
@@ -151,7 +151,7 @@ describe('The typed findings of a failure analysis', function (): void {
     });
 
     it('is empty where the text is', function (): void {
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $this->field,
             ConstraintSet::create()->build(),
             [],
@@ -161,7 +161,7 @@ describe('The typed findings of a failure analysis', function (): void {
         expect($report->getBlockedPairings())->toBe([])
             ->and($report->getConstraintRejections())->toBe([])
             ->and($report->getPairingsAtCapacity())->toBe([])
-            ->and((new DiagnosticReport(3, 3, 0, 3))->getMissingPairingDetails())->toBe([]);
+            ->and(new DiagnosticReport(3, 3, 0, 3)->getMissingPairingDetails())->toBe([]);
     });
 
     // The acceptance criterion of #58: a consumer renders a generation
@@ -177,7 +177,7 @@ describe('The typed findings of a failure analysis', function (): void {
             ->build();
 
         try {
-            (new RoundRobinScheduler($noAnaBen))->schedule(array_values($field), new RoundRobinOptions(legs: 1));
+            new RoundRobinScheduler($noAnaBen)->schedule(array_values($field), new RoundRobinOptions(legs: 1));
             $this->fail('The schedule was generated');
         } catch (IncompleteScheduleException $exception) {
             $report = $exception->getAnalysis();

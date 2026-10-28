@@ -767,7 +767,7 @@ describe("the deprecated 'tie_winner' metadata key", function () use ($root): vo
 
     it('is named by a constant that is deprecated with it and still holds it', function (): void {
         // Read by reflection: a use of the constant emits its own notice
-        expect((new ReflectionClassConstant(TieDecision::class, 'TIE_WINNER_KEY'))->getValue())->toBe('tie_winner')
+        expect(new ReflectionClassConstant(TieDecision::class, 'TIE_WINNER_KEY')->getValue())->toBe('tie_winner')
             ->and(TieWinnerDeprecation::KEY)->toBe('tie_winner');
     });
 

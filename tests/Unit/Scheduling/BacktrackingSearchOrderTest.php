@@ -176,7 +176,7 @@ describe('The backtracking search, against the search as first written', functio
         // Nothing of that path may be left for the next search.
         $small = searchOrderField(6);
         $plan = new RoundRobinPlan($small, 1);
-        $fresh = (new BacktrackingRoundRobinGenerator(null, 40))->generateFirstLeg($small, $plan);
+        $fresh = new BacktrackingRoundRobinGenerator(null, 40)->generateFirstLeg($small, $plan);
         $reused = $generator->generateFirstLeg($small, $plan);
 
         expect($fresh)->not->toBeNull();

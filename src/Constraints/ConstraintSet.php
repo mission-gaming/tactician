@@ -40,13 +40,7 @@ readonly class ConstraintSet
      */
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
-        foreach ($this->constraints as $constraint) {
-            if (!$constraint->isSatisfied($event, $context)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($this->constraints, fn($constraint) => $constraint->isSatisfied($event, $context));
     }
 
     /**

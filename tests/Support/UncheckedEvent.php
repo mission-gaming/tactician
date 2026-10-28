@@ -75,13 +75,7 @@ readonly class UncheckedEvent extends Event
     #[Override]
     public function hasParticipant(Participant $participant): bool
     {
-        foreach ($this->listed as $listed) {
-            if ($listed->getId() === $participant->getId()) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($this->listed, fn($listed) => $listed->getId() === $participant->getId());
     }
 
     #[Override]

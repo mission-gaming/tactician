@@ -185,13 +185,7 @@ function integrationGuideLibraryTypes(): array
  */
 function integrationGuideHasMethod(array $types, string $method): bool
 {
-    foreach ($types as $type) {
-        if (method_exists($type, $method) && (new ReflectionMethod($type, $method))->isPublic()) {
-            return true;
-        }
-    }
-
-    return false;
+    return array_any($types, fn($type) => method_exists($type, $method) && new ReflectionMethod($type, $method)->isPublic());
 }
 
 /**
@@ -201,13 +195,7 @@ function integrationGuideHasMethod(array $types, string $method): bool
  */
 function integrationGuideHasEnumCase(array $types, string $case): bool
 {
-    foreach ($types as $type) {
-        if (enum_exists($type) && defined($type . '::' . $case)) {
-            return true;
-        }
-    }
-
-    return false;
+    return array_any($types, fn($type) => enum_exists($type) && defined($type . '::' . $case));
 }
 
 /**
@@ -219,7 +207,7 @@ function integrationGuideHasEnumCase(array $types, string $case): bool
 function integrationGuideHasParameter(array $types, string $parameter): bool
 {
     foreach ($types as $type) {
-        foreach ((new ReflectionClass($type))->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+        foreach (new ReflectionClass($type)->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
             foreach ($method->getParameters() as $candidate) {
                 if ($candidate->getName() === $parameter) {
                     return true;
@@ -345,7 +333,7 @@ function integrationGuideSymbolProblem(array $types, string $code): ?string
 
         $parameters = array_map(
             static fn(ReflectionParameter $parameter): string => $parameter->getName(),
-            (new ReflectionClass($type))->getConstructor()?->getParameters() ?? []
+            new ReflectionClass($type)->getConstructor()?->getParameters() ?? []
         );
         preg_match_all('/(?<![\w:$])([a-z][A-Za-z]*):(?!:)/', $construction[2], $named);
         foreach ($named[1] as $argument) {

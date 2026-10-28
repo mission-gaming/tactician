@@ -196,7 +196,7 @@ describe('ConstraintPurity', function (): void {
             new PurityTestConstraint(),
             new PurityTestRoleBalance(1),
             // The rule of a role assignment is not a constraint of a set
-            (new BalancedRoleAssignment())->rule(),
+            new BalancedRoleAssignment()->rule(),
         ];
         foreach ($mayReadMore as $constraint) {
             expect(ConstraintPurity::constraintReadsOwnEventsOnly($constraint))->toBeFalse($constraint::class);
@@ -217,7 +217,7 @@ describe('ConstraintPurity', function (): void {
             new CallableConstraint(static fn(): bool => true, 'Yes'),
             MetadataConstraint::requireSameValue('group'),
             new PurityTestConstraint(),
-            (new BalancedRoleAssignment())->rule(),
+            new BalancedRoleAssignment()->rule(),
         ];
         foreach ($mayReadRoles as $constraint) {
             expect(ConstraintPurity::constraintIgnoresRoles($constraint))->toBeFalse($constraint::class);
@@ -298,8 +298,8 @@ describe('ConstraintPurity', function (): void {
     // and a rule of the caller's says nothing about what it reads.
     it('knows the rule of the balanced role assignment, and no other', function (): void {
         expect(ConstraintPurity::ruleReadsOwnEventsOnly(null))->toBeTrue()
-            ->and(ConstraintPurity::ruleReadsOwnEventsOnly((new RoundParityRoleAssignment())->rule()))->toBeTrue()
-            ->and(ConstraintPurity::ruleReadsOwnEventsOnly((new BalancedRoleAssignment())->rule()))->toBeTrue()
+            ->and(ConstraintPurity::ruleReadsOwnEventsOnly(new RoundParityRoleAssignment()->rule()))->toBeTrue()
+            ->and(ConstraintPurity::ruleReadsOwnEventsOnly(new BalancedRoleAssignment()->rule()))->toBeTrue()
             ->and(ConstraintPurity::ruleReadsOwnEventsOnly(new PurityTestConstraint()))->toBeFalse()
             // A constraint that reads the own events only is still not a
             // rule the library wrote for a first leg

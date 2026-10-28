@@ -153,13 +153,13 @@ describe('RepackOutcome construction', function (): void {
     ]);
 
     it('says the budget was not exhausted unless told otherwise', function (): void {
-        expect((new RepackOutcome([], [], []))->isBudgetExhausted())->toBeFalse();
-        expect((new RepackOutcome([], [], [], true))->isBudgetExhausted())->toBeTrue();
-        expect((new RepackOutcome([], [], [], budgetExhausted: true))->isBudgetExhausted())->toBeTrue();
+        expect(new RepackOutcome([], [], [])->isBudgetExhausted())->toBeFalse();
+        expect(new RepackOutcome([], [], [], true)->isBudgetExhausted())->toBeTrue();
+        expect(new RepackOutcome([], [], [], budgetExhausted: true)->isBudgetExhausted())->toBeTrue();
     });
 
     it('keeps the budget flag out of the plain data', function (): void {
-        expect((new RepackOutcome([], [], [], true))->toArray())->toBe([
+        expect(new RepackOutcome([], [], [], true)->toArray())->toBe([
             'format_version' => 1,
             'assignments' => [],
             'unplaced' => [],
@@ -219,13 +219,13 @@ describe('RepackOutcome figures', function (): void {
     });
 
     it('does not call an outcome unclean for a figure', function (): void {
-        expect((new RepackOutcome([], [], [], false, [0], 2, ['m1']))->isClean())->toBeTrue();
+        expect(new RepackOutcome([], [], [], false, [0], 2, ['m1'])->isClean())->toBeTrue();
     });
 
     it('refuses figures that are not what they are declared to be', function (array $lone, int $idle, array $moved, string $message): void {
         // Through reflection, because the declared types of the arguments
         // are the very thing these values break
-        expect(static fn(): RepackOutcome => (new ReflectionClass(RepackOutcome::class))->newInstance([], [], [], false, $lone, $idle, $moved))
+        expect(static fn(): RepackOutcome => new ReflectionClass(RepackOutcome::class)->newInstance([], [], [], false, $lone, $idle, $moved))
             ->toThrow(InvalidInputException::class, $message);
     })->with([
         'a session that is no integer' => [['1'], 0, [], 'Every lone-event session of a repack outcome must be a session index of 0 or more; the entry at key 0 is of type string'],
@@ -274,7 +274,7 @@ describe('SlotAssignment built by hand with a kickoff that is not in UTC', funct
         $assignment = new SlotAssignment('e1', 0, 0, new DateTimeImmutable($local, new DateTimeZone($zone)));
 
         expect($assignment->toArray()['kickoff'])->toBe($written)
-            ->and((new DateTimeImmutable($written))->getTimestamp())->toBe($assignment->getKickoff()->getTimestamp());
+            ->and(new DateTimeImmutable($written)->getTimestamp())->toBe($assignment->getKickoff()->getTimestamp());
     })->with([
         'a zone ahead of UTC' => ['2026-08-12 20:15:00', 'Europe/London', '2026-08-12T19:15:00Z'],
         'a zone behind UTC, across midnight' => ['2026-08-12 20:15:00', 'America/New_York', '2026-08-13T00:15:00Z'],
@@ -298,7 +298,7 @@ describe('SlotAssignment built by hand with a kickoff that is not in UTC', funct
     it('returns the kickoff as it was given', function (): void {
         $kickoff = new DateTimeImmutable('2026-08-12 20:15:00', new DateTimeZone('Europe/London'));
 
-        expect((new SlotAssignment('e1', 0, 0, $kickoff))->getKickoff())->toBe($kickoff);
+        expect(new SlotAssignment('e1', 0, 0, $kickoff)->getKickoff())->toBe($kickoff);
     });
 });
 

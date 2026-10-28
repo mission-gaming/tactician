@@ -73,7 +73,7 @@ describe('SingleEliminationEngine', function (): void {
     });
 
     it('pairs round 1 with standard fold seeding over list position', function (): void {
-        $pairing = (new SingleEliminationEngine())->pairNextRound(StageState::start(seededField(8)));
+        $pairing = new SingleEliminationEngine()->pairNextRound(StageState::start(seededField(8)));
 
         expect($pairing->getRoundNumber())->toBe(1);
         expect($pairing->getLabel())->toBe('quarterfinal');
@@ -87,7 +87,7 @@ describe('SingleEliminationEngine', function (): void {
     });
 
     it('gives byes to the top positions when the field is not a power of two', function (): void {
-        $pairing = (new SingleEliminationEngine())->pairNextRound(StageState::start(seededField(6)));
+        $pairing = new SingleEliminationEngine()->pairNextRound(StageState::start(seededField(6)));
 
         expect($pairing->getLabel())->toBe('quarterfinal');
         expect(array_map(fn(Participant $p) => $p->getId(), $pairing->getByes()))->toBe(['s1', 's2']);
@@ -107,7 +107,7 @@ describe('SingleEliminationEngine', function (): void {
             new Participant('third', 'Listed Third', 1),
         ];
 
-        $pairing = (new SingleEliminationEngine())->pairNextRound(StageState::start($participants));
+        $pairing = new SingleEliminationEngine()->pairNextRound(StageState::start($participants));
 
         // Bracket of 4 over positions: (first, bye), (second, third)
         expect(array_map(fn(Participant $p) => $p->getId(), $pairing->getByes()))->toBe(['first']);

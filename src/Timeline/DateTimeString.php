@@ -298,13 +298,7 @@ final class DateTimeString
             $readings[] = date_create_immutable("{$written} {$timezone}", $utc);
         }
 
-        foreach ($readings as $reading) {
-            if ($reading === false || $reading->format('U.u') !== $instant->format('U.u')) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($readings, fn($reading) => !($reading === false || $reading->format('U.u') !== $instant->format('U.u')));
     }
 
     /**
@@ -332,7 +326,7 @@ final class DateTimeString
      */
     private static function calendarDate(int $year, int $month, int $day): DateTimeImmutable
     {
-        return (new DateTimeImmutable('@0'))->setDate($year, $month, $day);
+        return new DateTimeImmutable('@0')->setDate($year, $month, $day);
     }
 
     private static function daysInYear(int $year): int

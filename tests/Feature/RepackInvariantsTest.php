@@ -207,7 +207,7 @@ describe('Repack invariants', function (): void {
     it('assigns or reports every event, never double-books, never moves a pin', function (int $seed): void {
         [$movable, $pinned, $grid] = randomRepackInstance($seed);
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         // Exact reconciliation: nothing vanishes
         $accounted = [];
@@ -280,7 +280,7 @@ describe('Repack invariants', function (): void {
             4
         );
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid));
 
         expect($outcome->isClean())->toBeTrue();
         expect($outcome->getAssignments())->toHaveCount(28);
@@ -325,7 +325,7 @@ describe('Repack invariants', function (): void {
             2
         );
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid));
 
         assertProperness($outcome, $movable, []);
         expect($outcome->getViolations())->not->toBe([]);
@@ -390,7 +390,7 @@ describe('Repack invariants', function (): void {
             4
         );
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             [],
             $grid,
@@ -437,7 +437,7 @@ function regridded(SessionGrid $grid, ?int $capacityPerSlot, bool $shapeOnly): S
 function outcomeWithEveryRecord(int $seed): RepackOutcome
 {
     [$movable, $pinned, $grid] = randomRepackInstance($seed);
-    $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+    $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
     $one = new Participant('extra-1', 'Extra One');
     $two = new Participant('extra-2', 'Extra Two');
@@ -633,7 +633,7 @@ describe('Repack outcome fingerprint', function (): void {
         $fingerprints = [];
         foreach (range(1, 12) as $seed) {
             [$movable, $pinned, $grid] = randomRepackInstance($seed);
-            $fingerprints[] = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid))->fingerprint();
+            $fingerprints[] = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid))->fingerprint();
         }
 
         expect(array_unique($fingerprints))->toHaveCount(12);
@@ -694,7 +694,7 @@ describe('Repacking with unbounded capacity', function (): void {
         [$movable, $pinned, $grid] = randomRepackInstance($seed);
         $unbounded = regridded($grid, null, $shapeOnly);
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $unbounded));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $unbounded));
 
         // A CapacityExceeded with no participant is the grid's capacity
         // running out, which unbounded capacity cannot do. One that names
@@ -751,7 +751,7 @@ describe('Repacking with unbounded capacity', function (): void {
             new MovableEvent('e2', $a, new Participant('c', 'C')),
         ];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, capacityPerSlot: null)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, capacityPerSlot: null)));
 
         expect($outcome->getAssignments())->toHaveCount(1);
         expect($outcome->getCapacityExceededViolations())->toHaveCount(1);
@@ -768,7 +768,7 @@ describe('Repacking with unbounded capacity', function (): void {
         $c = new Participant('c', 'C');
         $movable = [new MovableEvent('ab', $a, $b), new MovableEvent('ac', $a, $c), new MovableEvent('bc', $b, $c)];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 2, [], null)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 2, [], null)));
 
         expect($outcome->getAssignments())->toHaveCount(2);
         expect($outcome->getUnplaced())->toHaveCount(1);
@@ -784,7 +784,7 @@ describe('Repacking with unbounded capacity', function (): void {
         }
         $movable = [new MovableEvent('e1', new Participant('y', 'Y'), new Participant('z', 'Z'))];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, capacityPerSlot: null)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, capacityPerSlot: null)));
 
         expect($outcome->isClean())->toBeTrue();
         expect($outcome->getAssignmentFor('e1')?->getSlot())->toBe(0);
@@ -1036,7 +1036,7 @@ describe('Repack step budget flag', function (): void {
         }
 
         try {
-            (new ScheduleRepacker())->repack(new RepackRequest(
+            new ScheduleRepacker()->repack(new RepackRequest(
                 $movable,
                 [],
                 SessionGrid::shapeOnly(1, 5, [], 2),
@@ -1093,7 +1093,7 @@ describe('Repack step budget flag', function (): void {
             new MovableEvent('c', $p[1], $p[3]),
         ];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             [],
             SessionGrid::shapeOnly(2, 3, [], 1),
@@ -1131,7 +1131,7 @@ describe('Repack step budget flag', function (): void {
             }
         }
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(4, 1, [], null)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(4, 1, [], null)));
 
         expect($outcome->getAssignments())->toHaveCount(64)
             ->and($outcome->getUnplaced())->toHaveCount(16)
@@ -1169,7 +1169,7 @@ describe('Repack step budget flag', function (): void {
             $movable[] = new MovableEvent("m0{$k}", $p[$a], $p[$b]);
         }
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             [],
             SessionGrid::shapeOnly(1, 3, [], 3),
@@ -1585,7 +1585,7 @@ describe('Repacking every placeable event', function (): void {
     it('places every event of a complete round robin that fits the grid', function (int $n, string $idFormat): void {
         $request = completeGraphRequest($n, $idFormat);
 
-        $outcome = (new ScheduleRepacker())->repack($request);
+        $outcome = new ScheduleRepacker()->repack($request);
 
         expect($outcome->getUnplaced())->toBe([])
             ->and($outcome->getAssignments())->toHaveCount(intdiv($n * ($n - 1), 2))
@@ -1606,7 +1606,7 @@ describe('Repacking every placeable event', function (): void {
     it('places as many events as the best placement there is', function (string $name): void {
         [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         expect(count($outcome->getAssignments()))->toBe(RepackBruteForce::maxPlaced($movable, $pinned, $grid));
         assertProperness($outcome, $movable, $pinned);
@@ -1668,7 +1668,7 @@ describe('Repacking every placeable event', function (): void {
         for ($seed = $from; $seed < $from + 100; ++$seed) {
             [$movable, $pinned, $grid] = hubRepackInstance($seed);
 
-            $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+            $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
             expect(count($outcome->getAssignments()))
                 ->toBe(RepackBruteForce::maxPlaced($movable, $pinned, $grid), "hub instance {$seed}");
@@ -1680,7 +1680,7 @@ describe('Repacking every placeable event', function (): void {
     it('places at least as many events as release 0.2.3 did on the requests an order of events once lost one on', function (string $name): void {
         [$movable, $pinned, $grid, $placedBefore] = requestPlacedByTheLastRelease($name);
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         expect(count($outcome->getAssignments()))->toBeGreaterThanOrEqual($placedBefore);
         assertProperness($outcome, $movable, $pinned);
@@ -1745,7 +1745,7 @@ describe('Repacking every placeable event', function (): void {
         // largest set of shared drops, so this many is the most that fit
         $most = count($edges) - (array_sum($need) - largestSharedDrops($edges, $need));
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 6, [], null)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 6, [], null)));
 
         expect($most)->toBe(16)
             ->and($outcome->getAssignments())->toHaveCount($most);
@@ -1762,7 +1762,7 @@ describe('Repacking every placeable event', function (): void {
         $p6 = new Participant('p6', 'P6');
         $movable = [new MovableEvent('e1', $p3, $p5), new MovableEvent('e2', $p5, $p6), new MovableEvent('e3', $p3, $p2)];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 1, [], 3)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 1, [], 3)));
 
         expect(array_map(static fn(SlotAssignment $a): string => $a->getEventId(), $outcome->getAssignments()))->toBe(['e2', 'e3'])
             ->and(array_map(static fn(UnplacedEvent $u): array => $u->toArray(), $outcome->getUnplaced()))->toBe([
@@ -1790,7 +1790,7 @@ describe('Repacking every placeable event', function (): void {
             new MovableEvent('e4', $p2, $p4),
         ];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 1, [], null)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 1, [], null)));
 
         expect(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
             ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
@@ -1818,7 +1818,7 @@ describe('Repacking every placeable event', function (): void {
         ];
         $pinned = [new PinnedEvent('x1', $p1, $p5, 0, 1)];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 2, [], null)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 2, [], null)));
 
         expect(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
             ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
@@ -2111,11 +2111,11 @@ function expectSameRepack(
 describe('Repacking the same request under other ids', function (): void {
     it('gives the same schedule, the same unplaced events and the same violations', function (int $seed): void {
         [$movable, $pinned, $grid] = randomRepackInstance($seed);
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         foreach ([1, 2, 3] as $shuffle) {
             [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, 1000 * $seed + $shuffle);
-            $renamed = (new ScheduleRepacker())->repack($request);
+            $renamed = new ScheduleRepacker()->repack($request);
 
             expectSameRepack($outcome, $movable, $pinned, $renamed, $request, $oldByNew);
 
@@ -2135,21 +2135,21 @@ describe('Repacking the same request under other ids', function (): void {
         // ids decide no more at one step than they do at the default
         [$movable, $pinned, $grid] = randomRepackInstance($seed);
         $options = new RepackOptions(stepBudget: $budget);
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
 
         [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, 1000 * $seed + $budget, $options);
 
-        expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+        expectSameRepack($outcome, $movable, $pinned, new ScheduleRepacker()->repack($request), $request, $oldByNew);
     })->with(range(1, 12))->with([1, 100, 2_000, 20_000]);
 
     it('gives the same schedule on the small corpus, where pins, capacity and over-capacity drops decide it', function (string $name): void {
         [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         foreach ([1, 2] as $shuffle) {
             [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $shuffle);
 
-            expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+            expectSameRepack($outcome, $movable, $pinned, new ScheduleRepacker()->repack($request), $request, $oldByNew);
         }
     })->with(array_keys(smallRepackCorpus()));
 
@@ -2157,7 +2157,7 @@ describe('Repacking the same request under other ids', function (): void {
         $described = [];
         foreach (['from one', 'from a thousand', 'scrambled'] as $idFormat) {
             $request = completeGraphRequest($n, $idFormat);
-            $outcome = (new ScheduleRepacker())->repack($request);
+            $outcome = new ScheduleRepacker()->repack($request);
 
             // No gap, no late start, nothing unplaced: on the ids from one
             // and from a thousand, 0.2.3 reported gaps for most n from 10
@@ -2191,22 +2191,22 @@ describe('Repacking the same request under other ids', function (): void {
             }
         }
         $grid = SessionGrid::shapeOnly(intdiv($n + 2, 4), 4, [], intdiv($n, 2));
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         foreach ([1, 2, 3] as $shuffle) {
             [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $shuffle);
 
-            expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+            expectSameRepack($outcome, $movable, $pinned, new ScheduleRepacker()->repack($request), $request, $oldByNew);
         }
 
         // And at budgets below the default, where every search but the
         // ordering of the participants is cut short
         foreach ([1, 2_000, 20_000] as $budget) {
             $options = new RepackOptions(stepBudget: $budget);
-            $short = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+            $short = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
             [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $budget, $options);
 
-            expectSameRepack($short, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+            expectSameRepack($short, $movable, $pinned, new ScheduleRepacker()->repack($request), $request, $oldByNew);
         }
     })->with([8, 12, 16, 20]);
 
@@ -2238,12 +2238,12 @@ describe('Repacking the same request under other ids', function (): void {
             $slots[] = 4 + count($slots) % 3;
         }
         $grid = SessionGrid::shapeOnly(count($slots), 4, $slots, intdiv($n, 2));
-        $described = labelFreeDescription((new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid)));
+        $described = labelFreeDescription(new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid)));
 
         foreach ([1, 2] as $shuffle) {
             [$request] = relabelledRequest($movable, $pinned, $grid, $shuffle);
 
-            expect(labelFreeDescription((new ScheduleRepacker())->repack($request)))->toBe($described);
+            expect(labelFreeDescription(new ScheduleRepacker()->repack($request)))->toBe($described);
         }
     })->with([36, 40]);
 });
@@ -2252,7 +2252,7 @@ describe('Repacking without an avoidable gap', function (): void {
     it('reports no more gap slots than the best placement of as many events has', function (string $name): void {
         [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         expect(count($outcome->getAssignments()))->toBe(RepackBruteForce::maxPlaced($movable, $pinned, $grid))
             ->and(reportedGapSlots($outcome))->toBe(RepackBruteForce::fewestGapSlots($movable, $pinned, $grid))
@@ -2279,7 +2279,7 @@ describe('Repacking without an avoidable gap', function (): void {
             new MovableEvent('103', $p[4], $p[1]),
         ];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(2, 2, [1 => 4], 1)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(2, 2, [1 => 4], 1)));
 
         expect($outcome->getAssignments())->toHaveCount(4)
             ->and($outcome->getContiguityBrokenViolations())->toBe([])
@@ -2302,7 +2302,7 @@ describe('Repacking without an avoidable gap', function (): void {
             }
         }
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, $slots, [], 3)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, $slots, [], 3)));
 
         expect($outcome->isClean())->toBeTrue()
             ->and($outcome->getAssignments())->toHaveCount(15);

@@ -85,13 +85,7 @@ readonly class NoRepeatPairings implements ConstraintInterface
             return false;
         }
 
-        foreach ($context->getEventsBetween($first, $second) as $key => $event) {
-            if (isset($events[$key])) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($context->getEventsBetween($first, $second), fn($event, $key) => isset($events[$key]));
     }
 
     /**
@@ -103,13 +97,7 @@ readonly class NoRepeatPairings implements ConstraintInterface
             return false;
         }
 
-        foreach ($events as $event) {
-            if ($event->hasParticipant($first) && $event->hasParticipant($second)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($events, fn($event) => $event->hasParticipant($first) && $event->hasParticipant($second));
     }
 
     /**

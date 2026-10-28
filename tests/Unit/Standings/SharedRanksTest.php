@@ -29,7 +29,7 @@ describe('the ranks of a table', function (): void {
         [$a, $b, $c, $d, $e] = $this->field;
 
         // A beat E. Nothing separates B, C and D, who have not played.
-        $table = (new StandingsCalculator())->calculate($this->field, [new Result(new Event([$a, $e]), $a, ['a' => 1, 'e' => 0])]);
+        $table = new StandingsCalculator()->calculate($this->field, [new Result(new Event([$a, $e]), $a, ['a' => 1, 'e' => 0])]);
 
         expect($table->getRanks())->toBe([1, 2, 2, 2, 5])
             ->and([$table->getRank($a), $table->getRank($b), $table->getRank($c), $table->getRank($d), $table->getRank($e)])
@@ -44,7 +44,7 @@ describe('the ranks of a table', function (): void {
         [$a, $b, $c, $d, $e] = $this->field;
 
         // A beat E. B, C and D have not played, and are then put in an order
-        $table = (new StandingsCalculator())->calculate($this->field, [new Result(new Event([$a, $e]), $a, ['a' => 1, 'e' => 0])]);
+        $table = new StandingsCalculator()->calculate($this->field, [new Result(new Event([$a, $e]), $a, ['a' => 1, 'e' => 0])]);
         $settled = $table->withDecisions([new Decider(['d', 'b', 'c'], 'drawn')]);
 
         expect($table->getRanks())->toBe([1, 2, 2, 2, 5])
@@ -54,7 +54,7 @@ describe('the ranks of a table', function (): void {
             ->and(count($settled->getTiedSets()))->toBe(1);
 
         // Two sets of two, one of them decided
-        $unplayed = (new StandingsCalculator())->calculate([$a, $b, $c, $d], [
+        $unplayed = new StandingsCalculator()->calculate([$a, $b, $c, $d], [
             new Result(new Event([$a, $b]), null, ['a' => 2, 'b' => 2]),
             new Result(new Event([$c, $d]), null, ['c' => 0, 'd' => 0]),
         ]);
@@ -66,22 +66,22 @@ describe('the ranks of a table', function (): void {
 
     it('are the positions where results decide every place, and 1 for everyone where they decide none', function (): void {
         [$a, $b, $c] = $this->field;
-        $decided = (new StandingsCalculator())->calculate([$a, $b, $c], [
+        $decided = new StandingsCalculator()->calculate([$a, $b, $c], [
             new Result(new Event([$a, $b]), $a),
             new Result(new Event([$b, $c]), $b),
             new Result(new Event([$a, $c]), $a),
         ]);
 
         expect($decided->getRanks())->toBe([1, 2, 3])
-            ->and((new StandingsCalculator())->calculate($this->field, [])->getRanks())->toBe([1, 1, 1, 1, 1])
-            ->and((new Standings([]))->getRanks())->toBe([]);
+            ->and(new StandingsCalculator()->calculate($this->field, [])->getRanks())->toBe([1, 1, 1, 1, 1])
+            ->and(new Standings([])->getRanks())->toBe([]);
     });
 
     it('count two separate ties apart', function (): void {
         [$a, $b, $c, $d] = $this->field;
 
         // A and B drew, C and D drew with another score
-        $table = (new StandingsCalculator())->calculate([$a, $b, $c, $d], [
+        $table = new StandingsCalculator()->calculate([$a, $b, $c, $d], [
             new Result(new Event([$a, $b]), null, ['a' => 2, 'b' => 2]),
             new Result(new Event([$c, $d]), null, ['c' => 0, 'd' => 0]),
         ]);
@@ -90,7 +90,7 @@ describe('the ranks of a table', function (): void {
     });
 
     it('is null for a participant the table does not have', function (): void {
-        $table = (new StandingsCalculator())->calculate(array_slice($this->field, 0, 2), []);
+        $table = new StandingsCalculator()->calculate(array_slice($this->field, 0, 2), []);
 
         expect($table->getRank($this->field[4]))->toBeNull()
             ->and($table->getRank(new Participant('a', 'Another object with the ID')))->toBe(1);
@@ -98,7 +98,7 @@ describe('the ranks of a table', function (): void {
 
     it('stay as they are when the entries of a tied set are put in another order', function (): void {
         [$a, , , , $e] = $this->field;
-        $table = (new StandingsCalculator())->calculate($this->field, [new Result(new Event([$a, $e]), $a, ['a' => 1, 'e' => 0])]);
+        $table = new StandingsCalculator()->calculate($this->field, [new Result(new Event([$a, $e]), $a, ['a' => 1, 'e' => 0])]);
         $reordered = $table->withTiedSetsOrderedBy(array_reverse($this->field));
 
         expect($reordered->getRanks())->toBe($table->getRanks());
@@ -136,7 +136,7 @@ describe('the ranks of a table', function (): void {
                 }
             }
 
-            $table = (new StandingsCalculator())->calculate($rng->shuffleArray($this->field), $results);
+            $table = new StandingsCalculator()->calculate($rng->shuffleArray($this->field), $results);
             $entries = array_values($table->getEntries());
             $ranks = $table->getRanks();
 

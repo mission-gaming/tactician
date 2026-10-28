@@ -2142,7 +2142,7 @@ class RoundRobinScheduler implements SchedulerInterface
             return null;
         }
 
-        return (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        return new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $participants,
             $this->constraints,
             $partialEvents,
@@ -2164,7 +2164,7 @@ class RoundRobinScheduler implements SchedulerInterface
         [$participants, $plan, $partialEvents] = $this->unanalysedFailure;
         $this->unanalysedFailure = null;
 
-        return (new SchedulingDiagnostics())->analyzeSchedulingFailure($participants, $this->constraints, $partialEvents, $plan);
+        return new SchedulingDiagnostics()->analyzeSchedulingFailure($participants, $this->constraints, $partialEvents, $plan);
     }
 
     /**

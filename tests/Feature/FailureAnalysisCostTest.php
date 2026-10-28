@@ -88,7 +88,7 @@ describe('The cost of a round robin that fails or retries', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule(analysisCostField(24, $counter), new RoundRobinOptions(legs: 2));
+            new RoundRobinScheduler($constraints)->schedule(analysisCostField(24, $counter), new RoundRobinOptions(legs: 2));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
@@ -107,7 +107,7 @@ describe('The cost of a round robin that fails or retries', function (): void {
         // window; the third rotation does not.
         $constraints = new ConstraintSet([new SeedProtectionConstraint(2, 0.25)]);
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule(analysisCostField(32, $counter), new RoundRobinOptions(legs: 2));
+        $schedule = new RoundRobinScheduler($constraints)->schedule(analysisCostField(32, $counter), new RoundRobinOptions(legs: 2));
 
         expect(count($schedule))->toBe(992);
         // The completeness check of the finished schedule reads the 32
@@ -133,7 +133,7 @@ describe('The cost of a round robin that fails or retries', function (): void {
         // attempt is the analysis of an empty schedule for that ordering,
         // which lists the missing pairings in its order.
         $lastOrdering = [$participants[5], ...array_slice($participants, 0, 5)];
-        $expected = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $expected = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $lastOrdering,
             $constraints,
             [],
@@ -156,7 +156,7 @@ describe('A round robin under constraints that could tell how often they are ask
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule(analysisCostField(6, $counter), new RoundRobinOptions(legs: 2));
+            new RoundRobinScheduler($constraints)->schedule(analysisCostField(6, $counter), new RoundRobinOptions(legs: 2));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
@@ -167,7 +167,7 @@ describe('A round robin under constraints that could tell how often they are ask
         expect($counter->reads)->toBe(360);
     })->with([
         'a callable' => [fn(): ConstraintSet => new ConstraintSet([new CallableConstraint(
-            static fn(Event $event, SchedulingContext $context): bool => (new NoRepeatPairings(acrossLegs: true))->isSatisfied($event, $context),
+            static fn(Event $event, SchedulingContext $context): bool => new NoRepeatPairings(acrossLegs: true)->isSatisfied($event, $context),
             'No repeats, by a callable'
         )])],
         'a subclass of the constraint set' => [fn(): ConstraintSet => new UnknownConstraintSet([new NoRepeatPairings(acrossLegs: true)])],
@@ -182,7 +182,7 @@ describe('A round robin under constraints that could tell how often they are ask
         $counter = new LabelReadCounter();
 
         try {
-            (new RoundRobinScheduler(new ConstraintSet([new NoRepeatPairings(acrossLegs: true)])))
+            new RoundRobinScheduler(new ConstraintSet([new NoRepeatPairings(acrossLegs: true)]))
                 ->schedule(analysisCostField(6, $counter), new RoundRobinOptions(legs: 2));
         } catch (IncompleteScheduleException) {
         }
@@ -216,7 +216,7 @@ describe('A round robin under constraints that could tell how often they are ask
             'Apart for 150 questions'
         )]);
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule(
+        $schedule = new RoundRobinScheduler($constraints)->schedule(
             analysisCostField(6),
             new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
         );
@@ -225,6 +225,6 @@ describe('A round robin under constraints that could tell how often they are ask
         expect($asked)->toBe(185);
 
         $asked = 0;
-        expect(count((new RoundRobinScheduler($constraints))->schedule(analysisCostField(6))))->toBe(15);
+        expect(count(new RoundRobinScheduler($constraints)->schedule(analysisCostField(6))))->toBe(15);
     });
 });

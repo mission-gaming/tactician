@@ -353,13 +353,7 @@ class SchedulingDiagnostics
                 }
 
                 foreach ($constraints->getConstraints() as $constraint) {
-                    $rejectsBoth = true;
-                    foreach ($orientations as $candidate) {
-                        if ($constraint->isSatisfied($candidate, $context)) {
-                            $rejectsBoth = false;
-                            break;
-                        }
-                    }
+                    $rejectsBoth = array_all($orientations, fn($candidate) => !$constraint->isSatisfied($candidate, $context));
                     if ($rejectsBoth) {
                         $roundsRejectedBy[$constraint->getName()] = ($roundsRejectedBy[$constraint->getName()] ?? 0) + 1;
                     }

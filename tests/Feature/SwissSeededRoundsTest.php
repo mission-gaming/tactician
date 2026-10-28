@@ -265,14 +265,14 @@ describe('a seeded Swiss engine', function (): void {
         $first = $engine->pairNextRound($state)->toArray();
 
         expect($engine->pairNextRound($state)->toArray())->toBe($first)
-            ->and((new SwissPairingEngine(plannedRounds: 4, seed: 11))->pairNextRound($state)->toArray())->toBe($first)
+            ->and(new SwissPairingEngine(plannedRounds: 4, seed: 11)->pairNextRound($state)->toArray())->toBe($first)
             ->and($engine->pairNextRound(StageState::fromJson($state->toJson()))->toArray())->toBe($first);
     });
 
     it('draws another field order from another seed', function (): void {
         $firstRounds = [];
         for ($seed = 1; $seed <= 12; ++$seed) {
-            $firstRounds[] = json_encode((new SwissPairingEngine(seed: $seed))->pairNextRound(StageState::start(seededSwissField(8)))->toArray());
+            $firstRounds[] = json_encode(new SwissPairingEngine(seed: $seed)->pairNextRound(StageState::start(seededSwissField(8)))->toArray());
         }
 
         expect(count(array_unique($firstRounds)))->toBeGreaterThan(6);
@@ -292,7 +292,7 @@ describe('a seeded Swiss engine', function (): void {
     // a seeded pre-drawn schedule is, round for round, the stage that engine
     // pairs, wherever the first draw goes through.
     it('pairs the schedule a seeded SwissScheduler draws', function (int $size, int $rounds, int $seed): void {
-        $schedule = (new SwissScheduler())->schedule(seededSwissField($size), new SwissOptions($rounds, $seed));
+        $schedule = new SwissScheduler()->schedule(seededSwissField($size), new SwissOptions($rounds, $seed));
 
         $engine = new SwissPairingEngine(plannedRounds: $rounds, resultsFree: true, seed: $seed);
         $state = StageState::start(seededSwissField($size));
@@ -343,7 +343,7 @@ describe('a seeded Swiss engine', function (): void {
             expect($stage === null)->toBe($draw < $draws, "draw {$draw} of seed {$seed}");
         }
 
-        $schedule = (new SwissScheduler())->schedule(seededSwissField($size), new SwissOptions($rounds, $seed));
+        $schedule = new SwissScheduler()->schedule(seededSwissField($size), new SwissOptions($rounds, $seed));
 
         expect($schedule->getEvents())->toEqual($stage);
     })->with([[8, 6, 30, 2], [8, 6, 18, 3], [10, 9, 19, 4]]);

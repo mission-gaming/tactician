@@ -17,7 +17,7 @@ describe('MirroredLegStrategy Integration', function (): void {
             new Participant('livorno', 'AS Livorno'),
             new Participant('redstar', 'Red Star FC'),
         ];
-        $this->schedule = (new RoundRobinScheduler())->schedule(
+        $this->schedule = new RoundRobinScheduler()->schedule(
             $this->participants,
             new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
         );

@@ -68,7 +68,7 @@ describe('NoRepeatPairings', function (): void {
     // leg-1 pairing by design) - leg 2 generated zero events.
     it('permits complete multi-leg schedules', function (): void {
         $constraints = ConstraintSet::create()->noRepeatPairings()->build();
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($this->participants, new RoundRobinOptions(legs: 2));
+        $schedule = new RoundRobinScheduler($constraints)->schedule($this->participants, new RoundRobinOptions(legs: 2));
 
         expect(count($schedule))->toBe(12);
 
@@ -101,7 +101,7 @@ describe('NoRepeatPairings', function (): void {
     });
 
     it('exposes a descriptive name', function (): void {
-        expect((new NoRepeatPairings())->getName())->toBe('No Repeat Pairings');
+        expect(new NoRepeatPairings()->getName())->toBe('No Repeat Pairings');
     });
 
     // Event refuses a participant paired with itself. An event of another

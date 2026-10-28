@@ -1004,7 +1004,7 @@ describe('a Swiss round paired before the results are in', function (): void {
     it('is paired from the table as it stands, in which the missing result counts for nobody', function (): void {
         $early = $this->engine->pairNextRoundOnIncompleteResults($this->unfinished);
         // The same state read by an engine that waits for no result at all
-        $resultsFree = (new SwissPairingEngine(plannedRounds: 3, resultsFree: true))->pairNextRound($this->unfinished);
+        $resultsFree = new SwissPairingEngine(plannedRounds: 3, resultsFree: true)->pairNextRound($this->unfinished);
 
         expect(historyPairs($early->getEvents()))->toBe(historyPairs($resultsFree->getEvents()))
             ->and($resultsFree->isPairedOnIncompleteResults())->toBeFalse();
@@ -1055,7 +1055,7 @@ describe('a Swiss round paired before the results are in', function (): void {
             ->and($early->toArray()['unresolved_when_paired'] ?? null)->toBe([$form])
             ->and(RoundPairing::fromArray($early->toArray(), $registry)->toArray())->toBe($early->toArray())
             // A list marks the round
-            ->and((new RoundPairing(2, null, $early->getEvents(), [], false, [$this->awaited]))->isPairedOnIncompleteResults())->toBeTrue();
+            ->and(new RoundPairing(2, null, $early->getEvents(), [], false, [$this->awaited])->isPairedOnIncompleteResults())->toBeTrue();
     });
 
     it('is read from the results that were in when it was paired, however the late result goes', function (): void {
@@ -1494,7 +1494,7 @@ describe('results-free mode of the Swiss engine', function (): void {
 
     it('is what the whole-schedule preset pairs in', function (): void {
         $entrants = historyField(7);
-        $schedule = (new SwissScheduler())->schedule($entrants, new SwissOptions(rounds: 4));
+        $schedule = new SwissScheduler()->schedule($entrants, new SwissOptions(rounds: 4));
 
         // The preset's schedule is the rounds of a results-free engine
         $engine = new SwissPairingEngine(plannedRounds: 4, resultsFree: true);
@@ -2173,7 +2173,7 @@ describe('the stored form of a state', function (): void {
     });
 
     it('refuses a mark on a round that is no boolean', function (): void {
-        $data = (new RoundPairing(1, null, []))->toArray();
+        $data = new RoundPairing(1, null, [])->toArray();
         $data['paired_on_incomplete_results'] = 'yes';
 
         expect(fn(): RoundPairing => RoundPairing::fromArray($data, []))
@@ -2184,7 +2184,7 @@ describe('the stored form of a state', function (): void {
         [$h1, $h2] = $entrants = historyField(2);
         $registry = array_combine(historyIds($entrants), $entrants);
         $awaited = new Event([$h1, $h2], new Round(1));
-        $marked = (new RoundPairing(2, null, [], [], true, [$awaited]))->toArray();
+        $marked = new RoundPairing(2, null, [], [], true, [$awaited])->toArray();
 
         $unmarked = $marked;
         unset($unmarked['paired_on_incomplete_results']);

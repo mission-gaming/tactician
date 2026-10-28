@@ -23,7 +23,7 @@ $participants = [
 
 // Without constraints the first and the last seed open the season against
 // each other
-$unconstrained = (new RoundRobinScheduler())->schedule($participants);
+$unconstrained = new RoundRobinScheduler()->schedule($participants);
 
 // A constraint is a rule every event must satisfy. ConstraintSet::create()
 // starts a builder; build() returns the set the scheduler takes.
@@ -34,7 +34,7 @@ $unconstrained = (new RoundRobinScheduler())->schedule($participants);
 $noRepeats = ConstraintSet::create()
     ->noRepeatPairings()
     ->build();
-$withNoRepeats = (new RoundRobinScheduler($noRepeats))->schedule($participants);
+$withNoRepeats = new RoundRobinScheduler($noRepeats)->schedule($participants);
 
 // custom() takes any predicate over the event being placed. This one keeps
 // seed 1 and seed 6 apart for the first two rounds.
@@ -54,7 +54,7 @@ $constraints = ConstraintSet::create()
 
 // A constraint is a hard filter: the scheduler finds a schedule that
 // satisfies it or throws, it never drops the pairing
-$constrained = (new RoundRobinScheduler($constraints))->schedule($participants);
+$constrained = new RoundRobinScheduler($constraints)->schedule($participants);
 
 // The round in which seed 1 meets seed 6
 $meetingRound = static function (Schedule $schedule) use ($isTopAgainstBottom): ?int {

@@ -86,13 +86,7 @@ final class ConstraintPurity
             return false;
         }
 
-        foreach ($constraints->getConstraints() as $constraint) {
-            if (!in_array($constraint::class, self::KNOWN, true)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($constraints->getConstraints(), fn($constraint) => in_array($constraint::class, self::KNOWN, true));
     }
 
     /**
@@ -127,13 +121,7 @@ final class ConstraintPurity
             return false;
         }
 
-        foreach ($constraints->getConstraints() as $constraint) {
-            if (!self::constraintReadsOwnEventsOnly($constraint)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($constraints->getConstraints(), fn($constraint) => self::constraintReadsOwnEventsOnly($constraint));
     }
 
     /**

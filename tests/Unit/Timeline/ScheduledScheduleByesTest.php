@@ -57,20 +57,20 @@ function scheduledByeIds(array $byes): array
 describe('The byes of a scheduled schedule', function (): void {
     it('are the byes of the schedule assigned, round by round', function (Closure $generate): void {
         $schedule = $generate();
-        $scheduled = (new TimelineAssigner())->assign($schedule, scheduledByesTimeline());
+        $scheduled = new TimelineAssigner()->assign($schedule, scheduledByesTimeline());
 
         expect(scheduledByeIds($scheduled->getByesByRound()))->toBe(scheduledByeIds($schedule->getByesByRound()))
             ->and($scheduled->getByeCounts())->toBe($schedule->getByeCounts())
             ->and($scheduled->getEntrants())->toBe($schedule->getEntrants());
     })->with([
-        'round robin of 5' => [fn() => (new RoundRobinScheduler())->schedule(scheduledByesField(5))],
-        'round robin of 6, no byes' => [fn() => (new RoundRobinScheduler())->schedule(scheduledByesField(6))],
-        'whole-schedule Swiss of 7' => [fn() => (new SwissScheduler())->schedule(scheduledByesField(7), new SwissOptions(rounds: 4, seed: 3))],
+        'round robin of 5' => [fn() => new RoundRobinScheduler()->schedule(scheduledByesField(5))],
+        'round robin of 6, no byes' => [fn() => new RoundRobinScheduler()->schedule(scheduledByesField(6))],
+        'whole-schedule Swiss of 7' => [fn() => new SwissScheduler()->schedule(scheduledByesField(7), new SwissOptions(rounds: 4, seed: 3))],
     ]);
 
     it('has one bye in every round of an odd field, and every entrant sits out once in a round robin', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(scheduledByesField(5));
-        $scheduled = (new TimelineAssigner())->assign($schedule, scheduledByesTimeline());
+        $schedule = new RoundRobinScheduler()->schedule(scheduledByesField(5));
+        $scheduled = new TimelineAssigner()->assign($schedule, scheduledByesTimeline());
 
         foreach ($scheduled->getByesByRound() as $byes) {
             expect($byes)->toHaveCount(1);
@@ -119,7 +119,7 @@ describe('The byes of a scheduled schedule', function (): void {
 
     it('refuses an entrant list that names a participant the data does not list', function (mixed $entrants): void {
         [$a, $b] = scheduledByesField(2);
-        $data = (new ScheduledSchedule([new ScheduledEvent(new Event([$a, $b], new Round(1)), new DateTimeImmutable('2026-08-01T18:00:00Z'))]))->toArray();
+        $data = new ScheduledSchedule([new ScheduledEvent(new Event([$a, $b], new Round(1)), new DateTimeImmutable('2026-08-01T18:00:00Z'))])->toArray();
         $data['entrants'] = $entrants;
 
         expect(fn() => ScheduledSchedule::fromArray($data))->toThrow(InvalidInputException::class);

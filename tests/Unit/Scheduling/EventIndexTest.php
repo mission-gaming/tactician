@@ -67,13 +67,7 @@ function scanHasEventBetween(array $events, array $participants, int $participan
     }
 
     foreach ($events as $event) {
-        $holdsAll = true;
-        foreach ($participants as $participant) {
-            if (!$event->hasParticipant($participant)) {
-                $holdsAll = false;
-                break;
-            }
-        }
+        $holdsAll = array_all($participants, fn($participant) => $event->hasParticipant($participant));
         if ($holdsAll) {
             return true;
         }
@@ -239,7 +233,7 @@ describe('SchedulingContext lookups', function (): void {
 
         // A list parent: the appended events take the next integers, and a
         // string key is kept.
-        $context = (new SchedulingContext($field, $plan, [$events[0]]))->withEvents(['late' => $events[1], 7 => $events[2]]);
+        $context = new SchedulingContext($field, $plan, [$events[0]])->withEvents(['late' => $events[1], 7 => $events[2]]);
         expect($context->getEventsForParticipant($field[2]))->toBe(['late' => $events[1], 1 => $events[2]]);
 
         // A parent whose keys are not 0, 1, 2, ...: the spread renumbers its
@@ -338,9 +332,9 @@ describe('The pair-history constraints', function (): void {
                     }
                 }
 
-                expect((new NoRepeatPairings(acrossLegs: true))->isSatisfied($candidate, $context))->toBe(!$repeatAnywhere);
-                expect((new NoRepeatPairings())->isSatisfied($candidate, $context))->toBe(!$repeatInLeg);
-                expect((new MinimumRestPeriodsConstraint($minimumRest))->isSatisfied($candidate, $context))->toBe($rested);
+                expect(new NoRepeatPairings(acrossLegs: true)->isSatisfied($candidate, $context))->toBe(!$repeatAnywhere);
+                expect(new NoRepeatPairings()->isSatisfied($candidate, $context))->toBe(!$repeatInLeg);
+                expect(new MinimumRestPeriodsConstraint($minimumRest)->isSatisfied($candidate, $context))->toBe($rested);
             }
         }
     });
@@ -352,16 +346,16 @@ describe('The pair-history constraints', function (): void {
 
         // No event is recorded, so the two have not met.
         $plain = new SchedulingContext($field, $plan, []);
-        expect((new NoRepeatPairings())->isSatisfied($candidate, $plain))->toBeTrue();
-        expect((new NoRepeatPairings(acrossLegs: true))->isSatisfied($candidate, $plain))->toBeTrue();
-        expect((new MinimumRestPeriodsConstraint(2))->isSatisfied($candidate, $plain))->toBeTrue();
+        expect(new NoRepeatPairings()->isSatisfied($candidate, $plain))->toBeTrue();
+        expect(new NoRepeatPairings(acrossLegs: true)->isSatisfied($candidate, $plain))->toBeTrue();
+        expect(new MinimumRestPeriodsConstraint(2)->isSatisfied($candidate, $plain))->toBeTrue();
 
         // By the subclass's own account they met in round 1. The index knows
         // only the list the context was built with, so a constraint that
         // read it here would miss the meeting.
         $remembering = new RememberedMeetingContext($field, $plan, []);
-        expect((new NoRepeatPairings())->isSatisfied($candidate, $remembering))->toBeFalse();
-        expect((new NoRepeatPairings(acrossLegs: true))->isSatisfied($candidate, $remembering))->toBeFalse();
-        expect((new MinimumRestPeriodsConstraint(2))->isSatisfied($candidate, $remembering))->toBeFalse();
+        expect(new NoRepeatPairings()->isSatisfied($candidate, $remembering))->toBeFalse();
+        expect(new NoRepeatPairings(acrossLegs: true)->isSatisfied($candidate, $remembering))->toBeFalse();
+        expect(new MinimumRestPeriodsConstraint(2)->isSatisfied($candidate, $remembering))->toBeFalse();
     });
 });

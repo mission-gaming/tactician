@@ -66,7 +66,7 @@ describe('two results of one event', function (): void {
         $recorded = new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice);
         $again = new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice);
 
-        expect(fn(): Standings => (new StandingsCalculator())->calculate($this->field, [$recorded, $again]))->toThrow(
+        expect(fn(): Standings => new StandingsCalculator()->calculate($this->field, [$recorded, $again]))->toThrow(
             InvalidInputException::class,
             'Two results reference the same event; each event can have only one result (round 1, a vs b).'
             . ' Events with the same round number, participants and tie leg are one event: if these are two'
@@ -105,7 +105,7 @@ describe('two results of one event', function (): void {
         $recorded = new Result(new Event([$this->alice, $this->bob], new Round(2)), $this->alice);
         $again = new Result(new Event([$this->bob, $this->alice], new Round(2)), $this->bob);
 
-        expect(fn(): Standings => (new StandingsCalculator())->calculate($this->field, [$recorded, $again]))
+        expect(fn(): Standings => new StandingsCalculator()->calculate($this->field, [$recorded, $again]))
             ->toThrow(InvalidInputException::class, '(round 2, b vs a)');
     });
 
@@ -170,7 +170,7 @@ describe('two results of one event', function (): void {
         $restored = StageState::fromJson($state->toJson());
         $repaired = $restored->withResultReplaced($restored->getResults()[0]);
 
-        $table = tableOf((new StandingsCalculator())->calculate($repaired->getParticipants(), $repaired->getResults()));
+        $table = tableOf(new StandingsCalculator()->calculate($repaired->getParticipants(), $repaired->getResults()));
 
         expect($repaired->getResults())->toHaveCount(2);
         foreach ($table as $row) {
@@ -193,7 +193,7 @@ describe('results that are not of one event', function (): void {
             new Result(new Event([$this->bob, $this->alice], $round, ['tie_leg' => 2]), $this->alice),
         ];
 
-        expect(tableOf((new StandingsCalculator())->calculate([$this->alice, $this->bob], $results)))
+        expect(tableOf(new StandingsCalculator()->calculate([$this->alice, $this->bob], $results)))
             ->toBe(['a 2 2-0-0', 'b 2 0-0-2']);
     });
 
@@ -203,7 +203,7 @@ describe('results that are not of one event', function (): void {
             new Result(new Event([$this->bob, $this->alice], new Round(4)), $this->bob),
         ];
 
-        expect(tableOf((new StandingsCalculator())->calculate([$this->alice, $this->bob], $results)))
+        expect(tableOf(new StandingsCalculator()->calculate([$this->alice, $this->bob], $results)))
             ->toBe(['a 2 1-0-1', 'b 2 1-0-1']);
     });
 
@@ -215,14 +215,14 @@ describe('results that are not of one event', function (): void {
             new Result(new Event([$this->alice, $this->bob]), $this->alice),
         ];
 
-        expect(tableOf((new StandingsCalculator())->calculate([$this->alice, $this->bob], $results)))
+        expect(tableOf(new StandingsCalculator()->calculate([$this->alice, $this->bob], $results)))
             ->toBe(['a 2 2-0-0', 'b 2 0-0-2']);
     });
 
     it('are still one event when one object with no round has two results', function (): void {
         $event = new Event([$this->alice, $this->bob]);
 
-        expect(fn(): Standings => (new StandingsCalculator())->calculate(
+        expect(fn(): Standings => new StandingsCalculator()->calculate(
             [$this->alice, $this->bob],
             [new Result($event, $this->alice), new Result($event, $this->bob)]
         ))->toThrow(InvalidInputException::class, 'Two results reference the same event; each event can have only one result');

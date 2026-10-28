@@ -218,7 +218,7 @@ describe('Fixture form of a result', function (): void {
 
     it('writes a standings row with its counts, scores and tiebreakers', function (): void {
         $table = new Standings([
-            (new StandingEntry(new Participant('a', 'Alpha'), 2, 1, 1, 0, 4.0, 3.0, 1.0))->withTiebreakers(['buchholz' => 1.5]),
+            new StandingEntry(new Participant('a', 'Alpha'), 2, 1, 1, 0, 4.0, 3.0, 1.0)->withTiebreakers(['buchholz' => 1.5]),
             new StandingEntry(new Participant('b', 'Beta'), 2, 0, 1, 1, 1.0, 1.0, 3.0),
         ]);
 

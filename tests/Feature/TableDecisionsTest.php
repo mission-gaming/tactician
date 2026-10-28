@@ -272,13 +272,13 @@ function tableDecisionDrawnPool(): array
         [$first, $second] = $event->getParticipants();
 
         return new Result($event, null, [$first->getId() => 0, $second->getId() => 0]);
-    }, (new RoundRobinScheduler())->schedule($pool)->getEvents()));
+    }, new RoundRobinScheduler()->schedule($pool)->getEvents()));
 
     return [
         'pool' => $pool,
         'results' => $results,
         'outcome' => StageOutcome::combining([
-            'A' => new StageOutcome((new StandingsCalculator())->calculate($pool, $results), $results, entrants: $pool),
+            'A' => new StageOutcome(new StandingsCalculator()->calculate($pool, $results), $results, entrants: $pool),
         ]),
     ];
 }
@@ -626,7 +626,7 @@ describe('a decision applied to a generated table', function (): void {
         $a = new StandingEntry(new Participant('a', 'A'), 0, 0, 0, 0, 1.0);
         $b = new StandingEntry(new Participant('b', 'B'), 0, 0, 0, 0, 1.0);
 
-        expect((new Standings(['first' => $a, 'second' => $b]))->withDecisions([new Decider(['b', 'a'])])->getEntries())
+        expect(new Standings(['first' => $a, 'second' => $b])->withDecisions([new Decider(['b', 'a'])])->getEntries())
             ->toBe(['first' => $b, 'second' => $a]);
     });
 
@@ -637,7 +637,7 @@ describe('a decision applied to a generated table', function (): void {
         $again = new StandingEntry(new Participant('a', 'A again'), 1, 0, 0, 0, 1.0);
         $b = new StandingEntry(new Participant('b', 'B'), 1, 0, 0, 0, 1.0);
 
-        $table = (new Standings([$first, $b, $again]))->withDecisions([new Decider(['b', 'a'])]);
+        $table = new Standings([$first, $b, $again])->withDecisions([new Decider(['b', 'a'])]);
 
         expect($table->getEntries())->toBe([$b, $first, $again]);
     });
@@ -657,13 +657,13 @@ describe('a decision applied to a generated table', function (): void {
     });
 
     it('returns the table itself when it is given no decision, and a table without decisions says so', function (): void {
-        $table = (new StandingsCalculator())->calculate([new Participant('a', 'A'), new Participant('b', 'B')], []);
+        $table = new StandingsCalculator()->calculate([new Participant('a', 'A'), new Participant('b', 'B')], []);
 
         expect($table->withDecisions([]))->toBe($table)
             ->and($table->getDecisions())->toBe([])
             ->and($table->getDecisionFor(new Participant('a', 'A')))->toBeNull()
             ->and($table->getTiedSets()[0]->getDecision())->toBeNull()
-            ->and((new TiedSet($table->getEntries(), 1))->getDecision())->toBeNull();
+            ->and(new TiedSet($table->getEntries(), 1)->getDecision())->toBeNull();
     });
 });
 
@@ -936,7 +936,7 @@ describe('a table that carries a decision and is then changed', function (): voi
         $decision = new Decider(['p3', 'p1', 'p4', 'p2']);
         $results[0] = new Result($results[0]->getEvent(), $pool[0]);
 
-        $rejected = tableDecisionRejection(fn(): Standings => (new StandingsCalculator())->calculate($pool, $results)->withDecisions([$decision]));
+        $rejected = tableDecisionRejection(fn(): Standings => new StandingsCalculator()->calculate($pool, $results)->withDecisions([$decision]));
 
         expect($results[0]->getEvent()->hasParticipant($pool[0]))->toBeTrue()
             ->and($rejected->getReason())->toBe(RejectedDecisionReason::ParticipantsNotLevel);
@@ -1011,7 +1011,7 @@ describe('the pool of four in which every event is drawn 0-0, top two to qualify
 
     it('is still refused as unplayed when no event has a result, whatever is decided', function (): void {
         ['pool' => $pool] = tableDecisionDrawnPool();
-        $unplayed = StageOutcome::combining(['A' => new StageOutcome((new StandingsCalculator())->calculate($pool, []), [], entrants: $pool)]);
+        $unplayed = StageOutcome::combining(['A' => new StageOutcome(new StandingsCalculator()->calculate($pool, []), [], entrants: $pool)]);
         $selector = RankRangeSelector::topPerGroup(2)->withDecisions([new Decider(['p3', 'p1', 'p4', 'p2'])]);
 
         try {
@@ -1043,10 +1043,10 @@ describe('first and second are level, both qualify, and the two places feed diff
                 $firstIsTop = in_array($first->getId(), $top, true);
 
                 return new Result($event, $firstIsTop === in_array($second->getId(), $top, true) ? null : ($firstIsTop ? $first : $second));
-            }, (new RoundRobinScheduler())->schedule($members)->getEvents());
+            }, new RoundRobinScheduler()->schedule($members)->getEvents());
 
             $this->members[$label] = $members;
-            $this->pools[$label] = new StageOutcome((new StandingsCalculator())->calculate($members, $results), $results, entrants: $members);
+            $this->pools[$label] = new StageOutcome(new StandingsCalculator()->calculate($members, $results), $results, entrants: $members);
         }
         $this->outcome = StageOutcome::combining($this->pools);
     });
@@ -1085,7 +1085,7 @@ describe('first and second are level, both qualify, and the two places feed diff
             expect($selection->getDecisionsFor($participant))->toBe([$participant->getId()[0] === 'a' ? $forA : $forB]);
         }
 
-        $firstRound = (new SingleEliminationEngine())->pairNextRound(StageState::start($selection->getParticipants()));
+        $firstRound = new SingleEliminationEngine()->pairNextRound(StageState::start($selection->getParticipants()));
         $ties = array_map(static fn(Event $event): array => tableDecisionIds($event->getParticipants()), $firstRound->getEvents());
         expect($ties)->toContain(['a2', 'b2'])->toContain(['b1', 'a1']);
 
@@ -1869,7 +1869,7 @@ describe('the decisions of the table of a pooled outcome', function (): void {
     it('are not carried by a combined table, which is calculated afresh', function (): void {
         ['pool' => $pool, 'results' => $results] = tableDecisionDrawnPool();
         $decision = new Decider(['p3', 'p1', 'p4', 'p2']);
-        $decided = new StageOutcome((new StandingsCalculator())->calculate($pool, $results)->withDecisions([$decision]), $results, entrants: $pool);
+        $decided = new StageOutcome(new StandingsCalculator()->calculate($pool, $results)->withDecisions([$decision]), $results, entrants: $pool);
 
         $combined = StageOutcome::combining(['A' => $decided]);
 
@@ -1890,7 +1890,7 @@ describe('the decisions of the table of a pooled outcome', function (): void {
         $result = static fn(StandingEntry $first, StandingEntry $second): array => [new Result(new Event([$first->getParticipant(), $second->getParticipant()]))];
         $decision = new Decider(['b2', 'a2', 'b1', 'a1'], 'on the table');
         $outcome = new StageOutcome(
-            (new Standings($entries))->withDecisions([$decision]),
+            new Standings($entries)->withDecisions([$decision]),
             [...$result($entries[0], $entries[1]), ...$result($entries[2], $entries[3])],
             pools: [
                 'A' => new StageOutcome(new Standings([$entries[0], $entries[1]]), $result($entries[0], $entries[1])),
@@ -1927,7 +1927,7 @@ describe('decisions as plain data', function (): void {
 
         // What was read back decides the table as what was written did
         ['pool' => $pool, 'results' => $results] = tableDecisionDrawnPool();
-        expect(tableDecisionOrder((new StandingsCalculator())->calculate($pool, $results)->withDecisions([Decider::fromArray($read)])))
+        expect(tableDecisionOrder(new StandingsCalculator()->calculate($pool, $results)->withDecisions([Decider::fromArray($read)])))
             ->toBe(['p3', 'p1', 'p4', 'p2']);
     });
 
@@ -2021,7 +2021,7 @@ describe('decisions as plain data', function (): void {
 
     it('are refused by withDecisions() when an entry is not a decider', function (): void {
         // What a caller holds who forgot to read the stored arrays
-        $notDeciders = json_decode((string) json_encode([(new Decider(['a', 'b']))->toArray()]), true);
+        $notDeciders = json_decode((string) json_encode([new Decider(['a', 'b'])->toArray()]), true);
         assert(is_array($notDeciders));
 
         expect(fn(): object => RankRangeSelector::topPerGroup(1)->withDecisions($notDeciders))

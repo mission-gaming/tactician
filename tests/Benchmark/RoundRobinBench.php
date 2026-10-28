@@ -53,7 +53,7 @@ final readonly class RoundRobinBench
     public function benchUnconstrained32(): void
     {
         for ($repeat = 0; $repeat < 20; ++$repeat) {
-            $schedule = (new RoundRobinScheduler())->schedule($this->field32);
+            $schedule = new RoundRobinScheduler()->schedule($this->field32);
 
             self::expect(count($schedule) === 496, 'an unconstrained schedule of 496 events');
         }
@@ -71,7 +71,7 @@ final readonly class RoundRobinBench
     public function benchRetriesUnderSeedProtection32(): void
     {
         for ($repeat = 0; $repeat < 5; ++$repeat) {
-            $schedule = (new RoundRobinScheduler(new ConstraintSet([new SeedProtectionConstraint(2, 0.25)])))
+            $schedule = new RoundRobinScheduler(new ConstraintSet([new SeedProtectionConstraint(2, 0.25)]))
                 ->schedule($this->field32, new RoundRobinOptions(legs: 2));
 
             self::expect(count($schedule) === 992, 'a seed-protected schedule of 992 events');
@@ -89,7 +89,7 @@ final readonly class RoundRobinBench
     {
         $failed = false;
         try {
-            (new RoundRobinScheduler(new ConstraintSet([new NoRepeatPairings(acrossLegs: true)])))
+            new RoundRobinScheduler(new ConstraintSet([new NoRepeatPairings(acrossLegs: true)]))
                 ->schedule($this->field24, new RoundRobinOptions(legs: 2));
         } catch (IncompleteScheduleException $exception) {
             $failed = $exception->getAnalysis() !== null;

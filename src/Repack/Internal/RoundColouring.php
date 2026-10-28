@@ -167,7 +167,7 @@ final class RoundColouring
                 }
                 $before += $slotCount;
             }
-            $left = (new LeftoverRecolourer($budget))->place(
+            $left = new LeftoverRecolourer($budget)->place(
                 $edges,
                 $positions,
                 $left,
@@ -178,7 +178,7 @@ final class RoundColouring
             );
         }
         if ($left !== []) {
-            (new LeftoverRecolourer($budget))->place(
+            new LeftoverRecolourer($budget)->place(
                 $edges,
                 $positions,
                 $left,

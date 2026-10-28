@@ -357,13 +357,7 @@ final class SwissStageAudit
             return self::hasPerfectMatching($field, $blocked, $random);
         }
 
-        foreach ($field as $bye) {
-            if (self::hasPerfectMatching(array_values(array_diff($field, [$bye])), $blocked, $random)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($field, fn($bye) => self::hasPerfectMatching(array_values(array_diff($field, [$bye])), $blocked, $random));
     }
 
     /**

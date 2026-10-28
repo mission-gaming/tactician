@@ -187,7 +187,7 @@ final class StructuralOrder
             return [];
         }
 
-        return (new self($count, $events, $pins, $workLimit, $current))->order();
+        return new self($count, $events, $pins, $workLimit, $current)->order();
     }
 
     /**

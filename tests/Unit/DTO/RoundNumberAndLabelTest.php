@@ -19,7 +19,7 @@ describe('The round number of an event', function (): void {
         for ($i = 1; $i <= $size; ++$i) {
             $field[] = new Participant("p{$i}", "P{$i}");
         }
-        $schedule = (new RoundRobinScheduler())->schedule($field, $options);
+        $schedule = new RoundRobinScheduler()->schedule($field, $options);
 
         foreach ($schedule as $event) {
             expect($event->hasRound())->toBeTrue()
@@ -57,7 +57,7 @@ describe('A participant without a label', function (): void {
             ->and($unnamed->hasLabel())->toBeFalse()
             ->and($named->getLabel())->toBe('Eight')
             ->and($named->hasLabel())->toBeTrue()
-            ->and((new Participant('x', ''))->hasLabel())->toBeTrue()
+            ->and(new Participant('x', '')->hasLabel())->toBeTrue()
             ->and($unnamed->withSeed(3)->hasLabel())->toBeFalse();
     });
 
@@ -73,7 +73,7 @@ describe('A participant without a label', function (): void {
     });
 
     it('keeps the form of a participant with a label as it was', function (): void {
-        expect((new Participant('a', 'A', 1))->toArray())
+        expect(new Participant('a', 'A', 1)->toArray())
             ->toBe(['format_version' => 1, 'id' => 'a', 'label' => 'A', 'seed' => 1, 'metadata' => []]);
     });
 
@@ -84,7 +84,7 @@ describe('A participant without a label', function (): void {
 
     it('goes through a schedule and its JSON', function (): void {
         $field = [new Participant('a'), new Participant('b'), new Participant('c', 'Cee'), new Participant('d')];
-        $schedule = (new RoundRobinScheduler())->schedule($field);
+        $schedule = new RoundRobinScheduler()->schedule($field);
         $read = Schedule::fromJson($schedule->toJson());
 
         expect(array_map(fn(Participant $p): bool => $p->hasLabel(), $read->getEntrants()))->toBe([false, false, true, false])

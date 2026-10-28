@@ -80,7 +80,7 @@ function roleSearchField(int $size): array
  */
 function roleSearchLaterSlots(array $field, int $legs): array
 {
-    $legOne = (new RoundRobinScheduler())
+    $legOne = new RoundRobinScheduler()
         ->schedule($field, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))
         ->getEvents();
     $roundsPerLeg = count($field) % 2 === 0 ? count($field) - 1 : count($field);
@@ -132,7 +132,7 @@ describe('LegRoleSearch', function (): void {
         [$legOne, $slots] = roleSearchLaterSlots($field, 3);
 
         // What the draws give when nothing is rejected
-        $drawn = (new LegRoleSearch(null, new ShuffledLegStrategy(seed: 4), true, false))
+        $drawn = new LegRoleSearch(null, new ShuffledLegStrategy(seed: 4), true, false)
             ->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, PHP_INT_MAX);
 
         $search = new LegRoleSearch($constraints(), new ShuffledLegStrategy(seed: 4), true, false);
@@ -305,7 +305,7 @@ describe('LegRoleSearch', function (): void {
             'Watches'
         )->build();
 
-        (new LegRoleSearch($constraints, new RepeatedLegStrategy(), false, $ownRound))
+        new LegRoleSearch($constraints, new RepeatedLegStrategy(), false, $ownRound)
             ->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, PHP_INT_MAX);
 
         expect($seen)->toBe($expected);
@@ -445,7 +445,7 @@ describe('LegRoleSearch over a first leg', function (): void {
         $field = roleSearchField($size);
         $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
         $plan = new RoundRobinPlan($field, 1);
-        $legOne = array_values((new RoundRobinScheduler())->schedule($field)->getEvents());
+        $legOne = array_values(new RoundRobinScheduler()->schedule($field)->getEvents());
         $start = new SchedulingContext($field, $plan, [], 1);
         $bound = $size % 2 === 0 ? 1 : 0;
 
@@ -464,11 +464,11 @@ describe('LegRoleSearch over a first leg', function (): void {
         $constraints = roleSearchPin($second->getId(), $first->getId());
         $slots = roleSearchWholeSlots($legOne, 1, $roundsPerLeg);
 
-        $unruled = (new LegRoleSearch($constraints, new RepeatedLegStrategy(), false, false))
+        $unruled = new LegRoleSearch($constraints, new RepeatedLegStrategy(), false, false)
             ->search($start, $slots, PHP_INT_MAX, LegRoleSearch::REJECTION_LIMIT);
         expect(RoleCounts::worstEndImbalance($unruled ?? []))->toBeGreaterThan($bound);
 
-        $search = new LegRoleSearch($constraints, new RepeatedLegStrategy(), false, false, (new BalancedRoleAssignment())->rule());
+        $search = new LegRoleSearch($constraints, new RepeatedLegStrategy(), false, false, new BalancedRoleAssignment()->rule());
         $events = $search->search($start, $slots, PHP_INT_MAX, LegRoleSearch::REJECTION_LIMIT);
 
         expect($events)->toHaveCount(count($legOne))
@@ -556,7 +556,7 @@ describe('LegRoleSearch over a first leg', function (): void {
     it('finds a balanced first leg whose mirror keeps a limit the roles it was handed break', function (): void {
         $field = roleSearchField(12);
         $plan = new RoundRobinPlan($field, 2, true);
-        $legOne = array_values((new RoundRobinScheduler())->schedule($field)->getEvents());
+        $legOne = array_values(new RoundRobinScheduler()->schedule($field)->getEvents());
         $constraints = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build();
 
         // The premise: mirrored as they are, the legs break the limit
@@ -566,7 +566,7 @@ describe('LegRoleSearch over a first leg', function (): void {
         }
         expect(RoleCounts::worstStreak([...$legOne, ...$mirrored]))->toBe(3);
 
-        $search = new LegRoleSearch($constraints, new MirroredLegStrategy(), false, false, (new BalancedRoleAssignment())->rule());
+        $search = new LegRoleSearch($constraints, new MirroredLegStrategy(), false, false, new BalancedRoleAssignment()->rule());
         $events = $search->search(new SchedulingContext($field, $plan, [], 1), roleSearchWholeSlots($legOne, 2, 11), PHP_INT_MAX, LegRoleSearch::REJECTION_LIMIT);
 
         $reversed = 0;
@@ -593,10 +593,10 @@ describe('LegRoleSearch over a first leg', function (): void {
     it('goes straight back for a rejection that a constraint on the own events explains, beside a closure', function (): void {
         $field = roleSearchField(14);
         $plan = new RoundRobinPlan($field, 2, true);
-        $legOne = array_values((new RoundRobinScheduler())->schedule($field)->getEvents());
+        $legOne = array_values(new RoundRobinScheduler()->schedule($field)->getEvents());
         $slots = roleSearchWholeSlots($legOne, 2, 13);
         $start = new SchedulingContext($field, $plan, [], 1);
-        $rule = (new BalancedRoleAssignment())->rule();
+        $rule = new BalancedRoleAssignment()->rule();
         $limit = static fn(): ConstraintSet => ConstraintSet::create()->add(RoleBalanceConstraint::homeAway(1))->build();
         $besideAClosure = static fn(): ConstraintSet => ConstraintSet::create()
             ->add(RoleBalanceConstraint::homeAway(1))

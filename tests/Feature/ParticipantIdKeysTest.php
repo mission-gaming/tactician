@@ -47,7 +47,7 @@ function keyedParticipants(array $ids): array
 
 describe('numerically equal participant ids', function (): void {
     it('generates the round robin of the issue: ids 01, 1, 2 and 3', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(keyedParticipants(['01', '1', '2', '3']));
+        $schedule = new RoundRobinScheduler()->schedule(keyedParticipants(['01', '1', '2', '3']));
 
         expect($schedule)->toHaveCount(6);
 
@@ -74,13 +74,13 @@ describe('numerically equal participant ids', function (): void {
             ],
             $generated->getEvents()
         );
-        $plain = (new RoundRobinScheduler())->schedule(keyedParticipants(['a', 'b', 'c', 'd']));
+        $plain = new RoundRobinScheduler()->schedule(keyedParticipants(['a', 'b', 'c', 'd']));
 
         expect($seats($schedule, ['01', '1', '2', '3']))->toBe($seats($plain, ['a', 'b', 'c', 'd']));
     });
 
     it('generates a round robin for an id written as an exponent', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(keyedParticipants(['1e3', '1000', 'a', 'b']));
+        $schedule = new RoundRobinScheduler()->schedule(keyedParticipants(['1e3', '1000', 'a', 'b']));
 
         expect($schedule)->toHaveCount(6);
         expect(AwkwardIds::pairingCounts($schedule)['["1000","1e3"]'] ?? 0)->toBe(1);
@@ -106,7 +106,7 @@ describe('numerically equal participant ids', function (): void {
     it('counts a repeat in a Swiss schedule whichever of the two is named first', function (): void {
         [$zeroOne, $one] = $participants = keyedParticipants(['01', '1']);
 
-        $violations = (new SwissPlan($participants, 2))->validateIntegrity(new Schedule([
+        $violations = new SwissPlan($participants, 2)->validateIntegrity(new Schedule([
             new Event([$zeroOne, $one], new Round(1)),
             new Event([$one, $zeroOne], new Round(2)),
         ]));
@@ -202,7 +202,7 @@ describe('numerically equal participant ids', function (): void {
     it('reports no missing pairing for a complete schedule with reversed roles', function (): void {
         [$zeroOne, $one, $two] = $participants = keyedParticipants(['01', '1', '2']);
 
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $participants,
             ConstraintSet::create()->build(),
             [
@@ -224,7 +224,7 @@ describe('numerically equal participant ids', function (): void {
         )->build();
 
         // 01 has met 1 and 2; only "1 v 2" is missing.
-        $report = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $report = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $participants,
             $constraints,
             [
@@ -241,7 +241,7 @@ describe('numerically equal participant ids', function (): void {
 
 describe('participant ids that contain the key separator', function (): void {
     it('generates a round robin', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(keyedParticipants(['a', 'b|c', 'a|b', 'c']));
+        $schedule = new RoundRobinScheduler()->schedule(keyedParticipants(['a', 'b|c', 'a|b', 'c']));
 
         expect($schedule)->toHaveCount(6);
         expect(AwkwardIds::pairingCounts($schedule))->toHaveCount(6);
@@ -250,7 +250,7 @@ describe('participant ids that contain the key separator', function (): void {
     it('names both participants of a pairing a round robin is missing', function (): void {
         [$a, $bc, $ab, $c] = $participants = keyedParticipants(['a', 'b|c', 'a|b', 'c']);
 
-        $violations = (new RoundRobinPlan($participants, 1))->validateIntegrity(new Schedule([
+        $violations = new RoundRobinPlan($participants, 1)->validateIntegrity(new Schedule([
             new Event([$a, $bc], new Round(1)),
             new Event([$a, $ab], new Round(2)),
             new Event([$a, $c], new Round(3)),
@@ -264,7 +264,7 @@ describe('participant ids that contain the key separator', function (): void {
     it('names both participants of a repeated Swiss pairing', function (): void {
         [$a, $bc] = $participants = keyedParticipants(['a', 'b|c', 'a|b', 'c']);
 
-        $violations = (new SwissPlan($participants, 2))->validateIntegrity(new Schedule([
+        $violations = new SwissPlan($participants, 2)->validateIntegrity(new Schedule([
             new Event([$a, $bc], new Round(1)),
             new Event([$participants[2], $participants[3]], new Round(1)),
             new Event([$bc, $a], new Round(2)),
@@ -280,7 +280,7 @@ describe('participant ids that contain the key separator', function (): void {
     it('searches a backtracked leg in which two pairings join to the same text', function (): void {
         $participants = keyedParticipants(['a', 'b|c', 'a|b', 'c']);
 
-        $events = (new BacktrackingRoundRobinGenerator())
+        $events = new BacktrackingRoundRobinGenerator()
             ->generateFirstLeg($participants, new RoundRobinPlan($participants, 1));
 
         expect($events)->not->toBeNull();
@@ -322,7 +322,7 @@ describe('participant ids that contain the key separator', function (): void {
             new Result($third, $bc),
         ]);
 
-        $pairing = (new SwissPairingEngine())->pairNextRound($state);
+        $pairing = new SwissPairingEngine()->pairNextRound($state);
 
         // Table order: a, b|c, c, then the losers a|b, d, e. The leaders
         // pair; c has met a|b, so c takes d and a|b takes e.
@@ -371,7 +371,7 @@ describe('participant ids that contain the key separator', function (): void {
         $results = [new Result($first, $bc), new Result($second, $ab)];
 
         $outcome = new StageOutcome(
-            (new StandingsCalculator())->calculate($participants, $results),
+            new StandingsCalculator()->calculate($participants, $results),
             $results,
             [],
             new RoundPairing(1, null, [$first, $second])
@@ -414,7 +414,7 @@ describe('pair keys a caller can read', function (): void {
             ->withAdditionalResults([new Result(new Event([$this->ten, $this->nine], new Round(1)), $this->nine)]);
 
         try {
-            (new SingleEliminationEngine())->isComplete($state);
+            new SingleEliminationEngine()->isComplete($state);
         } catch (InvalidConfigurationException $exception) {
             expect($exception->getMessage())->toContain('Two results reference the same elimination match (9 vs 10, round 1)')
                 ->and($exception->getContext())->toBe(['round' => 1, 'participants' => ['9', '10']]);
@@ -426,7 +426,7 @@ describe('pair keys a caller can read', function (): void {
     });
 
     it('names a missing round-robin pairing in list order', function (): void {
-        $violations = (new RoundRobinPlan([$this->ten, $this->nine, $this->pTen], 1))->validateIntegrity(new Schedule([
+        $violations = new RoundRobinPlan([$this->ten, $this->nine, $this->pTen], 1)->validateIntegrity(new Schedule([
             new Event([$this->ten, $this->pTen], new Round(1)),
         ]));
 
@@ -437,7 +437,7 @@ describe('pair keys a caller can read', function (): void {
     });
 
     it('names a repeated Swiss pairing with its ids in key order', function (): void {
-        $violations = (new SwissPlan($this->participants, 2))->validateIntegrity(new Schedule([
+        $violations = new SwissPlan($this->participants, 2)->validateIntegrity(new Schedule([
             new Event([$this->ten, $this->nine], new Round(1)),
             new Event([$this->pNine, $this->pTen], new Round(1)),
             new Event([$this->nine, $this->ten], new Round(2)),

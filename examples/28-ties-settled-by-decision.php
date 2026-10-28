@@ -121,7 +121,7 @@ foreach ($selection->getParticipants() as $club) {
 }
 
 // The selected list seeds the bracket: position 1 meets position 4
-$semifinals = (new SingleEliminationEngine())->pairNextRound(StageState::start($selection->getParticipants()));
+$semifinals = new SingleEliminationEngine()->pairNextRound(StageState::start($selection->getParticipants()));
 
 // The same decision puts the table an application shows in the same order
 $decidedTable = $fjordTable->withDecisions([$decision]);

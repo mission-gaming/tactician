@@ -303,7 +303,7 @@ trait EliminationBracketSupport
     private function creditsPerBye(StandingsCalculator $calculator, int $legsPerTie): int
     {
         try {
-            if (!(new ReflectionProperty(StandingsCalculator::class, 'rankingStrategy'))->isInitialized($calculator)) {
+            if (!new ReflectionProperty(StandingsCalculator::class, 'rankingStrategy')->isInitialized($calculator)) {
                 return 0;
             }
         } catch (ReflectionException) {
@@ -358,7 +358,7 @@ trait EliminationBracketSupport
         // A subclass whose constructor does not call the one it inherits
         // has no tiebreakers set, and so none of the kind: nothing is read
         try {
-            if (!(new ReflectionProperty(StandingsCalculator::class, 'tiebreakers'))->isInitialized($calculator)) {
+            if (!new ReflectionProperty(StandingsCalculator::class, 'tiebreakers')->isInitialized($calculator)) {
                 return;
             }
         } catch (ReflectionException) {

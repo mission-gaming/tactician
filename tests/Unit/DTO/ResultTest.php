@@ -29,7 +29,7 @@ describe('Result', function (): void {
         expect($result->getMetadataValue('note'))->toBe('derby');
         expect($result->getMetadataValue('missing', 'fallback'))->toBe('fallback');
 
-        expect((new Result($this->event))->isDraw())->toBeTrue();
+        expect(new Result($this->event)->isDraw())->toBeTrue();
     });
 
     it('rejects winners and scores outside the event', function (): void {
@@ -51,12 +51,12 @@ describe('Result', function (): void {
         expect($rebuilt->getMetadataValue('tie_winner'))->toBe('p1');
         expect($rebuilt->toArray())->toBe($result->toArray());
 
-        $draw = Result::fromArray((new Result($this->event))->toArray(), $this->registry);
+        $draw = Result::fromArray(new Result($this->event)->toArray(), $this->registry);
         expect($draw->isDraw())->toBeTrue();
     });
 
     it('rejects malformed serialized data', function (): void {
-        $valid = (new Result($this->event, $this->alice))->toArray();
+        $valid = new Result($this->event, $this->alice)->toArray();
 
         expect(fn() => Result::fromArray(['winner' => 'p1'], $this->registry))
             ->toThrow(InvalidArgumentException::class, 'event');

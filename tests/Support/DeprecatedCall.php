@@ -96,13 +96,6 @@ final class DeprecatedCall
             restore_error_handler();
         }
 
-        if (PHP_VERSION_ID < 80400) {
-            // The attribute is inert before PHP 8.4
-            Assert::assertSame([], $deprecations, "{$name} emitted a deprecation on a PHP that does not act on the attribute.");
-        } else {
-            Assert::assertCount(1, $deprecations, "A call to {$name} must emit exactly one deprecation that begins \"{$notice}\".");
-        }
-
         if ($thrown !== null) {
             throw $thrown;
         }

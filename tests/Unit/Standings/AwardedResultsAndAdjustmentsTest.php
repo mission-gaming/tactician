@@ -104,20 +104,20 @@ describe('Awarded results in a standings table', function (): void {
     });
 
     it('leaves the score difference alone without a score, and moves it by three with a nominal 3-0', function (): void {
-        $before = awardedTestEntry((new StandingsCalculator())->calculate($this->league, $this->played), $this->p3);
+        $before = awardedTestEntry(new StandingsCalculator()->calculate($this->league, $this->played), $this->p3);
         expect($before->getScoreDifference())->toBe(1.0);
 
         $nominal = new Result($this->unplayed, $this->p3, ['p3' => 3, 'p4' => 0], award: new Award());
 
         // "No score": the calculator is told that an awarded result carries none
         $noScore = awardedTestEntry(
-            (new StandingsCalculator(awardedResults: new AwardedResultPolicy(countScores: false)))
+            new StandingsCalculator(awardedResults: new AwardedResultPolicy(countScores: false))
                 ->calculate($this->league, [...$this->played, $nominal]),
             $this->p3
         );
         // The nominal score counts
         $withScore = awardedTestEntry(
-            (new StandingsCalculator(awardedResults: new AwardedResultPolicy(countScores: true)))
+            new StandingsCalculator(awardedResults: new AwardedResultPolicy(countScores: true))
                 ->calculate($this->league, [...$this->played, $nominal]),
             $this->p3
         );
@@ -133,16 +133,16 @@ describe('Awarded results in a standings table', function (): void {
     });
 
     it('moves the score figures of the other participant the same way', function (): void {
-        $before = awardedTestEntry((new StandingsCalculator())->calculate($this->league, $this->played), $this->p4);
+        $before = awardedTestEntry(new StandingsCalculator()->calculate($this->league, $this->played), $this->p4);
         $nominal = new Result($this->unplayed, $this->p3, ['p3' => 3, 'p4' => 0], award: new Award());
 
         $noScore = awardedTestEntry(
-            (new StandingsCalculator(awardedResults: new AwardedResultPolicy(countScores: false)))
+            new StandingsCalculator(awardedResults: new AwardedResultPolicy(countScores: false))
                 ->calculate($this->league, [...$this->played, $nominal]),
             $this->p4
         );
         $withScore = awardedTestEntry(
-            (new StandingsCalculator())->calculate($this->league, [...$this->played, $nominal]),
+            new StandingsCalculator()->calculate($this->league, [...$this->played, $nominal]),
             $this->p4
         );
 
@@ -154,8 +154,8 @@ describe('Awarded results in a standings table', function (): void {
     it('counts the scores of an awarded result by default', function (): void {
         $nominal = new Result($this->unplayed, $this->p3, ['p3' => 3, 'p4' => 0], award: new Award());
 
-        $default = (new StandingsCalculator())->calculate($this->league, [...$this->played, $nominal]);
-        $stated = (new StandingsCalculator(awardedResults: new AwardedResultPolicy(true, true)))
+        $default = new StandingsCalculator()->calculate($this->league, [...$this->played, $nominal]);
+        $stated = new StandingsCalculator(awardedResults: new AwardedResultPolicy(true, true))
             ->calculate($this->league, [...$this->played, $nominal]);
 
         expect($default)->toEqual($stated)
@@ -166,12 +166,12 @@ describe('Awarded results in a standings table', function (): void {
         $off = new StandingsCalculator(awardedResults: new AwardedResultPolicy(false, false));
 
         expect($off->calculate($this->league, $this->played))
-            ->toEqual((new StandingsCalculator())->calculate($this->league, $this->played));
+            ->toEqual(new StandingsCalculator()->calculate($this->league, $this->played));
     });
 
     it('is counted in played and reported as awarded, so the record adds up', function (): void {
         $awarded = new Result($this->unplayed, $this->p3, award: new Award());
-        $table = (new StandingsCalculator())->calculate($this->league, [...$this->played, $awarded]);
+        $table = new StandingsCalculator()->calculate($this->league, [...$this->played, $awarded]);
 
         $p3 = awardedTestEntry($table, $this->p3);
         $p1 = awardedTestEntry($table, $this->p1);
@@ -197,7 +197,7 @@ describe('Awarded results in a standings table', function (): void {
         };
         $nominal = new Result($this->unplayed, $this->p3, ['p3' => 3, 'p4' => 0], award: new Award());
 
-        $table = (new StandingsCalculator($strategy, [], new AwardedResultPolicy(countScores: false)))
+        $table = new StandingsCalculator($strategy, [], new AwardedResultPolicy(countScores: false))
             ->calculate($this->league, [...$this->played, $nominal]);
 
         // p3 scored 1 and 1 in play, and has one awarded result
@@ -209,8 +209,8 @@ describe('Awarded results in a standings table', function (): void {
         $results = [...$this->played, $awarded];
         $tiebreakers = [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker()];
 
-        $on = (new StandingsCalculator(tiebreakers: $tiebreakers))->calculate($this->league, $results);
-        $off = (new StandingsCalculator(tiebreakers: $tiebreakers, awardedResults: new AwardedResultPolicy(false, false)))
+        $on = new StandingsCalculator(tiebreakers: $tiebreakers)->calculate($this->league, $results);
+        $off = new StandingsCalculator(tiebreakers: $tiebreakers, awardedResults: new AwardedResultPolicy(false, false))
             ->calculate($this->league, $results);
 
         // p3 met p1 (4), p2 (1) and, by the award, p4 (4): it beat p2 and p4 and drew with p1
@@ -223,7 +223,7 @@ describe('Awarded results in a standings table', function (): void {
         $played = new Result($this->unplayed, $this->p4, ['p3' => 0, 'p4' => 1]);
         $awarded = new Result($this->unplayed, $this->p3, award: new Award());
 
-        (new StandingsCalculator())->calculate($this->league, [...$this->played, $played, $awarded]);
+        new StandingsCalculator()->calculate($this->league, [...$this->played, $played, $awarded]);
     })->throws(InvalidInputException::class, 'Two results reference the same event');
 
     // The rule that holds after storage: two Event objects with the same
@@ -232,14 +232,14 @@ describe('Awarded results in a standings table', function (): void {
         $played = new Result(new Event([$this->p3, $this->p4], new Round(3)), $this->p4, ['p3' => 0, 'p4' => 1]);
         $awarded = new Result(new Event([$this->p4, $this->p3], new Round(3)), $this->p3, award: new Award());
 
-        (new StandingsCalculator())->calculate($this->league, $awardedFirst ? [$awarded, $played] : [$played, $awarded]);
+        new StandingsCalculator()->calculate($this->league, $awardedFirst ? [$awarded, $played] : [$played, $awarded]);
     })->with([[true], [false]])->throws(InvalidInputException::class, 'Two results reference the same event; each event can have only one result (round 3');
 
     it('counts an awarded leg beside a played leg of one two-legged tie as two events', function (): void {
         $played = new Result(new Event([$this->p3, $this->p4], new Round(3), ['tie_leg' => 1]), $this->p4);
         $awarded = new Result(new Event([$this->p4, $this->p3], new Round(3), ['tie_leg' => 2]), $this->p3, award: new Award());
 
-        $table = (new StandingsCalculator())->calculate([$this->p3, $this->p4], [$played, $awarded]);
+        $table = new StandingsCalculator()->calculate([$this->p3, $this->p4], [$played, $awarded]);
 
         expect([awardedTestEntry($table, $this->p3)->getPlayed(), awardedTestEntry($table, $this->p3)->getAwarded()])->toBe([2, 1])
             ->and(awardedTestEntry($table, $this->p3)->getRankingValue())->toBe(3.0);
@@ -263,7 +263,7 @@ describe('Awarded results between the tied participants', function (): void {
     });
 
     it('counts there by default, so the awarded win orders the two', function (): void {
-        $table = (new StandingsCalculator(tiebreakers: [new WinsBetweenTheTied()]))
+        $table = new StandingsCalculator(tiebreakers: [new WinsBetweenTheTied()])
             ->calculate($this->field, $this->results);
 
         expect(awardedTestOrder($table))->toBe(['ada', 'bao', 'cyd'])
@@ -272,10 +272,10 @@ describe('Awarded results between the tied participants', function (): void {
     });
 
     it('is ignored there with the exclusion on, and still counts in the table', function (): void {
-        $table = (new StandingsCalculator(
+        $table = new StandingsCalculator(
             tiebreakers: [new WinsBetweenTheTied()],
             awardedResults: new AwardedResultPolicy(countBetweenTiedParticipants: false)
-        ))->calculate($this->field, $this->results);
+        )->calculate($this->field, $this->results);
 
         $ada = awardedTestEntry($table, $this->ada);
 
@@ -321,10 +321,10 @@ describe('Awarded results between the tied participants', function (): void {
             }
         };
 
-        (new StandingsCalculator(
+        new StandingsCalculator(
             tiebreakers: [$spy],
             awardedResults: new AwardedResultPolicy(countBetweenTiedParticipants: $counted)
-        ))->calculate($this->field, $this->results);
+        )->calculate($this->field, $this->results);
 
         expect($seen->getArrayCopy())->toBe([$expected]);
     })->with([
@@ -333,10 +333,10 @@ describe('Awarded results between the tied participants', function (): void {
     ]);
 
     it('leaves every other tiebreaker with all the results when the exclusion is on', function (): void {
-        $table = (new StandingsCalculator(
+        $table = new StandingsCalculator(
             tiebreakers: [new BuchholzTiebreaker()],
             awardedResults: new AwardedResultPolicy(countBetweenTiedParticipants: false)
-        ))->calculate($this->field, $this->results);
+        )->calculate($this->field, $this->results);
 
         // Ada's one opponent is Bao, met by the awarded result: 3 points
         expect(awardedTestEntry($table, $this->ada)->getTiebreakerValue('buchholz'))->toBe(3.0);

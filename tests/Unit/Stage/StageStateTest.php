@@ -270,7 +270,7 @@ describe('StageState', function (): void {
         expect($refusals)->toBe(['verb' => $refusal, 'fromHistory()' => $refusal])
             ->and(EventKey::of($legs[1]))->toBe(EventKey::of(new Event([$this->alice, $this->bob], $round)))
             // The standings read the leg the same way: two results of one event
-            ->and(fn() => (new StandingsCalculator())->calculate([$this->alice, $this->bob], [new Result($legs[0], $this->alice), new Result($legs[1], $this->bob)]))
+            ->and(fn() => new StandingsCalculator()->calculate([$this->alice, $this->bob], [new Result($legs[0], $this->alice), new Result($legs[1], $this->bob)]))
             ->toThrow(InvalidInputException::class)
             // As integers, the two legs are two events of one tie
             ->and(StageState::start($this->participants)->withRoundPaired(new RoundPairing(1, 'final', [

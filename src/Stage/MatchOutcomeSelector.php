@@ -328,13 +328,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      */
     private function isThirdPlaceTie(array $tieEvents): bool
     {
-        foreach ($tieEvents as $event) {
-            if (BracketTie::of($event) === BracketTie::ThirdPlace) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($tieEvents, fn($event) => BracketTie::of($event) === BracketTie::ThirdPlace);
     }
 
     /**

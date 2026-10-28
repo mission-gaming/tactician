@@ -31,7 +31,7 @@ function outcomeWithOrder(array $ordered): StageOutcome
         }
     }
 
-    $standings = (new StandingsCalculator())->calculate($ordered, $results);
+    $standings = new StandingsCalculator()->calculate($ordered, $results);
 
     return new StageOutcome($standings, $results);
 }
@@ -132,7 +132,7 @@ describe('MatchOutcomeSelector', function (): void {
         $results = [new Result($event1, $this->alice), new Result($event2, $this->dave)];
         $finalRound = new RoundPairing(1, 'quarterfinal', [$event1, $event2], [$this->eve]);
 
-        $standings = (new StandingsCalculator())->calculate(
+        $standings = new StandingsCalculator()->calculate(
             [$this->alice, $this->bob, $this->carol, $this->dave, $this->eve],
             $results
         );
@@ -154,7 +154,7 @@ describe('MatchOutcomeSelector', function (): void {
         ];
         $finalRound = new RoundPairing(1, 'final', [$leg1, $leg2]);
 
-        $standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], $results);
+        $standings = new StandingsCalculator()->calculate([$this->alice, $this->bob], $results);
         $outcome = new StageOutcome($standings, $results, [], $finalRound);
 
         $winners = MatchOutcomeSelector::winners()->select($outcome);
@@ -173,7 +173,7 @@ describe('MatchOutcomeSelector', function (): void {
 
     it('rejects final rounds with missing or drawn results', function (): void {
         $event = new Event([$this->alice, $this->bob], new Round(1));
-        $standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], []);
+        $standings = new StandingsCalculator()->calculate([$this->alice, $this->bob], []);
 
         $missing = new StageOutcome($standings, [], [], new RoundPairing(1, 'final', [$event]));
         expect(fn() => MatchOutcomeSelector::winners()->select($missing))
@@ -191,7 +191,7 @@ describe('MatchOutcomeSelector', function (): void {
 
     it('rejects round-less events instead of colliding them', function (): void {
         $event = new Event([$this->alice, $this->bob]); // no round
-        $standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], []);
+        $standings = new StandingsCalculator()->calculate([$this->alice, $this->bob], []);
         $outcome = new StageOutcome(
             $standings,
             [new Result($event, $this->alice)],
@@ -219,7 +219,7 @@ describe('MatchOutcomeSelector', function (): void {
         $event2 = new Event([$keys[0] => $this->carol, $keys[1] => $this->dave], new Round(1));
         $results = [new Result($event1, $this->alice), new Result($event2, $this->dave)];
         $outcome = new StageOutcome(
-            (new StandingsCalculator())->calculate([$this->alice, $this->bob, $this->carol, $this->dave], []),
+            new StandingsCalculator()->calculate([$this->alice, $this->bob, $this->carol, $this->dave], []),
             $results,
             [],
             new RoundPairing(1, 'semifinal', [$event1, $event2])
@@ -244,7 +244,7 @@ describe('MatchOutcomeSelector', function (): void {
         $event = new Event($three, new Round(1));
         $winner = $winnerId === 'p3' ? $this->carol : $this->alice;
         $outcome = new StageOutcome(
-            (new StandingsCalculator())->calculate($three, []),
+            new StandingsCalculator()->calculate($three, []),
             [new Result($event, $winner)],
             [],
             new RoundPairing(1, 'final', [$event])
@@ -273,7 +273,7 @@ describe('MatchOutcomeSelector', function (): void {
         $pair = new Event([$this->dave, $this->eve], new Round(1));
         $three = new Event([$this->alice, $this->bob, $this->carol], new Round(1));
         $outcome = new StageOutcome(
-            (new StandingsCalculator())->calculate([$this->alice, $this->bob, $this->carol, $this->dave, $this->eve], []),
+            new StandingsCalculator()->calculate([$this->alice, $this->bob, $this->carol, $this->dave, $this->eve], []),
             [new Result($pair, $this->dave), new Result($three, $this->alice)],
             [],
             new RoundPairing(1, 'final', [$pair, $three])

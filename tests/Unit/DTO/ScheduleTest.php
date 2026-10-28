@@ -127,7 +127,7 @@ describe('Schedule', function (): void {
     });
 
     it('returns an empty round grouping for an empty schedule', function (): void {
-        expect((new Schedule())->getEventsByRound())->toBe([]);
+        expect(new Schedule()->getEventsByRound())->toBe([]);
     });
 
     // Tests finding the highest round number in the schedule, useful for

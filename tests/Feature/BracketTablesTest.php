@@ -243,10 +243,10 @@ describe('a tiebreaker between the tied participants in the table of a bracket',
             #[Override]
             public function calculate(array $participants, array $results): Standings
             {
-                return (new StandingsCalculator())->calculate($participants, $results);
+                return new StandingsCalculator()->calculate($participants, $results);
             }
         };
-        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
+        $calculator = new ReflectionClass($subclass)->newInstanceWithoutConstructor();
         $engine = $format === 'single elimination'
             ? new SingleEliminationEngine(new EliminationOptions(), $calculator)
             : new DoubleEliminationEngine(new EliminationOptions(), $calculator);
@@ -265,10 +265,10 @@ describe('a tiebreaker between the tied participants in the table of a bracket',
             #[Override]
             public function calculate(array $participants, array $results): Standings
             {
-                return (new StandingsCalculator())->calculate($participants, $results);
+                return new StandingsCalculator()->calculate($participants, $results);
             }
         };
-        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
+        $calculator = new ReflectionClass($subclass)->newInstanceWithoutConstructor();
         $engine = $format === 'single elimination'
             ? new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator)
             : new DoubleEliminationEngine(new EliminationOptions(), $calculator);

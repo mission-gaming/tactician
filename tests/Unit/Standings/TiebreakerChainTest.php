@@ -208,7 +208,7 @@ describe('a standings calculator built from plain data', function (): void {
             'tiebreakers' => [['tiebreaker' => 'sonneborn-berger', 'byes' => 'own-ranking-value'], 'score-difference'],
             'awarded_results' => ['count_scores' => true, 'count_between_tied_participants' => false],
         ])->and(StandingsCalculator::fromArray($calculator->toArray()))->toEqual($calculator)
-            ->and((new StandingsCalculator())->toArray())->toBe([
+            ->and(new StandingsCalculator()->toArray())->toBe([
                 'format_version' => 1,
                 'ranking' => ['win' => 3.0, 'draw' => 1.0, 'loss' => 0.0],
                 'tiebreakers' => [],

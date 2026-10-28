@@ -58,9 +58,9 @@ describe('RoundRobinPlan', function (): void {
     it('scales expected events linearly with legs', function (): void {
         $participants = roundRobinPlanParticipants(4);
 
-        expect((new RoundRobinPlan($participants, 1))->getExpectedEventCount())->toBe(6);
-        expect((new RoundRobinPlan($participants, 2))->getExpectedEventCount())->toBe(12);
-        expect((new RoundRobinPlan($participants, 3))->getExpectedEventCount())->toBe(18);
+        expect(new RoundRobinPlan($participants, 1)->getExpectedEventCount())->toBe(6);
+        expect(new RoundRobinPlan($participants, 2)->getExpectedEventCount())->toBe(12);
+        expect(new RoundRobinPlan($participants, 3)->getExpectedEventCount())->toBe(18);
     });
 
     // Regression: the pre-plan strategy math reported n-1 rounds per leg for

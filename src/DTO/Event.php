@@ -83,13 +83,7 @@ readonly class Event
      */
     public function hasParticipant(Participant $participant): bool
     {
-        foreach ($this->participants as $eventParticipant) {
-            if ($eventParticipant->getId() === $participant->getId()) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($this->participants, fn($eventParticipant) => $eventParticipant->getId() === $participant->getId());
     }
 
     /**

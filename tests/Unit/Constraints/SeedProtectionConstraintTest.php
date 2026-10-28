@@ -107,7 +107,7 @@ describe('SeedProtectionConstraint', function (): void {
         ];
         $context = roundRobinContext($participants, [], legs: 2);
 
-        expect((new SeedProtectionConstraint(2, $period))->isSatisfied(new Event([$participants[0], $participants[1]]), $context))
+        expect(new SeedProtectionConstraint(2, $period)->isSatisfied(new Event([$participants[0], $participants[1]]), $context))
             ->toBeTrue();
     })->with([0.0, 0.5, 1.0]);
 
@@ -122,9 +122,9 @@ describe('SeedProtectionConstraint', function (): void {
         $context = roundRobinContext($participants, [], legs: 2);
         $topTwo = fn(int $round): Event => new Event([$participants[0], $participants[1]], new Round($round));
 
-        expect((new SeedProtectionConstraint(2, 0.0))->isSatisfied($topTwo(1), $context))->toBeTrue()
-            ->and((new SeedProtectionConstraint(2, 1.0))->isSatisfied($topTwo(1), $context))->toBeFalse()
-            ->and((new SeedProtectionConstraint(2, 1.0))->isSatisfied($topTwo(6), $context))->toBeFalse();
+        expect(new SeedProtectionConstraint(2, 0.0)->isSatisfied($topTwo(1), $context))->toBeTrue()
+            ->and(new SeedProtectionConstraint(2, 1.0)->isSatisfied($topTwo(1), $context))->toBeFalse()
+            ->and(new SeedProtectionConstraint(2, 1.0)->isSatisfied($topTwo(6), $context))->toBeFalse();
     });
 
     // The name is a lookup key: the violation collector and the diagnostics
@@ -132,7 +132,7 @@ describe('SeedProtectionConstraint', function (): void {
     // it as a percentage rounded to at most two decimal places, by the rule
     // on SeedProtectionConstraint::getName().
     it('names the protection period as a percentage', function (float $period, string $percentage): void {
-        expect((new SeedProtectionConstraint(2, $period))->getName())
+        expect(new SeedProtectionConstraint(2, $period)->getName())
             ->toBe("Seed Protection (top 2, {$percentage}% period)");
     })->with([
         'a fifth' => [0.2, '20'],
@@ -185,13 +185,13 @@ describe('SeedProtectionConstraint', function (): void {
     ]);
 
     it('states the number of protected seeds in the name', function (): void {
-        expect((new SeedProtectionConstraint(4, 0.25))->getName())->toBe('Seed Protection (top 4, 25% period)');
+        expect(new SeedProtectionConstraint(4, 0.25)->getName())->toBe('Seed Protection (top 4, 25% period)');
     });
 
     // The constructor's range check lets NAN through. A patch does not change
     // that, and the name of such a constraint stays what it was.
     it('keeps the name of a period that is not a number', function (): void {
-        expect((new SeedProtectionConstraint(2, NAN))->getName())->toBe('Seed Protection (top 2, NAN% period)');
+        expect(new SeedProtectionConstraint(2, NAN)->getName())->toBe('Seed Protection (top 2, NAN% period)');
     });
 
     it('gives the same name whatever the precision settings', function (float $period, string $name): void {
@@ -203,7 +203,7 @@ describe('SeedProtectionConstraint', function (): void {
             foreach (['17', '3', '0', '-1'] as $setting) {
                 ini_set('precision', $setting);
                 ini_set('serialize_precision', $setting);
-                $names[$setting] = (new SeedProtectionConstraint(2, $period))->getName();
+                $names[$setting] = new SeedProtectionConstraint(2, $period)->getName();
             }
         } finally {
             ini_set('precision', $precision);
@@ -221,9 +221,9 @@ describe('SeedProtectionConstraint', function (): void {
 
     it('writes the decimal point as a dot under a locale that writes a comma', function (): void {
         $names = DecimalCommaLocale::during(fn(): array => [
-            (new SeedProtectionConstraint(2, 0.125))->getName(),
-            (new SeedProtectionConstraint(2, 1 / 3))->getName(),
-            (new SeedProtectionConstraint(2, 0.0015))->getName(),
+            new SeedProtectionConstraint(2, 0.125)->getName(),
+            new SeedProtectionConstraint(2, 1 / 3)->getName(),
+            new SeedProtectionConstraint(2, 0.0015)->getName(),
         ]);
 
         expect($names)->toBe([
@@ -240,7 +240,7 @@ describe('SeedProtectionConstraint', function (): void {
     it('gives periods that round to the same percentage the same name', function (array $periods, string $percentage): void {
         $names = [];
         foreach ($periods as $period) {
-            $names[] = (new SeedProtectionConstraint(2, $period))->getName();
+            $names[] = new SeedProtectionConstraint(2, $period)->getName();
         }
 
         expect(array_unique($names))->toBe(["Seed Protection (top 2, {$percentage}% period)"]);
@@ -254,7 +254,7 @@ describe('SeedProtectionConstraint', function (): void {
     it('gives periods a ten-thousandth apart different names', function (): void {
         $names = [];
         for ($tenThousandths = 0; $tenThousandths <= 10000; ++$tenThousandths) {
-            $names[(new SeedProtectionConstraint(2, $tenThousandths / 10000))->getName()] = true;
+            $names[new SeedProtectionConstraint(2, $tenThousandths / 10000)->getName()] = true;
         }
 
         expect($names)->toHaveCount(10001);
@@ -279,7 +279,7 @@ describe('SeedProtectionConstraint', function (): void {
         $previous = 0.0;
 
         foreach ($periods as $period) {
-            $name = (new SeedProtectionConstraint(1, $period))->getName();
+            $name = new SeedProtectionConstraint(1, $period)->getName();
 
             // No leading zero, no trailing zero, no trailing decimal point
             expect(preg_match('/^Seed Protection \(top 1, ((?:0|[1-9]\d{0,2})(?:\.\d?[1-9])?)% period\)$/', $name, $matches))->toBe(1, $name);

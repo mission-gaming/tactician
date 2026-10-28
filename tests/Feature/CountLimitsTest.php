@@ -206,10 +206,10 @@ describe('The limits on the counts of a timeline and of a session grid', functio
         // Amounts of time in a string are shown as the string and not as the duration
         // they would be (`P7D`), which is what the refusal asks the caller to write
         'the steps of an interval made from amounts of time in a string' => [
-            fn() => (new TimelineDefinition(
+            fn() => new TimelineDefinition(
                 new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
                 countLimitRelativeInterval('1 week')
-            ))->getSlotTime(100_002),
+            )->getSlotTime(100_002),
             '100001 steps of an interval made from a relative date string are more than the 100000 that are added one at a time; '
                 . 'write the interval as an ISO 8601 duration',
             ['steps' => 100_001, 'interval' => '1 week', 'limit' => 100_000],
@@ -220,10 +220,10 @@ describe('The limits on the counts of a timeline and of a session grid', functio
             ['capacity_per_slot' => 1_000_000_000_001, 'limit' => 1_000_000_000_000],
         ],
         'the steps of an interval made from a relative date string' => [
-            fn() => (new TimelineDefinition(
+            fn() => new TimelineDefinition(
                 new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
                 countLimitRelativeInterval('next weekday')
-            ))->getSlotTime(100_002),
+            )->getSlotTime(100_002),
             '100001 steps of an interval made from a relative date string are more than the 100000 that are added one at a time; '
                 . 'write the interval as an ISO 8601 duration',
             ['steps' => 100_001, 'interval' => 'next weekday', 'limit' => 100_000],
@@ -261,7 +261,7 @@ describe('The limits on the counts of a timeline and of a session grid', functio
 
         $kickoffs = array_map(
             static fn(ScheduledEvent $scheduledEvent): string => $scheduledEvent->getKickoff()->format('Y-m-d H:i:s'),
-            (new TimelineAssigner())->assign($schedule, $timeline)->getScheduledEvents()
+            new TimelineAssigner()->assign($schedule, $timeline)->getScheduledEvents()
         );
 
         // Round 1 ends at 20:46:39, its 10,000th slot, before round 2 starts
@@ -320,7 +320,7 @@ describe('The limits on the counts of a timeline and of a session grid', functio
 describe('The slots of a round or a session, computed in one pass', function (): void {
     it('are the times the steps give one by one, for every kind of interval', function (): void {
         $utc = new DateTimeZone('UTC');
-        $localHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+        $localHour = new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
         $fraction = new DateInterval('PT1S');
         $fraction->f = 0.29;
 
@@ -386,7 +386,7 @@ describe('The slots of a round or a session, computed in one pass', function ():
 
     it('are, round by round, the times asked for one slot at a time', function (): void {
         $utc = new DateTimeZone('UTC');
-        $localHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+        $localHour = new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
 
         // A slot interval of each kind, one definition of a single slot and
         // no slot interval, and rounds on either side of a clock change

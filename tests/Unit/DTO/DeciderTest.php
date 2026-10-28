@@ -22,8 +22,8 @@ describe('Decider', function (): void {
         expect($decider->getParticipantIds())->toBe(['nova'])
             ->and($decider->getLabel())->toBe('drawn by lot')
             ->and($decider->getReason())->toBe('Level after the event')
-            ->and((new Decider(['nova']))->getLabel())->toBeNull()
-            ->and((new Decider(['nova']))->getReason())->toBeNull();
+            ->and(new Decider(['nova'])->getLabel())->toBeNull()
+            ->and(new Decider(['nova'])->getReason())->toBeNull();
     });
 
     // ADR 0003: nothing in the type assumes two sides. It holds a list, of
@@ -42,7 +42,7 @@ describe('Decider', function (): void {
     it('has no accessor that names a side, a winner or a loser', function (): void {
         $methods = array_map(
             static fn(ReflectionMethod $method): string => $method->getName(),
-            (new ReflectionClass(Decider::class))->getMethods(ReflectionMethod::IS_PUBLIC)
+            new ReflectionClass(Decider::class)->getMethods(ReflectionMethod::IS_PUBLIC)
         );
         sort($methods);
 
@@ -50,7 +50,7 @@ describe('Decider', function (): void {
     });
 
     it('does not keep the keys of the array it is given', function (): void {
-        expect((new Decider(['first' => 'nova', 7 => 'orbit']))->getParticipantIds())->toBe(['nova', 'orbit']);
+        expect(new Decider(['first' => 'nova', 7 => 'orbit'])->getParticipantIds())->toBe(['nova', 'orbit']);
     });
 
     it('refuses a list that names nobody', function (): void {
@@ -79,7 +79,7 @@ describe('Decider', function (): void {
             'label' => 'ruling',
             'reason' => 'Board decision 14',
         ])
-            ->and((new Decider(['nova']))->toArray())->toBe(['format_version' => 1, 'participants' => ['nova'], 'label' => null, 'reason' => null])
+            ->and(new Decider(['nova'])->toArray())->toBe(['format_version' => 1, 'participants' => ['nova'], 'label' => null, 'reason' => null])
             ->and(Decider::fromArray($decider->toArray()))->toEqual($decider)
             ->and(Decider::fromArray(['participants' => ['nova']]))->toEqual(new Decider(['nova']))
             ->and(Decider::fromArray(['participants' => ['nova'], 'reason' => 'only a reason']))->toEqual(new Decider(['nova'], null, 'only a reason'));
@@ -124,9 +124,9 @@ describe('A Result with a decider', function (): void {
     it('has none unless it is given one', function (): void {
         $decider = new Decider(['orbit']);
 
-        expect((new Result($this->event))->getDecider())->toBeNull()
-            ->and((new Result($this->event, null, [], [], null, $decider))->getDecider())->toBe($decider)
-            ->and((new Result($this->event, decider: $decider))->getDecider())->toBe($decider);
+        expect(new Result($this->event)->getDecider())->toBeNull()
+            ->and(new Result($this->event, null, [], [], null, $decider)->getDecider())->toBe($decider)
+            ->and(new Result($this->event, decider: $decider)->getDecider())->toBe($decider);
     });
 
     // The acceptance criterion: the result still reads 1-1
@@ -224,13 +224,13 @@ describe('A Result with a decider', function (): void {
     });
 
     it('reads a null decider as none', function (): void {
-        $data = (new Result($this->event))->toArray();
+        $data = new Result($this->event)->toArray();
 
         expect(Result::fromArray([...$data, 'decider' => null], $this->registry)->getDecider())->toBeNull();
     });
 
     it('refuses a decider that is not an array', function (mixed $decider): void {
-        $data = (new Result($this->event))->toArray();
+        $data = new Result($this->event)->toArray();
 
         Result::fromArray([...$data, 'decider' => $decider], $this->registry);
     })->with([
@@ -239,27 +239,27 @@ describe('A Result with a decider', function (): void {
     ])->throws(InvalidInputException::class, 'Result decider must be an array or null');
 
     it('refuses stored data whose decider names a participant who is not in the event', function (): void {
-        $data = (new Result($this->event))->toArray();
+        $data = new Result($this->event)->toArray();
 
         Result::fromArray([...$data, 'decider' => ['participants' => ['ghost']]], $this->registry);
     })->throws(InvalidInputException::class, 'Decider references participant ghost who is not in the event');
 
     it('refuses an empty decider, where an empty award is an award', function (): void {
-        $data = (new Result($this->event))->toArray();
+        $data = new Result($this->event)->toArray();
 
         Result::fromArray([...$data, 'decider' => []], $this->registry);
     })->throws(InvalidInputException::class, 'Decider data requires a list of participant IDs');
 
     it('refuses the decider key misspelt, where it would read the tie as one nobody decided', function (): void {
-        $data = (new Result($this->event))->toArray();
+        $data = new Result($this->event)->toArray();
 
         Result::fromArray([...$data, 'decidr' => ['participants' => ['orbit']]], $this->registry);
     })->throws(InvalidInputException::class, "Unknown key in result data: 'decidr'");
 
     it('reads a decider that was serialized by itself, with its version, inside a result', function (): void {
-        $data = (new Result($this->event))->toArray();
+        $data = new Result($this->event)->toArray();
 
-        $result = Result::fromArray([...$data, 'decider' => (new Decider(['orbit']))->toArray()], $this->registry);
+        $result = Result::fromArray([...$data, 'decider' => new Decider(['orbit'])->toArray()], $this->registry);
 
         expect($result->getDecider())->toEqual(new Decider(['orbit']))
             ->and($result->toArray()['decider'] ?? null)->toBe(['participants' => ['orbit'], 'label' => null, 'reason' => null]);

@@ -772,9 +772,9 @@ describe('the parts of the view', function (): void {
 
         expect(fn() => new BracketSlot($participant, SlotPlaceholder::Bye, SlotSource::Draw))->toThrow(InvalidInputException::class)
             ->and(fn() => new BracketSlot(null, null, SlotSource::Draw))->toThrow(InvalidInputException::class)
-            ->and((new BracketSlot(null, SlotPlaceholder::AdvancerOf, SlotSource::AdvancerOf, ['main:1:1']))->isPending())->toBeTrue()
-            ->and((new BracketSlot(null, SlotPlaceholder::Void, SlotSource::AdvancerOf, ['main:1:1']))->isPending())->toBeFalse()
-            ->and((new BracketSlot($participant, null, SlotSource::Draw, [], false, 1))->isPending())->toBeFalse();
+            ->and(new BracketSlot(null, SlotPlaceholder::AdvancerOf, SlotSource::AdvancerOf, ['main:1:1'])->isPending())->toBeTrue()
+            ->and(new BracketSlot(null, SlotPlaceholder::Void, SlotSource::AdvancerOf, ['main:1:1'])->isPending())->toBeFalse()
+            ->and(new BracketSlot($participant, null, SlotSource::Draw, [], false, 1)->isPending())->toBeFalse();
     });
 
     it('says which statuses are settled', function (): void {
@@ -797,7 +797,7 @@ describe('the parts of the view', function (): void {
     });
 
     it('is offered by both elimination engines and finds a node by its ID', function (): void {
-        $bracket = (new SingleEliminationEngine())->getBracket(StageState::start(bracketViewField(4)));
+        $bracket = new SingleEliminationEngine()->getBracket(StageState::start(bracketViewField(4)));
 
         expect(new SingleEliminationEngine())->toBeInstanceOf(BracketViewEngine::class)
             ->and(new DoubleEliminationEngine())->toBeInstanceOf(BracketViewEngine::class)

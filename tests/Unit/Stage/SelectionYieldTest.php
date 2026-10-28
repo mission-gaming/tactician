@@ -192,7 +192,7 @@ describe('CompositionValidator reads the declared yield', function (): void {
     });
 
     it('reports a declared pool count below 1 and does not count with it', function (): void {
-        expect((new CompositionValidator())->validateChain(16, [
+        expect(new CompositionValidator()->validateChain(16, [
             new StageTransition('knockout', 8, RankRangeSelector::topPerGroup(2), sourcePools: 0),
         ]))->toBe(["Stage 'knockout' declares 0 pools for the previous stage; a stage is played in at least 1."]);
     });
@@ -242,14 +242,14 @@ describe('CompositionValidator reads the declared yield', function (): void {
     it('reports one pool for the best of a single rank placed for a bracket', function (): void {
         $qualifiers = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 1));
 
-        expect((new CompositionValidator())->validateChain(4, [new StageTransition('knockout', 3, $qualifiers, sourcePools: 1)]))
+        expect(new CompositionValidator()->validateChain(4, [new StageTransition('knockout', 3, $qualifiers, sourcePools: 1)]))
             ->toBe(["Stage 'knockout' declares 1 pool for the previous stage; its selection is made from at least 2."])
-            ->and((new CompositionValidator())->validateChain(8, [new StageTransition('knockout', 5, $qualifiers, sourcePools: 2)]))
+            ->and(new CompositionValidator()->validateChain(8, [new StageTransition('knockout', 5, $qualifiers, sourcePools: 2)]))
             ->toBe([]);
     });
 
     it('passes a selector of an application whose yield depends on the outcome', function (): void {
-        expect((new CompositionValidator())->validateChain(9, [
+        expect(new CompositionValidator()->validateChain(9, [
             new StageTransition('next', 7, new DeclaredYieldSelector(SelectionYield::dependsOnOutcome()), sourcePools: 3),
         ]))->toBe([]);
     });

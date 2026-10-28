@@ -45,7 +45,7 @@ describe('a table ordered by an entrant list', function (): void {
         // c beats a 2-0: c is first and a last by results; d and b have not
         // played and are level between them
         $results = [new Result(new Event([$this->c, $this->a]), $this->c, ['c' => 2, 'a' => 0])];
-        $table = (new StandingsCalculator())->calculate($this->list, $results);
+        $table = new StandingsCalculator()->calculate($this->list, $results);
 
         expect(entrantOrderIds($table))->toBe(['c', 'b', 'd', 'a']);
 
@@ -62,14 +62,14 @@ describe('a table ordered by an entrant list', function (): void {
     });
 
     it('puts entries that are not in the list after those that are, in the order they had', function (): void {
-        $table = (new StandingsCalculator())->calculate($this->list, []);
+        $table = new StandingsCalculator()->calculate($this->list, []);
 
         expect(entrantOrderIds($table->withTiedSetsOrderedBy([$this->b, $this->d])))->toBe(['b', 'd', 'a', 'c'])
             ->and(entrantOrderIds($table->withTiedSetsOrderedBy([])))->toBe(['a', 'b', 'c', 'd']);
     });
 
     it('matches participants by ID and takes the first position of an ID listed twice', function (): void {
-        $table = (new StandingsCalculator())->calculate($this->list, []);
+        $table = new StandingsCalculator()->calculate($this->list, []);
         $copyOfB = Participant::fromArray($this->b->toArray());
 
         expect(entrantOrderIds($table->withTiedSetsOrderedBy([$copyOfB, $this->d, $this->c, $this->a, $this->b])))
@@ -78,7 +78,7 @@ describe('a table ordered by an entrant list', function (): void {
 
     it('is what an outcome does to its table when it is given the entrant list', function (): void {
         $results = [new Result(new Event([$this->c, $this->a]), $this->c, ['c' => 2, 'a' => 0])];
-        $table = (new StandingsCalculator())->calculate($this->list, $results);
+        $table = new StandingsCalculator()->calculate($this->list, $results);
 
         $withList = new StageOutcome($table, $results, [], null, [], $this->list);
         $without = new StageOutcome($table, $results);
@@ -109,8 +109,8 @@ describe('the tiers of a table', function (): void {
     });
 
     it('has none unless they are given', function (): void {
-        expect((new Standings($this->entries))->getTiers())->toBe([])
-            ->and((new StandingsCalculator())->calculate([new Participant('a', 'A')], [])->getTiers())->toBe([]);
+        expect(new Standings($this->entries)->getTiers())->toBe([])
+            ->and(new StandingsCalculator()->calculate([new Participant('a', 'A')], [])->getTiers())->toBe([]);
     });
 
     it('keeps entries of different tiers out of one tied set, whatever their records', function (): void {
@@ -122,7 +122,7 @@ describe('the tiers of a table', function (): void {
             ->and(entrantOrderIds(new Standings($table->getTiedSets()[0]->getEntries())))->toBe(['b', 'c'])
             ->and($table->getTiedSets()[0]->getFirstPosition())->toBe(2)
             // Without tiers the three are one set
-            ->and(count((new Standings($this->entries))->getTiedSets()[0]))->toBe(3);
+            ->and(count(new Standings($this->entries)->getTiedSets()[0]))->toBe(3);
     });
 
     it('orders level entries by an entrant list inside a tier only, and keeps the tiers', function (): void {
@@ -252,7 +252,7 @@ describe('crediting byes in a table', function (): void {
             [0, 1, 2, 2]
         );
 
-        $credited = (new StandingsCalculator())->withByesCredited($table, ['second' => 1, 'fourth' => 2]);
+        $credited = new StandingsCalculator()->withByesCredited($table, ['second' => 1, 'fourth' => 2]);
 
         expect(entrantOrderIds($credited))->toBe(['first', 'second', 'fourth', 'third'])
             ->and($credited->getTiers())->toBe([0, 1, 2, 2])
@@ -260,12 +260,12 @@ describe('crediting byes in a table', function (): void {
     });
 
     it('keeps the credited byes of an entry that is given tiebreaker values', function (): void {
-        $entry = (new StandingEntry($this->a, 1, 1, 0, 0, 3.0))->withByes(2, 9.0)->withTiebreakers(['wins' => 1.0]);
+        $entry = new StandingEntry($this->a, 1, 1, 0, 0, 3.0)->withByes(2, 9.0)->withTiebreakers(['wins' => 1.0]);
 
         expect($entry->getByes())->toBe(2)
             ->and($entry->getRankingValue())->toBe(9.0)
             ->and($entry->getTiebreakerValue('wins'))->toBe(1.0)
-            ->and((new StandingEntry($this->a, 1, 1, 0, 0, 3.0))->getByes())->toBe(0);
+            ->and(new StandingEntry($this->a, 1, 1, 0, 0, 3.0)->getByes())->toBe(0);
     });
 });
 

@@ -650,15 +650,7 @@ final readonly class BestOfRankSelector implements ProgressionSelector
             }
         }
 
-        $results = array_filter($outcome->getResults(), static function (Result $result) use ($leftOut): bool {
-            foreach ($result->getEvent()->getParticipants() as $participant) {
-                if (isset($leftOut[$participant->getId()])) {
-                    return false;
-                }
-            }
-
-            return true;
-        });
+        $results = array_filter($outcome->getResults(), static fn(Result $result): bool => array_all($result->getEvent()->getParticipants(), fn($participant) => !isset($leftOut[$participant->getId()])));
 
         // An adjustment comes from no event, so no discarded result takes it
         // away: calculate() knows none, and the ones the table shows for the

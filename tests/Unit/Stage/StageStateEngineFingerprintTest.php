@@ -238,7 +238,7 @@ function fingerprintConstructorParameters(string $class): array
 {
     return array_map(
         fn(ReflectionParameter $parameter): string => $parameter->getName(),
-        (new ReflectionClass($class))->getConstructor()?->getParameters() ?? []
+        new ReflectionClass($class)->getConstructor()?->getParameters() ?? []
     );
 }
 
@@ -654,7 +654,7 @@ describe('engine fingerprints', function (): void {
         // The other half of the rule: what the fingerprint leaves out as
         // the default is what an engine built without arguments does.
         $options = new EliminationOptions();
-        $ranking = (new StandingsCalculator())->getRankingStrategy();
+        $ranking = new StandingsCalculator()->getRankingStrategy();
         assert($ranking instanceof WinDrawLossRanking);
 
         $roundRobin = new RoundRobinOptions();
@@ -664,8 +664,8 @@ describe('engine fingerprints', function (): void {
             ->and([$roundRobin->legs, $roundRobin->strategy::class, $roundRobin->backtracking, $roundRobin->roleAssignment::class])
             ->toBe([1, MirroredLegStrategy::class, false, BalancedWherePossibleRoleAssignment::class])
             ->and($ranking->toArray())->toBe(['format_version' => 1, 'win' => 3.0, 'draw' => 1.0, 'loss' => 0.0])
-            ->and((new StandingsCalculator())->getTiebreakers())->toBe([])
-            ->and((new StandingsCalculator())->getAwardedResultPolicy()->toArray())->toBe([
+            ->and(new StandingsCalculator()->getTiebreakers())->toBe([])
+            ->and(new StandingsCalculator()->getAwardedResultPolicy()->toArray())->toBe([
                 'format_version' => 1,
                 'count_scores' => true,
                 'count_between_tied_participants' => true,
@@ -1147,9 +1147,9 @@ describe('engine fingerprints', function (): void {
         $fingerprints = [];
         foreach ([1, 2] as $legs) {
             foreach ([true, false] as $flag) {
-                $fingerprints[] = (new SingleEliminationEngine(new EliminationOptions(legsPerTie: $legs, reseedEachRound: $flag)))
+                $fingerprints[] = new SingleEliminationEngine(new EliminationOptions(legsPerTie: $legs, reseedEachRound: $flag))
                     ->getFingerprint();
-                $fingerprints[] = (new DoubleEliminationEngine(new EliminationOptions(legsPerTie: $legs, grandFinalReset: $flag)))
+                $fingerprints[] = new DoubleEliminationEngine(new EliminationOptions(legsPerTie: $legs, grandFinalReset: $flag))
                     ->getFingerprint();
             }
         }
@@ -1165,7 +1165,7 @@ describe('engine fingerprints', function (): void {
             new StandingsCalculator(tiebreakers: [fingerprintTiebreakerNamed('buchholz'), fingerprintTiebreakerNamed('wins')]),
             new StandingsCalculator(tiebreakers: [fingerprintTiebreakerNamed('buchholz;subclass=yes')]),
         ] as $calculator) {
-            $fingerprints[] = (new SwissPairingEngine(standingsCalculator: $calculator))->getFingerprint();
+            $fingerprints[] = new SwissPairingEngine(standingsCalculator: $calculator)->getFingerprint();
         }
         $fingerprints[] = (new readonly class extends SwissPairingEngine {})->getFingerprint();
 
@@ -1183,7 +1183,7 @@ describe('engine fingerprints', function (): void {
 
         $own = StageState::start($this->participants)->withEngineFingerprint('my-swiss');
         $librarys = StageState::start($this->participants)
-            ->withEngineFingerprint((new SwissPairingEngine(plannedRounds: 3))->getFingerprint());
+            ->withEngineFingerprint(new SwissPairingEngine(plannedRounds: 3)->getFingerprint());
 
         expect($mine->pairNextRound($own)->getRoundNumber())->toBe(1)
             ->and(fn() => $mine->pairNextRound($librarys))->toThrow(
@@ -1207,8 +1207,8 @@ describe('engine fingerprints', function (): void {
 
         expect($oneSubclass::class)->not->toBe($anotherSubclass::class)
             ->and($oneSubclass->getFingerprint())->toBe($anotherSubclass->getFingerprint())
-            ->and((new SwissPairingEngine(standingsCalculator: new StandingsCalculator($anotherRanking)))->getFingerprint())
-            ->toBe((new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking())))->getFingerprint());
+            ->and(new SwissPairingEngine(standingsCalculator: new StandingsCalculator($anotherRanking))->getFingerprint())
+            ->toBe(new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking()))->getFingerprint());
     });
 
     it('reads nothing from a calculator of the application', function (): void {
@@ -1221,10 +1221,10 @@ describe('engine fingerprints', function (): void {
             #[Override]
             public function calculate(array $participants, array $results): Standings
             {
-                return (new StandingsCalculator())->calculate($participants, $results);
+                return new StandingsCalculator()->calculate($participants, $results);
             }
         };
-        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
+        $calculator = new ReflectionClass($subclass)->newInstanceWithoutConstructor();
         expect(fn() => $calculator->getTiebreakers())->toThrow(Error::class);
 
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator);
@@ -1244,7 +1244,7 @@ describe('engine fingerprints', function (): void {
     it('does not tell two calculators of the application apart, whatever they were built with', function (): void {
         // The same limit as for a ranking strategy of the application: the
         // library cannot know which of the rules a subclass still applies.
-        $build = fn(StandingsCalculator $calculator): string => (new SwissPairingEngine(standingsCalculator: $calculator))
+        $build = fn(StandingsCalculator $calculator): string => new SwissPairingEngine(standingsCalculator: $calculator)
             ->getFingerprint();
 
         $onTheChessScale = $build(new readonly class (WinDrawLossRanking::oneHalfZero()) extends StandingsCalculator {});
@@ -1255,9 +1255,9 @@ describe('engine fingerprints', function (): void {
     });
 
     it('writes a ranking value the same way whatever the float settings and the locale', function (): void {
-        $build = fn(): string => (new SwissPairingEngine(
+        $build = fn(): string => new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(1 / 3, 0.1 + 0.2, -0.0))
-        ))->getFingerprint();
+        )->getFingerprint();
         $expected = 'tactician:v2:swiss;ranking=win-draw-loss,0.3333333333333333,0.30000000000000004,0';
 
         expect($build())->toBe($expected);
@@ -1275,9 +1275,9 @@ describe('engine fingerprints', function (): void {
     });
 
     it('tells apart two scales that differ in the last bit of a value', function (): void {
-        $build = fn(float $draw): string => (new SwissPairingEngine(
+        $build = fn(float $draw): string => new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(1.0, $draw, 0.0))
-        ))->getFingerprint();
+        )->getFingerprint();
 
         expect($build(0.1 + 0.2))->not->toBe($build(0.3))
             ->and($build(0.3))->toBe('tactician:v2:swiss;ranking=win-draw-loss,1,0.3,0')
