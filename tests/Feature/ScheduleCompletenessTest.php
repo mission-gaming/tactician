@@ -60,6 +60,11 @@ function completenessRoleAssignment(string $name): RoleAssignmentInterface
 /**
  * Assert every pairing appears exactly $legs times, each participant plays at
  * most once per round, and all rounds fall within the expected range.
+ *
+ * The events are read in a loop over the schedule that holds, at its first
+ * event, a whole loop over the same schedule: both visit every event (until
+ * 0.3.0 the inner loop moved the one cursor of the schedule and the outer
+ * loop ended after its first event, issue #54).
  */
 function assertCompleteRoundRobin(Schedule $schedule, int $participantCount, int $legs): void
 {
@@ -71,7 +76,16 @@ function assertCompleteRoundRobin(Schedule $schedule, int $participantCount, int
 
     $pairingCounts = [];
     $participantsByRound = [];
-    foreach ($schedule as $event) {
+    $visitedByTheOuterLoop = 0;
+    $visitedByTheInnerLoop = 0;
+    foreach ($schedule as $index => $event) {
+        ++$visitedByTheOuterLoop;
+        if ($index === 0) {
+            foreach ($schedule as $inner) {
+                ++$visitedByTheInnerLoop;
+            }
+        }
+
         $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         sort($ids);
         $key = implode('|', $ids);
@@ -88,6 +102,9 @@ function assertCompleteRoundRobin(Schedule $schedule, int $participantCount, int
             $participantsByRound[$round][$id] = true;
         }
     }
+
+    expect($visitedByTheOuterLoop)->toBe($expectedEvents)
+        ->and($visitedByTheInnerLoop)->toBe($expectedEvents);
 
     $expectedPairings = intdiv($participantCount * ($participantCount - 1), 2);
     expect(count($pairingCounts))->toBe($expectedPairings);

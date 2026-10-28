@@ -8937,10 +8937,12 @@ convenience, not a memory saving. Schedules are small in practice (a
 it is a question of how your application stores and pages events, not of
 how you iterate.
 
-A `Schedule` is its own iterator and has one cursor. A `foreach` over a
-schedule inside another `foreach` over the same object moves that cursor
-to the end, so the outer loop stops after its first event. To compare every
-event with every other, loop over `getEvents()`, which is a plain array.
+A `Schedule` keeps no position of an iteration: it is an
+`IteratorAggregate`, and every `foreach` gets an iterator of its own
+(`getIterator()`). Loops over the same schedule may therefore nest, and
+each visits every event: comparing every event with every other is two
+`foreach` loops over the schedule, or over `getEvents()`, which is a plain
+array.
 
 ```php
 use MissionGaming\Tactician\DTO\Participant;

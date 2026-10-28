@@ -374,8 +374,11 @@ both, even when the answer is no.
 
 - Every PHP file declares `strict_types=1`.
 - Value objects are immutable: a change returns a new instance. The DTOs
-  are `readonly` classes, except `Schedule`, which keeps an iteration cursor
-  and whose events are readonly.
+  are `readonly` classes.
+- Every concrete class in `src/` is `final`; the extension points are the
+  interfaces. The one exception is a class the library extends itself
+  (`InvalidConfigurationException`); `tests/Feature/FinalClassesTest.php`
+  enforces it.
 - Every class, interface, trait and enum in `src/` carries exactly one
   stability annotation in its docblock: `@api`, `@experimental` or
   `@internal`. The README's
