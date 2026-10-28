@@ -9,6 +9,7 @@ use Rector\DeadCode\Rector\MethodCall\RemoveNullArgOnNullDefaultParamRector;
 use Rector\DeadCode\Rector\MethodCall\RemoveNullNamedArgOnNullDefaultParamRector;
 use Rector\Php80\Rector\Class_\ClassPropertyAssignToConstructorPromotionRector;
 use Rector\Php83\Rector\ClassConst\AddTypeToConstRector;
+use Rector\Php84\Rector\Foreach_\ForeachToArrayAnyRector;
 
 return RectorConfig::configure()
     ->withPaths([
@@ -39,6 +40,12 @@ return RectorConfig::configure()
             __DIR__ . '/src/Repack/Internal/IntervalPlacement.php',
             __DIR__ . '/src/Scheduling/BacktrackingRoundRobinGenerator.php',
             __DIR__ . '/src/Stage/TieDecision.php',
+        ],
+        // A loop on a hot path stays a loop: the callback array_any() calls
+        // for each element made Event::hasParticipant() about 1.6 times
+        // slower, and generation asks it for every candidate event.
+        ForeachToArrayAnyRector::class => [
+            __DIR__ . '/src/DTO/Event.php',
         ],
         // The dead code rules below remove what is written on purpose.
         // Trusts a declared return type and drops the cast that PHPStan

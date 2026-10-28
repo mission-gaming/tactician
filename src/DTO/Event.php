@@ -83,7 +83,17 @@ final readonly class Event
      */
     public function hasParticipant(Participant $participant): bool
     {
-        return array_any($this->participants, fn($eventParticipant) => $eventParticipant->getId() === $participant->getId());
+        // A loop, not array_any(): this is asked for every candidate event
+        // during generation, and the closure call per participant made it
+        // about 1.6 times slower (rector.php skips the rewrite here)
+        $id = $participant->getId();
+        foreach ($this->participants as $eventParticipant) {
+            if ($eventParticipant->getId() === $id) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
