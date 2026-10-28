@@ -36,7 +36,7 @@ use Override;
  *
  * @api
  */
-readonly class RepeatedLegStrategy implements LegStrategyInterface
+final readonly class RepeatedLegStrategy implements LegStrategyInterface
 {
     /**
      * States that roles do not mirror across legs and that no randomizer

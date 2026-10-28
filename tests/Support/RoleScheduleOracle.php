@@ -347,14 +347,6 @@ final class RoleScheduleOracle
      */
     public static function every(Closure ...$rules): Closure
     {
-        return static function (array $events) use ($rules): bool {
-            foreach ($rules as $rule) {
-                if ($rule(array_values($events))) {
-                    return true;
-                }
-            }
-
-            return false;
-        };
+        return static fn(array $events): bool => array_any($rules, fn($rule) => $rule(array_values($events)));
     }
 }

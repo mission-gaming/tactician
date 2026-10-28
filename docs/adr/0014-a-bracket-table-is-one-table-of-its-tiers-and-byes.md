@@ -7,6 +7,10 @@ is refused nothing) and
 [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md).
 Its rule for a strategy without a bye value is extended to Swiss by
 [0019](0019-a-swiss-bye-under-a-strategy-without-a-bye-value-is-worth-nothing.md).
+Amended by
+[0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md),
+under which no subclass of `StandingsCalculator` is refused tiers or a
+bracket.
 
 ## Context
 
@@ -137,13 +141,13 @@ those who lost the round), so it is left as a decision of its own.
   nodes, which is the count its table has. It no longer counts a walkover,
   which the round lists among its byes, and now counts a bye in a stage
   that took no round number, which no round lists.
-- A subclass of `StandingsCalculator` is calculated through its own
-  `calculate()`, which forms the tied sets over the whole table: given
-  tiers with a tiebreaker between the tied participants, it is refused
-  (`IncompatibleOptions`). Without such a tiebreaker its table is put into
-  tiers after `calculate()`, in the order `calculate()` gave. The table of
-  every bracket has tiers, so a bracket engine given such a subclass is
-  refused before its first round is paired.
+- A subclass of `StandingsCalculator` was calculated through its own
+  `calculate()`, which formed the tied sets over the whole table: given
+  tiers with a tiebreaker between the tied participants, it was refused
+  (`IncompatibleOptions`), and so was a bracket engine given one, before its
+  first round. No longer: the class is final from 0.3.0
+  ([0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md)),
+  so every calculator forms the tied sets inside a tier.
 - The consequence of 0010 that the tied sets are read without regard to
   tiers, and the known limitation in the roadmap, no longer hold.
 - `tests/Feature/BracketTablesTest.php` pins both examples and holds the

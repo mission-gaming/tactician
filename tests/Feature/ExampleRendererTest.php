@@ -133,8 +133,8 @@ describe('Example renderer', function (): void {
 
     it('gives a standings row a dash for a tiebreaker only other rows carry', function (): void {
         $text = Example::renderText('T', 'S', ['Table' => new Standings([
-            (new StandingEntry(new Participant('a', 'Alpha'), 1, 1, 0, 0, 3.0))->withTiebreakers(['wins' => 1.0]),
-            (new StandingEntry(new Participant('b', 'Beta'), 1, 0, 0, 1, 0.0))->withTiebreakers(['buchholz' => 3.0]),
+            new StandingEntry(new Participant('a', 'Alpha'), 1, 1, 0, 0, 3.0)->withTiebreakers(['wins' => 1.0]),
+            new StandingEntry(new Participant('b', 'Beta'), 1, 0, 0, 1, 0.0)->withTiebreakers(['buchholz' => 3.0]),
         ])]);
 
         expect($text)->toContain(
@@ -272,8 +272,8 @@ describe('Example renderer', function (): void {
             'Played' => [new Result($event, $first, ['a' => 2, 'b' => 1]), new Result($event)],
             'Pairing' => new RoundPairing(2, 'semifinal', [$event], [$third]),
             'Table' => new Standings([
-                (new StandingEntry($first, 1, 1, 0, 0, 3.0))->withTiebreakers(['buchholz' => 1.5]),
-                (new StandingEntry($second, 1, 0, 0, 1, 0.0))->withTiebreakers(['buchholz' => 3.0]),
+                new StandingEntry($first, 1, 1, 0, 0, 3.0)->withTiebreakers(['buchholz' => 1.5]),
+                new StandingEntry($second, 1, 0, 0, 1, 0.0)->withTiebreakers(['buchholz' => 3.0]),
             ]),
             'Failure' => new InvalidArgumentException('Not like that'),
             'Who' => $first,

@@ -81,17 +81,17 @@ describe('StageState adjustments', function (): void {
         $state = StageState::start($this->participants)
             ->withRoundPlayed(($this->round)(1), [])
             ->withRoundPlayed(($this->round)(2), []);
-        $earlier = (new Adjustment('jun', -1.0, 'ruling'))->madeAfterRound(1);
+        $earlier = new Adjustment('jun', -1.0, 'ruling')->madeAfterRound(1);
 
         expect($state->withAdjustment($earlier)->getAdjustments())->toBe([$earlier])
-            ->and($state->withAdjustment((new Adjustment('jun', -1.0))->madeAfterRound(0))->getAdjustments()[0]->getAfterRound())->toBe(0)
-            ->and($state->withAdjustment((new Adjustment('jun', -1.0))->madeAfterRound(2))->getAdjustments()[0]->getAfterRound())->toBe(2);
+            ->and($state->withAdjustment(new Adjustment('jun', -1.0)->madeAfterRound(0))->getAdjustments()[0]->getAfterRound())->toBe(0)
+            ->and($state->withAdjustment(new Adjustment('jun', -1.0)->madeAfterRound(2))->getAdjustments()[0]->getAfterRound())->toBe(2);
     });
 
     it('refuses an adjustment said to be made after a round that is not recorded yet', function (): void {
         StageState::start($this->participants)
             ->withRoundPlayed(($this->round)(1), [])
-            ->withAdjustment((new Adjustment('jun', -1.0))->madeAfterRound(2));
+            ->withAdjustment(new Adjustment('jun', -1.0)->madeAfterRound(2));
     })->throws(InvalidInputException::class, 'is said to be made after round 2, and the last round recorded is round 1');
 
     it('keeps adjustments in the order recorded and never merges two for one participant', function (): void {
@@ -200,7 +200,7 @@ describe('StageState adjustments', function (): void {
 
         expect(fn() => StageState::fromArray($withRounds))
             ->toThrow(InvalidInputException::class, 'Stage state adjustment for participant jun does not say after which round it was made')
-            ->and($read->getAdjustments())->toEqual([(new Adjustment('jun', -1.0, 'ruling'))->madeAfterRound(0)])
+            ->and($read->getAdjustments())->toEqual([new Adjustment('jun', -1.0, 'ruling')->madeAfterRound(0)])
             ->and($read->toArray())->toBe($written);
     });
 

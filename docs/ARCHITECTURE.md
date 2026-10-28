@@ -11,16 +11,15 @@ limited, in the [roadmap](ROADMAP.md).
 - **Participant**: Immutable participant representation with ID, label, seed, and metadata
 - **Event**: Immutable match/event representation with participants, round, and metadata
 - **Round**: Immutable round representation with number and metadata
-- **Schedule**: Iterator/Countable collection of events with metadata support and JSON serialization. It keeps its entrants (`getEntrants()`): the list a generator was given, in that order, which is the seeding where position decides, or the participants in the order they first appear when a schedule is built from events alone. The list is the `participants` of the serialized form, so the order survives a round trip
+- **Schedule**: IteratorAggregate/Countable collection of events with metadata support and JSON serialization. It keeps its entrants (`getEntrants()`): the list a generator was given, in that order, which is the seeding where position decides, or the participants in the order they first appear when a schedule is built from events alone. The list is the `participants` of the serialized form, so the order survives a round trip
 - **Result**: Immutable outcome of an event (winner or draw, optional per-participant scores). It is of an event that was played unless it carries an `Award`
 - **Award**: The mark of an awarded result: the event was not played and the application gave it this outcome. An optional label and reason, opaque to the library; it names no participant, because the result does
 
-`Participant`, `Event`, `Round`, `Result` and `Award` are `readonly` classes.
-`Schedule` is not: it implements `Iterator` and keeps the cursor of the
-iteration in itself. Its events cannot be changed (`addEvent()` returns a new
-schedule), but two loops over one `Schedule` object share the cursor, so a
-loop nested inside another loop over the same object ends the outer one
-early; iterate `getEvents()` in the inner loop.
+`Participant`, `Event`, `Round`, `Result`, `Award` and `Schedule` are
+`readonly` classes. `Schedule` is an `IteratorAggregate`: it keeps no position
+of an iteration, each `foreach` gets an iterator of its own, and so loops over
+one schedule may nest (until 0.3.0 it was its own `Iterator` with one cursor,
+and a nested loop ended the outer one early).
 
 All DTOs support `toArray()`/`fromArray()` (`Result::fromArray()` also takes
 the participants by ID, because a result refers to them); `Schedule`
@@ -341,8 +340,8 @@ what the role search can know about the constraints
   constraints.** Steps 2 to 8 with the balanced roles; if they fail, steps 2
   to 8 with the roles the generator proposes, whose failure is the failure
   of the call.
-- **Anything else** (a closure, a metadata rule, a class of the caller's, a
-  subclass). The balanced roles as given in the first layout; then steps 2
+- **Anything else** (a closure, a metadata rule, a class of the caller's).
+  The balanced roles as given in the first layout; then steps 2
   to 8 with the roles the generator proposes; then steps 2 to 8 with the
   balanced roles. With a schedule in hand that last run is held to 4,000
   events put to the constraints and makes a backtracking search only where

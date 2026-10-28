@@ -1147,7 +1147,7 @@ final class PlainDataForms
         return match ($random->getInt(0, 2)) {
             0 => $state,
             1 => $state->withEngineFingerprint('an engine of our own'),
-            default => $state->withEngineFingerprint((new SwissPairingEngine())->getFingerprint()),
+            default => $state->withEngineFingerprint(new SwissPairingEngine()->getFingerprint()),
         };
     }
 
@@ -1168,7 +1168,7 @@ final class PlainDataForms
      */
     private static function instant(Randomizer $random): DateTimeImmutable
     {
-        return (new DateTimeImmutable('@0'))
+        return new DateTimeImmutable('@0')
             ->setTimezone(new DateTimeZone('UTC'))
             ->setTimestamp(1_785_610_800 + $random->getInt(0, 40_000_000));
     }
@@ -1190,7 +1190,7 @@ final class PlainDataForms
         [$hour, $minute] = [[19, 0], [19, 30], [20, 15]][$random->getInt(0, 2)];
 
         // Day 1 + n of January 2026 counts on through the months
-        return (new DateTimeImmutable('2026-01-01 00:00:00', $zone))
+        return new DateTimeImmutable('2026-01-01 00:00:00', $zone)
             ->setDate(2026, 1, 1 + $random->getInt(0, 700))
             ->setTime($hour, $minute);
     }

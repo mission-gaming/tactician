@@ -592,7 +592,7 @@ describe('Swiss pairing where dead ends are common', function (): void {
         }
 
         // The rounds are recorded without results, which is results-free mode
-        expect(fn() => (new SwissPairingEngine(resultsFree: true))->pairNextRound($state))->toThrow(NoValidPairingException::class);
+        expect(fn() => new SwissPairingEngine(resultsFree: true)->pairNextRound($state))->toThrow(NoValidPairingException::class);
     });
 
     it('lets a constraint of the caller\'s fail in a branch that holds no pairing', function (): void {
@@ -634,19 +634,19 @@ describe('Swiss pairing where dead ends are common', function (): void {
             'Cannot judge one pairing'
         )]);
 
-        expect(fn() => (new SwissPairingEngine($constraints, resultsFree: true))->pairNextRound($state))
+        expect(fn() => new SwissPairingEngine($constraints, resultsFree: true)->pairNextRound($state))
             ->toThrow(LogicException::class, 'This constraint cannot judge s7 against s9');
         // The state itself has no pairing: without the constraint, that is
         // what the engine reports.
         // The rounds are recorded without results, which is results-free mode
-        expect(fn() => (new SwissPairingEngine(resultsFree: true))->pairNextRound($state))->toThrow(NoValidPairingException::class);
+        expect(fn() => new SwissPairingEngine(resultsFree: true)->pairNextRound($state))->toThrow(NoValidPairingException::class);
     });
 
     it('schedules 24 participants over 5 rounds under a role streak limit of 2', function (): void {
         // The limit rules out many pairings of the later rounds, so this is
         // a round the search has to back out of dead ends to pair.
         $field = swissSearchField(24);
-        $schedule = (new SwissScheduler(new ConstraintSet([ConsecutiveRoleConstraint::homeAway(2)])))
+        $schedule = new SwissScheduler(new ConstraintSet([ConsecutiveRoleConstraint::homeAway(2)]))
             ->schedule($field, new SwissOptions(5));
 
         expect(count($schedule))->toBe(60);

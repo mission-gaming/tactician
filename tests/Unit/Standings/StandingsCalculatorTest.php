@@ -97,9 +97,9 @@ describe('StandingsCalculator', function (): void {
         $buchholz = new BuchholzTiebreaker();
         $wins = new WinsTiebreaker();
 
-        expect((new StandingsCalculator())->getTiebreakers())->toBe([])
-            ->and((new StandingsCalculator(tiebreakers: [$buchholz, $wins]))->getTiebreakers())->toBe([$buchholz, $wins])
-            ->and((new StandingsCalculator(tiebreakers: [$wins, $buchholz]))->getTiebreakers())->toBe([$wins, $buchholz]);
+        expect(new StandingsCalculator()->getTiebreakers())->toBe([])
+            ->and(new StandingsCalculator(tiebreakers: [$buchholz, $wins])->getTiebreakers())->toBe([$buchholz, $wins])
+            ->and(new StandingsCalculator(tiebreakers: [$wins, $buchholz])->getTiebreakers())->toBe([$wins, $buchholz]);
     });
 
     beforeEach(function (): void {
@@ -117,7 +117,7 @@ describe('StandingsCalculator', function (): void {
             new Result(new Event([$this->alice, $this->carol], new Round(2)), $this->alice),
         ];
 
-        $standings = (new StandingsCalculator())->calculate($this->participants, $results);
+        $standings = new StandingsCalculator()->calculate($this->participants, $results);
 
         $aliceEntry = $standings->getEntryFor($this->alice);
         expect($aliceEntry?->getPlayed())->toBe(2);
@@ -137,7 +137,7 @@ describe('StandingsCalculator', function (): void {
     });
 
     it('includes participants with no results at zero', function (): void {
-        $standings = (new StandingsCalculator())->calculate($this->participants, []);
+        $standings = new StandingsCalculator()->calculate($this->participants, []);
 
         expect($standings)->toHaveCount(4);
         foreach ($standings as $entry) {
@@ -155,7 +155,7 @@ describe('StandingsCalculator', function (): void {
             ),
         ];
 
-        $standings = (new StandingsCalculator())->calculate($this->participants, $results);
+        $standings = new StandingsCalculator()->calculate($this->participants, $results);
 
         $aliceEntry = $standings->getEntryFor($this->alice);
         expect($aliceEntry?->getScoreFor())->toBe(3.0);
@@ -251,7 +251,7 @@ describe('StandingsCalculator', function (): void {
     });
 
     it('orders deterministically by id when fully tied and unseeded', function (): void {
-        $standings = (new StandingsCalculator())->calculate($this->participants, []);
+        $standings = new StandingsCalculator()->calculate($this->participants, []);
 
         $labels = array_map(
             fn($entry) => $entry->getParticipant()->getLabel(),
@@ -268,7 +268,7 @@ describe('StandingsCalculator', function (): void {
             new Participant('m', 'Mu', 1),
         ];
 
-        $standings = (new StandingsCalculator())->calculate($participants, []);
+        $standings = new StandingsCalculator()->calculate($participants, []);
 
         $ids = array_map(fn($entry) => $entry->getParticipant()->getId(), $standings->getEntries());
         expect($ids)->toBe(['m', 'z', 'a']);
@@ -282,7 +282,7 @@ describe('StandingsCalculator', function (): void {
             new Participant('a', 'Player 10'),
         ];
 
-        $standings = (new StandingsCalculator())->calculate($participants, []);
+        $standings = new StandingsCalculator()->calculate($participants, []);
 
         $ids = array_map(fn($entry) => $entry->getParticipant()->getId(), $standings->getEntries());
         expect($ids)->toBe(['a', 'b']);
@@ -295,7 +295,7 @@ describe('StandingsCalculator', function (): void {
     it('gives a full tie the same order for every order of the participants array', function (array $ids, array $expected): void {
         $orders = [];
         foreach (standingsPermutations(array_values(array_map(strval(...), $ids))) as $permutation) {
-            $standings = (new StandingsCalculator())->calculate(
+            $standings = new StandingsCalculator()->calculate(
                 array_map(fn(string $id): Participant => new Participant($id, 'Same label'), $permutation),
                 []
             );
@@ -321,7 +321,7 @@ describe('StandingsCalculator', function (): void {
         $orders = [];
         foreach (standingsPermutations(['a', 'b', 'c', 'd']) as $permutation) {
             $seeds = ['a' => null, 'b' => 2, 'c' => 1, 'd' => null];
-            $standings = (new StandingsCalculator())->calculate(
+            $standings = new StandingsCalculator()->calculate(
                 array_map(fn(string $id): Participant => new Participant($id, strtoupper($id), $seeds[$id]), $permutation),
                 []
             );
@@ -335,7 +335,7 @@ describe('StandingsCalculator', function (): void {
     });
 
     it('returns null entries and positions for absentees', function (): void {
-        $standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], []);
+        $standings = new StandingsCalculator()->calculate([$this->alice, $this->bob], []);
         $stranger = new Participant('x1', 'Stranger');
 
         expect($standings->getEntryFor($stranger))->toBeNull();
@@ -351,14 +351,14 @@ describe('StandingsCalculator', function (): void {
             new Participant('pB', 'Same Name', 2),
             new Participant('pA', 'Same Name', 1),
         ];
-        $bySeed = (new StandingsCalculator())->calculate($seeded, []);
+        $bySeed = new StandingsCalculator()->calculate($seeded, []);
         expect($bySeed->getEntries()[0]->getParticipant()->getId())->toBe('pA');
 
         $unseeded = [
             new Participant('z9', 'Same Name'),
             new Participant('a1', 'Same Name'),
         ];
-        $byId = (new StandingsCalculator())->calculate($unseeded, []);
+        $byId = new StandingsCalculator()->calculate($unseeded, []);
         expect($byId->getEntries()[0]->getParticipant()->getId())->toBe('a1');
     });
 
@@ -375,7 +375,7 @@ describe('StandingsCalculator', function (): void {
             new Result(new Event([$low, $foilB]), null, ['lo' => 1, 'fb' => 1]),
         ];
 
-        $standings = (new StandingsCalculator())->calculate([$high, $low, $foilA, $foilB], $results);
+        $standings = new StandingsCalculator()->calculate([$high, $low, $foilA, $foilB], $results);
 
         $highPosition = $standings->getPosition($high);
         $lowPosition = $standings->getPosition($low);

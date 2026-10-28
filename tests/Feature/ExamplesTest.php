@@ -310,7 +310,7 @@ $demonstrations = [
         assertExampleRoundRobin($capped, 6);
 
         // Two regions at most always holds for two participants: as the example says, the schedule is the unconstrained one
-        $unconstrained = (new RoundRobinScheduler())->schedule(exampleArray($results, 'Participants'));
+        $unconstrained = new RoundRobinScheduler()->schedule(exampleArray($results, 'Participants'));
         expect(GoldenText::schedule($capped))->toBe(GoldenText::schedule($unconstrained));
 
         // Four PC participants and two on Console: 8 cross-platform pairings
@@ -598,7 +598,7 @@ $demonstrations = [
         $taken = [];
         $kickoffsByParticipant = [];
         foreach ($scheduled->getEventsByRound() as $round => $events) {
-            $matchDay = (new DateTimeImmutable('2026-08-01', new DateTimeZone('UTC')))->modify('+' . (($round - 1) * 7) . ' days');
+            $matchDay = new DateTimeImmutable('2026-08-01', new DateTimeZone('UTC'))->modify('+' . (($round - 1) * 7) . ' days');
 
             foreach ($events as $event) {
                 $kickoff = $event->getKickoff();
@@ -1078,7 +1078,7 @@ $demonstrations = [
         expect($results['The stamp'])->toBe([
             'Stored with the state' => true,
             'Same for an engine built again with the same options' => true,
-        ])->and((new SingleEliminationEngine())->getFingerprint())->not->toBe('');
+        ])->and(new SingleEliminationEngine()->getFingerprint())->not->toBe('');
 
         // Each refusal carries the reason the example reports
         $wrongEngine = exampleResult($results, 'An engine for two-legged ties', InvalidConfigurationException::class);
@@ -1496,7 +1496,7 @@ $demonstrations = [
             static fn(array $player): Participant => new Participant($player[0], $player[1]),
             [['mira', 'Mira'], ['tomas', 'Tomas'], ['ines', 'Ines'], ['kofi', 'Kofi'], ['lena', 'Lena']]
         );
-        $published = (new RoundRobinScheduler())->schedule($players);
+        $published = new RoundRobinScheduler()->schedule($players);
         expect($pairs(exampleArray($results, 'Week 1')))->toBe($pairs($published->getEventsByRound()[1]))
             ->and($results['Resting in week 1'])->toBe(implode(', ', array_map(
                 static fn(Participant $bye): string => $bye->getLabel(),
@@ -1652,7 +1652,7 @@ it('pins results, not the page or the printed text', function (string $example):
 // being installed (the CI workflows generate de_DE.UTF-8). Elsewhere they
 // only catch an example that calls setlocale(); the renderer is drawn under
 // a decimal-comma locale in ExampleRendererTest.
-// Gap left knowingly: one PHP version per run - the CI matrix (8.3, 8.4,
+// Gap left knowingly: one PHP version per run - the CI matrix (8.4 and
 // 8.5) is what compares versions.
 it('prints the same text whatever the timezone, locale, precision and working directory', function (string $example): void {
     $script = ExampleResults::directory() . "/{$example}.php";
@@ -2612,7 +2612,7 @@ it('says participant, not team, in the prose of the examples', function (string 
 ]);
 
 it('holds every event in memory, so iterating, counting and listing agree and repeat', function (): void {
-    $schedule = (new RoundRobinScheduler())->schedule(array_map(
+    $schedule = new RoundRobinScheduler()->schedule(array_map(
         fn(int $number) => new Participant("p{$number}", "Participant {$number}"),
         range(1, 6)
     ));

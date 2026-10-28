@@ -20,12 +20,12 @@ describe('Adjustment', function (): void {
             ->and($adjustment->getAmount())->toBe(-3.0)
             ->and($adjustment->getLabel())->toBe('ruling')
             ->and($adjustment->getReason())->toBe('Fielded an unregistered player')
-            ->and((new Adjustment('p1', 1.5))->getLabel())->toBeNull()
-            ->and((new Adjustment('p1', 1.5))->getReason())->toBeNull();
+            ->and(new Adjustment('p1', 1.5)->getLabel())->toBeNull()
+            ->and(new Adjustment('p1', 1.5)->getReason())->toBeNull();
     });
 
     it('accepts an amount of zero', function (): void {
-        expect((new Adjustment('p1', 0.0))->getAmount())->toBe(0.0);
+        expect(new Adjustment('p1', 0.0)->getAmount())->toBe(0.0);
     });
 
     it('refuses an empty participant ID', function (): void {
@@ -60,7 +60,7 @@ describe('Adjustment', function (): void {
         $build();
     })->with([
         'constructed' => [fn() => new Adjustment('p1', 1.0, null, null, -1)],
-        'said later' => [fn() => (new Adjustment('p1', 1.0))->madeAfterRound(-1)],
+        'said later' => [fn() => new Adjustment('p1', 1.0)->madeAfterRound(-1)],
     ])->throws(InvalidInputException::class, 'cannot be made after round -1');
 
     it('writes the round only when it says one, so that one that says none is written as it always was', function (): void {
@@ -112,7 +112,7 @@ describe('Adjustment', function (): void {
             'reason' => 'Fielded an unregistered player',
         ])
             ->and(Adjustment::fromArray($adjustment->toArray()))->toEqual($adjustment)
-            ->and((new Adjustment('p2', 0.5))->toArray())->toBe([
+            ->and(new Adjustment('p2', 0.5)->toArray())->toBe([
                 'format_version' => 1,
                 'participant' => 'p2',
                 'amount' => 0.5,

@@ -40,15 +40,13 @@ use PHPUnit\Framework\AssertionFailedError;
 //
 // Each deprecated method says so twice. The `@deprecated` docblock tag is
 // what an IDE and PHPStan read, on every PHP version. The native
-// `#[\Deprecated]` attribute is what PHP reads: it does nothing on PHP 8.3
-// and makes a call emit `E_USER_DEPRECATED` from PHP 8.4. The two must agree
-// on the version.
+// `#[\Deprecated]` attribute is what PHP reads: it makes a call emit
+// `E_USER_DEPRECATED`. The two must agree on the version.
 //
 // Nothing the library ships or documents may call one: the suite fails on a
 // deprecation, and the examples and the documentation snippets run under
 // E_ALL. PHPStan reports such a call in `src/` and in the tests; the scan
-// below covers the examples and the snippets as well, on every PHP version,
-// PHP 8.3 included, where no call would say anything at run time.
+// below covers the examples and the snippets as well, without running them.
 //
 // Gap left knowingly - the scan matches a call by the method's name, so it
 // cannot tell `$context->getTotalLegs()` from a method of the same name on
@@ -129,8 +127,7 @@ $sourceTypes = function () use ($phpFiles): array {
  * docblock or by the attribute: types, methods, properties, constants and
  * enum cases. Each entry has the symbol's docblock and the arguments of its
  * `#[\Deprecated]` attribute, null when it has none. The attribute is read
- * by name and never instantiated, so this works on PHP 8.3, which has no
- * such class.
+ * by name and never instantiated.
  *
  * @return array<string, array{docblock: string, attribute: ?array<array-key, mixed>}>
  */
@@ -367,8 +364,8 @@ describe('the deprecated symbols', function () use ($root, $phpFiles, $deprecate
 
             expect($reflection->isPublic())->toBeTrue();
 
-            // PHP 8.3 does not act on the attribute; from 8.4 it does.
-            expect($reflection->isDeprecated())->toBe(PHP_VERSION_ID >= 80400);
+            // PHP acts on the attribute
+            expect($reflection->isDeprecated())->toBeTrue();
         }
     });
 });
@@ -727,8 +724,7 @@ describe('DeprecatedCall', function (): void {
 // advances from a level elimination tie was `tie_winner` metadata on a
 // result. The key is still read until 1.0.0. Reading it is no call of a
 // deprecated method, so no attribute can say so: the library raises the
-// notice itself, with trigger_error(), which also means it is raised on
-// every PHP version, PHP 8.3 included. These tests pin what is raised, when,
+// notice itself, with trigger_error(). These tests pin what is raised, when,
 // and how often; the tests of the key's behaviour are every use of
 // Tests\Support\TieWinnerDeprecation.
 describe("the deprecated 'tie_winner' metadata key", function () use ($root): void {
@@ -767,7 +763,7 @@ describe("the deprecated 'tie_winner' metadata key", function () use ($root): vo
 
     it('is named by a constant that is deprecated with it and still holds it', function (): void {
         // Read by reflection: a use of the constant emits its own notice
-        expect((new ReflectionClassConstant(TieDecision::class, 'TIE_WINNER_KEY'))->getValue())->toBe('tie_winner')
+        expect(new ReflectionClassConstant(TieDecision::class, 'TIE_WINNER_KEY')->getValue())->toBe('tie_winner')
             ->and(TieWinnerDeprecation::KEY)->toBe('tie_winner');
     });
 
@@ -799,8 +795,7 @@ describe("the deprecated 'tie_winner' metadata key", function () use ($root): vo
             restore_error_handler();
         }
 
-        // No version check: this is not the #[\Deprecated] attribute, which
-        // PHP 8.3 does not act on
+        // Not the #[\Deprecated] attribute: the library raises it itself
         expect($advancer)->toBe($bob)
             ->and($seen)->toBe([[E_USER_DEPRECATED, TieResolution::TIE_WINNER_DEPRECATION]]);
     });

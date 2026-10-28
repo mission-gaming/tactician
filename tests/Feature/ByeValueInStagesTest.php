@@ -267,7 +267,7 @@ describe('a Swiss stage in which the better-placed participant wins every event'
                 array_keys($pairing->getEvents())
             ));
 
-            $table = (new SwissPairingEngine(standingsCalculator: $calculator, plannedRounds: $round))->getOutcome($state)?->getStandings();
+            $table = new SwissPairingEngine(standingsCalculator: $calculator, plannedRounds: $round)->getOutcome($state)?->getStandings();
             assert($table !== null);
             $order = array_map(static fn($entry): string => $entry->getParticipant()->getId(), $table->getEntries());
 
@@ -391,7 +391,7 @@ describe('re-seeding a bracket of five, where three entrants sit the first round
 describe('the byes of a schedule', function (): void {
     it('are the entrants with no event in a round, which is what the round robin records in its metadata', function (int $size, int $legs): void {
         $field = byeStageField($size);
-        $schedule = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(legs: $legs));
+        $schedule = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(legs: $legs));
 
         $byRound = $schedule->getByesByRound();
         $ids = array_map(
@@ -428,7 +428,7 @@ describe('the byes of a schedule', function (): void {
     })->with([[2, 1], [3, 1], [4, 2], [5, 1], [5, 2], [6, 1], [7, 3], [9, 1]]);
 
     it('are what the whole-schedule Swiss preset records, one for each round of a field of odd size', function (int $size, int $rounds): void {
-        $schedule = (new SwissScheduler())->schedule(byeStageField($size), new SwissOptions(rounds: $rounds, seed: 58));
+        $schedule = new SwissScheduler()->schedule(byeStageField($size), new SwissOptions(rounds: $rounds, seed: 58));
 
         $ids = array_map(
             static fn(array $participants): array => array_map(static fn(Participant $participant): string => $participant->getId(), $participants),
@@ -462,8 +462,8 @@ describe('the byes of a schedule', function (): void {
         // In entrant order, for the two rounds that have an event
         expect($ids)->toBe([1 => ['p4', 'p3'], 3 => ['p4', 'p2']])
             ->and($schedule->getByeCounts())->toBe(['p4' => 2, 'p3' => 1, 'p2' => 1])
-            ->and((new Schedule())->getByesByRound())->toBe([])
-            ->and((new Schedule())->getByeCounts())->toBe([]);
+            ->and(new Schedule()->getByesByRound())->toBe([])
+            ->and(new Schedule()->getByeCounts())->toBe([]);
     });
 });
 
@@ -510,7 +510,7 @@ describe('the score groups of a Swiss stage with a bye of very little value', fu
     it('never reads totals that a bye separates as level', function (): void {
         $field = byeStageField(7);
         $engine = new SwissPairingEngine(
-            standingsCalculator: new StandingsCalculator((new WinDrawLossRanking(1.0, 0.5, 0.0))->withByeValue(1.0e-16))
+            standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(1.0, 0.5, 0.0)->withByeValue(1.0e-16))
         );
 
         $opening = $engine->pairNextRound(StageState::start($field));

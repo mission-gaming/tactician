@@ -219,7 +219,7 @@ describe('everything src/ throws', function () use ($root, $sourceFiles, $source
     it('returns no Throwable outside the marker from any method', function () use ($sourceTypes): void {
         $factories = [];
         foreach ($sourceTypes() as $type) {
-            foreach ((new ReflectionClass($type))->getMethods() as $method) {
+            foreach (new ReflectionClass($type)->getMethods() as $method) {
                 if ($method->getDeclaringClass()->getName() !== $type) {
                     continue;
                 }

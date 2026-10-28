@@ -60,6 +60,11 @@ function completenessRoleAssignment(string $name): RoleAssignmentInterface
 /**
  * Assert every pairing appears exactly $legs times, each participant plays at
  * most once per round, and all rounds fall within the expected range.
+ *
+ * The events are read in a loop over the schedule that holds, at its first
+ * event, a whole loop over the same schedule: both visit every event (until
+ * 0.3.0 the inner loop moved the one cursor of the schedule and the outer
+ * loop ended after its first event, issue #54).
  */
 function assertCompleteRoundRobin(Schedule $schedule, int $participantCount, int $legs): void
 {
@@ -71,7 +76,16 @@ function assertCompleteRoundRobin(Schedule $schedule, int $participantCount, int
 
     $pairingCounts = [];
     $participantsByRound = [];
-    foreach ($schedule as $event) {
+    $visitedByTheOuterLoop = 0;
+    $visitedByTheInnerLoop = 0;
+    foreach ($schedule as $index => $event) {
+        ++$visitedByTheOuterLoop;
+        if ($index === 0) {
+            foreach ($schedule as $inner) {
+                ++$visitedByTheInnerLoop;
+            }
+        }
+
         $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         sort($ids);
         $key = implode('|', $ids);
@@ -88,6 +102,9 @@ function assertCompleteRoundRobin(Schedule $schedule, int $participantCount, int
             $participantsByRound[$round][$id] = true;
         }
     }
+
+    expect($visitedByTheOuterLoop)->toBe($expectedEvents)
+        ->and($visitedByTheInnerLoop)->toBe($expectedEvents);
 
     $expectedPairings = intdiv($participantCount * ($participantCount - 1), 2);
     expect(count($pairingCounts))->toBe($expectedPairings);
@@ -112,7 +129,7 @@ it('generates complete schedules for every participant count, leg count, strateg
         default => throw new UnexpectedValueException($strategyName),
     };
 
-    $schedule = (new RoundRobinScheduler())->schedule(
+    $schedule = new RoundRobinScheduler()->schedule(
         completenessParticipants($participantCount),
         new RoundRobinOptions(
             legs: $legs,
@@ -151,7 +168,7 @@ it('generates complete randomized schedules for odd and even participant counts'
 
 it('generates complete schedules with the shuffled leg strategy', function (string $roleAssignmentName): void {
     $strategy = new ShuffledLegStrategy(new Randomizer(new Mt19937(42)));
-    $schedule = (new RoundRobinScheduler())->schedule(
+    $schedule = new RoundRobinScheduler()->schedule(
         completenessParticipants(5),
         new RoundRobinOptions(legs: 2, strategy: $strategy, roleAssignment: completenessRoleAssignment($roleAssignmentName))
     );
@@ -234,11 +251,11 @@ it('generates the same complete round robin whatever the ids are', function (
     $participants = AwkwardIds::participants($ids, $participantCount);
     $plain = completenessParticipants($participantCount);
 
-    $schedule = (new RoundRobinScheduler())->schedule($participants, $options);
+    $schedule = new RoundRobinScheduler()->schedule($participants, $options);
 
     assertCompleteRoundRobinOverIds($schedule, $participants, $legs);
     expect(scheduleAsSeats($schedule, $participants))
-        ->toBe(scheduleAsSeats((new RoundRobinScheduler())->schedule($plain, $options), $plain));
+        ->toBe(scheduleAsSeats(new RoundRobinScheduler()->schedule($plain, $options), $plain));
 })
     ->with(AwkwardIds::dataset())
     ->with([[4], [5], [6]])
@@ -252,7 +269,7 @@ it('generates the same randomized and shuffled round robin whatever the ids are'
 ): void {
     $participants = AwkwardIds::participants($ids, $participantCount);
     $plain = completenessParticipants($participantCount);
-    $generate = fn(array $field): Schedule => (new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed))))
+    $generate = fn(array $field): Schedule => new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed)))
         ->schedule($field, new RoundRobinOptions(
             legs: 2,
             strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937($seed + 1)))
@@ -296,11 +313,11 @@ it('backtracks to the same complete round robin whatever the ids are', function 
     $participants = AwkwardIds::participants($ids, $participantCount);
     $plain = completenessParticipants($participantCount);
 
-    $schedule = (new RoundRobinScheduler($constraintsFor($participants)))->schedule($participants, $options);
+    $schedule = new RoundRobinScheduler($constraintsFor($participants))->schedule($participants, $options);
 
     assertCompleteRoundRobinOverIds($schedule, $participants, $legs);
     expect(scheduleAsSeats($schedule, $participants))->toBe(scheduleAsSeats(
-        (new RoundRobinScheduler($constraintsFor($plain)))->schedule($plain, $options),
+        new RoundRobinScheduler($constraintsFor($plain))->schedule($plain, $options),
         $plain
     ));
 })
@@ -384,10 +401,10 @@ it('repeats the schedule of a seed and options on every run, for every field siz
                 $data['strategy_seed'] = $seed;
             }
             $label = "{$strategy}, {$legs} leg(s), {$size} participants, {$field}, seed {$seed}";
-            $run = fn(): Schedule => (new RoundRobinScheduler(
+            $run = fn(): Schedule => new RoundRobinScheduler(
                 null,
                 $field === 'shuffled field' ? new Randomizer(new Mt19937(1000 + $seed)) : null
-            ))->schedule($participants, RoundRobinOptions::fromArray($data));
+            )->schedule($participants, RoundRobinOptions::fromArray($data));
 
             $first = $run();
 
@@ -432,7 +449,7 @@ it('repeats the schedule of a seeded shuffled strategy when the first layouts ar
 
     // The premise: the layout of the list as given is one the constraint rejects
     $meetingOfTheTopTwo = null;
-    foreach ((new RoundRobinScheduler())->schedule($participants, RoundRobinOptions::fromArray($data)) as $event) {
+    foreach (new RoundRobinScheduler()->schedule($participants, RoundRobinOptions::fromArray($data)) as $event) {
         $ids = array_map(fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
         sort($ids);
         $meetingOfTheTopTwo ??= $ids === ['p1', 'p2'] ? $event->getRound()?->getNumber() : null;
@@ -444,7 +461,7 @@ it('repeats the schedule of a seeded shuffled strategy when the first layouts ar
 
     expect(RoundRobinAudit::faults($first, $participants, 2))->toBe([])
         ->and($scheduler->schedule($participants, RoundRobinOptions::fromArray($data))->toJson())->toBe($first->toJson())
-        ->and((new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data))->toJson())
+        ->and(new RoundRobinScheduler($constraints())->schedule($participants, RoundRobinOptions::fromArray($data))->toJson())
         ->toBe($first->toJson());
 })->with([[1], [2], [3], [2026]]);
 
@@ -463,8 +480,8 @@ it('repeats the schedule of one seeded shuffled strategy object across calls, sc
     $constraints = fn(): ConstraintSet => ConstraintSet::create()->add(new SeedProtectionConstraint(2, 0.25))->build();
     $fresh = fn(): RoundRobinOptions => new RoundRobinOptions(legs: $legs, strategy: new ShuffledLegStrategy(seed: $seed));
 
-    $plain = (new RoundRobinScheduler())->schedule($participants, $fresh())->toJson();
-    $constrained = (new RoundRobinScheduler($constraints()))->schedule($participants, $fresh())->toJson();
+    $plain = new RoundRobinScheduler()->schedule($participants, $fresh())->toJson();
+    $constrained = new RoundRobinScheduler($constraints())->schedule($participants, $fresh())->toJson();
 
     // The premise: the constraint sends the scheduler past the first layout
     expect($constrained)->not->toBe($plain);
@@ -527,11 +544,11 @@ it('repeats the schedule of a seeded shuffled strategy that the backtracking sea
     $data = ['legs' => $legs, 'strategy' => 'shuffled', 'strategy_seed' => $seed];
 
     // The premise: without the search there is no schedule
-    expect(fn(): Schedule => (new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data)))
+    expect(fn(): Schedule => new RoundRobinScheduler($constraints())->schedule($participants, RoundRobinOptions::fromArray($data)))
         ->toThrow(IncompleteScheduleException::class);
 
     $data['backtracking'] = true;
-    $run = fn(): Schedule => (new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data));
+    $run = fn(): Schedule => new RoundRobinScheduler($constraints())->schedule($participants, RoundRobinOptions::fromArray($data));
     $first = $run();
 
     $scheduler = new RoundRobinScheduler($constraints());
@@ -543,7 +560,7 @@ it('repeats the schedule of a seeded shuffled strategy that the backtracking sea
         ->and($scheduler->schedule($participants, $options)->toJson())->toBe($first->toJson());
 
     // A seed that the searched schedule did not read would pass the above
-    $otherSeed = (new RoundRobinScheduler($constraints()))->schedule(
+    $otherSeed = new RoundRobinScheduler($constraints())->schedule(
         $participants,
         RoundRobinOptions::fromArray(['strategy_seed' => $seed + 1] + $data)
     );
@@ -559,11 +576,11 @@ it('repeats the schedule of a seeded shuffled strategy that the backtracking sea
 it('gives from a seed the schedule of a new Xoshiro256StarStar randomizer of that seed', function (int $size, int $legs, int $seed): void {
     $participants = completenessParticipants($size);
 
-    $fromSeed = (new RoundRobinScheduler())->schedule(
+    $fromSeed = new RoundRobinScheduler()->schedule(
         $participants,
         new RoundRobinOptions(legs: $legs, strategy: new ShuffledLegStrategy(seed: $seed))
     );
-    $fromRandomizer = (new RoundRobinScheduler())->schedule(
+    $fromRandomizer = new RoundRobinScheduler()->schedule(
         $participants,
         new RoundRobinOptions(legs: $legs, strategy: new ShuffledLegStrategy(new Randomizer(new Xoshiro256StarStar($seed))))
     );
@@ -585,11 +602,11 @@ it('generates the same seeded shuffled round robin whatever the ids are', functi
     $plain = completenessParticipants($participantCount);
     $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => $seed]);
 
-    $schedule = (new RoundRobinScheduler())->schedule($participants, $options);
+    $schedule = new RoundRobinScheduler()->schedule($participants, $options);
 
     assertCompleteRoundRobinOverIds($schedule, $participants, 2);
     expect(scheduleAsSeats($schedule, $participants))
-        ->toBe(scheduleAsSeats((new RoundRobinScheduler())->schedule($plain, $options), $plain));
+        ->toBe(scheduleAsSeats(new RoundRobinScheduler()->schedule($plain, $options), $plain));
 })
     ->with(AwkwardIds::dataset())
     ->with([[5], [6]])
@@ -703,7 +720,7 @@ it('splits every pairing of mirrored legs as evenly as the leg count allows, for
         $participants = completenessParticipants($size);
         $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
 
-        $schedule = (new RoundRobinScheduler())->schedule($participants, new RoundRobinOptions(
+        $schedule = new RoundRobinScheduler()->schedule($participants, new RoundRobinOptions(
             legs: $legs,
             strategy: new MirroredLegStrategy(),
             roleAssignment: completenessRoleAssignment($roleAssignmentName)
@@ -770,7 +787,7 @@ it('derives every later leg from the first leg of a scheduler that shuffles the 
             $participants = completenessParticipants($size);
             $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
 
-            $schedule = (new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed))))->schedule(
+            $schedule = new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed)))->schedule(
                 $participants,
                 new RoundRobinOptions(
                     legs: $legs,
@@ -894,7 +911,7 @@ it('gives the third leg of four participants as the 0.3.0 changelog prints it, b
     $participants = completenessParticipants(4);
     // The roles the entry prints are those of the round-parity role
     // assignment, the default when it was written
-    $schedule = static fn(LegStrategyInterface $strategy, int $legs): Schedule => (new RoundRobinScheduler())
+    $schedule = static fn(LegStrategyInterface $strategy, int $legs): Schedule => new RoundRobinScheduler()
         ->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy, roleAssignment: new RoundParityRoleAssignment()));
 
     $after = $schedule(new MirroredLegStrategy(), 3);
@@ -1007,11 +1024,11 @@ it('gives the second leg of four participants from a shuffled field as the 0.3.0
         strategy: new MirroredLegStrategy(),
         roleAssignment: new RoundParityRoleAssignment()
     );
-    $seeded = static fn(int $legs): Schedule => (new RoundRobinScheduler(null, new Randomizer(new Mt19937(1))))
+    $seeded = static fn(int $legs): Schedule => new RoundRobinScheduler(null, new Randomizer(new Mt19937(1)))
         ->schedule($participants, $options($legs));
 
     $after = $seeded(2);
-    $withoutRandomizer = (new RoundRobinScheduler())->schedule($participants, $options(2));
+    $withoutRandomizer = new RoundRobinScheduler()->schedule($participants, $options(2));
 
     expect(mirroredRoundsAsPrinted($after, [1, 2, 3]))->toBe(['R1: 4-2 1-3', 'R2: 1-4 2-3', 'R3: 4-3 2-1'])
         ->and(mirroredRoundsAsPrinted($after, [4, 5, 6]))->toBe(['R4: 2-4 3-1', 'R5: 4-1 3-2', 'R6: 3-4 1-2'])
@@ -1030,8 +1047,8 @@ it('refuses five participants two mirrored legs under a limit of three in a row,
     $options = new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy(), roleAssignment: new RoundParityRoleAssignment());
     $randomizer = static fn(): ?Randomizer => $seed === null ? null : new Randomizer(new Mt19937($seed));
 
-    expect(RoleCounts::worstStreak((new RoundRobinScheduler(null, $randomizer()))->schedule($participants, $options)))->toBe(4)
-        ->and(fn() => (new RoundRobinScheduler($limit, $randomizer()))->schedule($participants, $options))
+    expect(RoleCounts::worstStreak(new RoundRobinScheduler(null, $randomizer())->schedule($participants, $options)))->toBe(4)
+        ->and(fn() => new RoundRobinScheduler($limit, $randomizer())->schedule($participants, $options))
         ->toThrow(IncompleteScheduleException::class);
 })->with([[null], [1], [2], [3], [4], [5]]);
 
@@ -1058,7 +1075,7 @@ it('completes with alternating mirrored legs every role limit that completed wit
                         : ConsecutiveRoleConstraint::homeAway($limit))->build();
 
                     try {
-                        (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(
+                        new RoundRobinScheduler($constraints)->schedule($participants, new RoundRobinOptions(
                             legs: $legs,
                             strategy: $strategy,
                             roleAssignment: completenessRoleAssignment($roleAssignmentName)
@@ -1108,10 +1125,10 @@ it('alternates the mirrored legs derived from a first leg that only the backtrac
     );
 
     // The premise: without the search there is no schedule
-    expect(fn() => (new RoundRobinScheduler($constraints))->schedule($participants, $options(false)))
+    expect(fn() => new RoundRobinScheduler($constraints)->schedule($participants, $options(false)))
         ->toThrow(IncompleteScheduleException::class);
 
-    $schedule = (new RoundRobinScheduler($constraints))->schedule($participants, $options(true));
+    $schedule = new RoundRobinScheduler($constraints)->schedule($participants, $options(true));
 
     expect(RoundRobinAudit::faults($schedule, $participants, $legs))->toBe([]);
     expect(array_values(array_unique(RoleCounts::pairingSplits($schedule))))->toBe([$legs % 2]);
@@ -1158,7 +1175,7 @@ it('satisfies over any number of mirrored legs the role limits that two mirrored
             roleAssignment: completenessRoleAssignment($roleAssignmentName)
         );
 
-        $twoLegs = (new RoundRobinScheduler())->schedule($participants, $options(2));
+        $twoLegs = new RoundRobinScheduler()->schedule($participants, $options(2));
         $constraints = ConstraintSet::create()->add(match ($constraintName) {
             'consecutive roles' => ConsecutiveRoleConstraint::homeAway(RoleCounts::worstStreak($twoLegs)),
             'role balance' => RoleBalanceConstraint::homeAway(RoleCounts::worstRunningImbalance($twoLegs)),
@@ -1168,7 +1185,7 @@ it('satisfies over any number of mirrored legs the role limits that two mirrored
         for ($legs = 2; $legs <= 6; ++$legs) {
             $label = "{$legs} legs, {$size} participants";
 
-            $unconstrained = (new RoundRobinScheduler())->schedule($participants, $options($legs));
+            $unconstrained = new RoundRobinScheduler()->schedule($participants, $options($legs));
 
             // The constraints are put to three and four legs, the smallest
             // odd and even numbers the alternation changes, in fields of up
@@ -1176,7 +1193,7 @@ it('satisfies over any number of mirrored legs the role limits that two mirrored
             // for every event, so the 30 by 6 sweep takes most of a minute.
             // The counts below cover every size and leg count
             if ($size <= 20 && ($legs === 3 || $legs === 4)) {
-                $constrained = (new RoundRobinScheduler($constraints))->schedule($participants, $options($legs));
+                $constrained = new RoundRobinScheduler($constraints)->schedule($participants, $options($legs));
 
                 expect($constrained->toArray())->toBe($unconstrained->toArray(), $label);
             }
@@ -1201,7 +1218,7 @@ it('satisfies over any number of mirrored legs the role limits that two mirrored
 // wrong is reported for that thing.
 it('audits a round robin for each rule it states', function (Closure $spoil, string $expected): void {
     $participants = completenessParticipants(5);
-    $schedule = (new RoundRobinScheduler())->schedule($participants, new RoundRobinOptions(legs: 2));
+    $schedule = new RoundRobinScheduler()->schedule($participants, new RoundRobinOptions(legs: 2));
     expect(RoundRobinAudit::faults($schedule, $participants, 2))->toBe([]);
 
     $faults = RoundRobinAudit::faults($spoil($schedule), $participants, 2);
@@ -1275,7 +1292,7 @@ it('audits a round robin for each rule it states', function (Closure $spoil, str
 
 it('reports a bye recorded in a field of even size', function (): void {
     $participants = completenessParticipants(4);
-    $schedule = (new RoundRobinScheduler())->schedule($participants);
+    $schedule = new RoundRobinScheduler()->schedule($participants);
 
     expect(RoundRobinAudit::faults($schedule, $participants, 1))->toBe([])
         ->and(RoundRobinAudit::faults(new Schedule($schedule->getEvents(), ['byes' => [1 => 'p1']]), $participants, 1))

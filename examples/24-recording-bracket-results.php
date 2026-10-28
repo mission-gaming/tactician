@@ -107,7 +107,7 @@ $advanced = TieDecision::advancer([$levelResult], $ana, $dia, 1);
 //    Two-legged ties are another bracket, and this state was not paired as one.
 $wrongEngine = null;
 try {
-    (new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)))->isComplete($state);
+    new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2))->isComplete($state);
 } catch (InvalidConfigurationException $exception) {
     $wrongEngine = $exception;
 }
@@ -155,7 +155,7 @@ return Example::present(__FILE__, 'Recording the results of a bracket', 'A four-
     'Final standings' => $outcome->getStandings(),
     'The stamp' => [
         'Stored with the state' => $state->getEngineFingerprint() === $engine->getFingerprint(),
-        'Same for an engine built again with the same options' => (new SingleEliminationEngine())->getFingerprint() === $engine->getFingerprint(),
+        'Same for an engine built again with the same options' => new SingleEliminationEngine()->getFingerprint() === $engine->getFingerprint(),
     ],
     'An engine for two-legged ties' => $wrongEngine,
     'Its reason' => $wrongEngine?->getReason()?->value,

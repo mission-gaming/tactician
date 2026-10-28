@@ -408,13 +408,7 @@ final class BracketViewBuilder
             return false;
         }
 
-        foreach ($entrants as $index => $entrant) {
-            if ($entrant?->getId() !== $pair[$index]?->getId()) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($entrants, fn($entrant, $index) => !($entrant?->getId() !== $pair[$index]?->getId()));
     }
 
     /**

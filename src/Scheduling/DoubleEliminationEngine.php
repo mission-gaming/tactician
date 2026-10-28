@@ -436,9 +436,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * finished: recorded with every tie settled, or with no tie to play.
      *
      * @throws InvalidConfigurationException When a tie is broken, a recorded stage does not fit
-     *                                       the stage it is read as, the calculator cannot form
-     *                                       the tied sets of the table, or the state is stamped
-     *                                       with another engine's fingerprint
+     *                                       the stage it is read as, or the state is stamped with
+     *                                       another engine's fingerprint
      */
     private function resolveState(StageState $state, bool $capture = false): BracketReading
     {
@@ -446,7 +445,6 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
-        $this->requireTiedSetsInsideATier($this->standingsCalculator);
 
         // The bracket is read as it stood when it was over: a withdrawal
         // after its last tie was decided takes nothing back (see

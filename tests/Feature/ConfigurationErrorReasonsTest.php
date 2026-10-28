@@ -313,11 +313,11 @@ describe('the reason of a configuration error', function (): void {
         expect(configurationErrorFrom($mistake)->getReason())->toBe($reason);
     })->with([
         'one participant in a round robin' => [
-            fn() => (new RoundRobinScheduler())->schedule([new Participant('a', 'A')]),
+            fn() => new RoundRobinScheduler()->schedule([new Participant('a', 'A')]),
             InvalidConfigurationReason::TooFewParticipants,
         ],
         'two participants with one ID' => [
-            fn() => (new RoundRobinScheduler())->schedule([new Participant('a', 'A'), new Participant('a', 'B')]),
+            fn() => new RoundRobinScheduler()->schedule([new Participant('a', 'A'), new Participant('a', 'B')]),
             InvalidConfigurationReason::DuplicateParticipantIds,
         ],
         'zero legs' => [
@@ -337,7 +337,7 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::UnknownIdentifier,
         ],
         'a custom role assignment serialized to plain data' => [
-            fn() => (new RoundRobinOptions(roleAssignment: new class implements RoleAssignmentInterface {
+            fn() => new RoundRobinOptions(roleAssignment: new class implements RoleAssignmentInterface {
                 #[Override]
                 public function assignRoles(array $rounds, RoleAssignmentContext $context): array
                 {
@@ -349,11 +349,11 @@ describe('the reason of a configuration error', function (): void {
                 {
                     return null;
                 }
-            }))->toArray(),
+            })->toArray(),
             InvalidConfigurationReason::NotSerializable,
         ],
         'a role assignment that drops a round' => [
-            fn() => (new RoundRobinScheduler())->schedule(
+            fn() => new RoundRobinScheduler()->schedule(
                 [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C')],
                 new RoundRobinOptions(roleAssignment: new class implements RoleAssignmentInterface {
                     #[Override]
@@ -372,7 +372,7 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::InvalidRoleAssignment,
         ],
         'Swiss options given to the round-robin scheduler' => [
-            fn() => (new RoundRobinScheduler())->schedule(
+            fn() => new RoundRobinScheduler()->schedule(
                 [new Participant('a', 'A'), new Participant('b', 'B')],
                 new SwissOptions(rounds: 1)
             ),
@@ -407,30 +407,30 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::WrongValueType,
         ],
         'Swiss options given to the pot draw scheduler' => [
-            fn() => (new PotDrawScheduler())->schedule(
+            fn() => new PotDrawScheduler()->schedule(
                 [new Participant('a', 'A'), new Participant('b', 'B')],
                 new SwissOptions(rounds: 1)
             ),
             InvalidConfigurationReason::UnsupportedOptions,
         ],
         'a pot draw of an odd field' => [
-            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(19), new PotDrawOptions(pots: 1, opponentsPerPot: 2)),
+            fn() => new PotDrawScheduler()->schedule(configurationErrorField(19), new PotDrawOptions(pots: 1, opponentsPerPot: 2)),
             InvalidConfigurationReason::OddParticipantCount,
         ],
         'a pot draw whose pots cannot be of equal size' => [
-            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(20), new PotDrawOptions(pots: 3)),
+            fn() => new PotDrawScheduler()->schedule(configurationErrorField(20), new PotDrawOptions(pots: 3)),
             InvalidConfigurationReason::UnequalPots,
         ],
         'more opponents per pot than a pot has other members' => [
-            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(20), new PotDrawOptions(pots: 5, opponentsPerPot: 4)),
+            fn() => new PotDrawScheduler()->schedule(configurationErrorField(20), new PotDrawOptions(pots: 5, opponentsPerPot: 4)),
             InvalidConfigurationReason::TooManyOpponentsPerPot,
         ],
         'pots of odd size with an odd number of opponents per pot' => [
-            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(20), new PotDrawOptions(pots: 4, opponentsPerPot: 1)),
+            fn() => new PotDrawScheduler()->schedule(configurationErrorField(20), new PotDrawOptions(pots: 4, opponentsPerPot: 1)),
             InvalidConfigurationReason::OddPotWithOddOpponents,
         ],
         'a pot draw the library cannot construct yet' => [
-            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(36), new PotDrawOptions(pots: 4, opponentsPerPot: 4)),
+            fn() => new PotDrawScheduler()->schedule(configurationErrorField(36), new PotDrawOptions(pots: 4, opponentsPerPot: 4)),
             InvalidConfigurationReason::ConfigurationNotYetSupported,
         ],
         'a pot draw plan with one participant' => [
@@ -704,8 +704,8 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::InvalidResult,
         ],
         'two events a round on a timeline of one slot' => [
-            fn() => (new TimelineAssigner())->assign(
-                (new RoundRobinScheduler())->schedule(configurationErrorField(4)),
+            fn() => new TimelineAssigner()->assign(
+                new RoundRobinScheduler()->schedule(configurationErrorField(4)),
                 new TimelineDefinition(
                     new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
                     new DateInterval('P7D')
@@ -714,8 +714,8 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::TimelineCapacityExceeded,
         ],
         'daily rounds under a rule of two days of rest' => [
-            fn() => (new TimelineAssigner([new MinimumRestRule(new DateInterval('PT48H'))]))->assign(
-                (new RoundRobinScheduler())->schedule(configurationErrorField(4)),
+            fn() => new TimelineAssigner([new MinimumRestRule(new DateInterval('PT48H'))])->assign(
+                new RoundRobinScheduler()->schedule(configurationErrorField(4)),
                 new TimelineDefinition(
                     new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
                     new DateInterval('P1D'),
@@ -746,7 +746,7 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::OverlappingTime,
         ],
         'an event with no round number given a kickoff' => [
-            fn() => (new TimelineAssigner())->assign(
+            fn() => new TimelineAssigner()->assign(
                 new Schedule([new Event([new Participant('a', 'A'), new Participant('b', 'B')])]),
                 new TimelineDefinition(
                     new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
@@ -837,7 +837,7 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::IncompatibleOptions,
         ],
         'a third-place tie asked of a bracket of two' => [
-            fn() => (new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)))
+            fn() => new SingleEliminationEngine(new EliminationOptions(thirdPlace: true))
                 ->pairNextRound(StageState::start(configurationErrorField(2))),
             InvalidConfigurationReason::TooFewParticipants,
         ],
@@ -857,14 +857,14 @@ describe('the reason of a configuration error', function (): void {
             InvalidConfigurationReason::TooFewParticipants,
         ],
         'more Swiss rounds than there are opponents' => [
-            fn() => (new SwissScheduler())->schedule(
+            fn() => new SwissScheduler()->schedule(
                 [new Participant('a', 'A'), new Participant('b', 'B')],
                 new SwissOptions(rounds: 2)
             ),
             InvalidConfigurationReason::InvalidRoundCount,
         ],
         'round-robin options given to the Swiss scheduler' => [
-            fn() => (new SwissScheduler())->schedule(
+            fn() => new SwissScheduler()->schedule(
                 [new Participant('a', 'A'), new Participant('b', 'B')],
                 new RoundRobinOptions()
             ),
@@ -916,7 +916,7 @@ describe('the message of a configuration error', function (): void {
             ->and($exception->getContext())->toBe(['participant_count' => 1, 'minimum_required' => 2]);
     })->with([
         'the round-robin scheduler' => [
-            fn() => (new RoundRobinScheduler())->schedule([new Participant('a', 'A')]),
+            fn() => new RoundRobinScheduler()->schedule([new Participant('a', 'A')]),
             'Invalid scheduler configuration: Round-robin scheduling requires at least 2 participants',
         ],
         'the round-robin plan' => [
@@ -924,7 +924,7 @@ describe('the message of a configuration error', function (): void {
             'Invalid scheduler configuration: Round-robin scheduling requires at least 2 participants',
         ],
         'the Swiss scheduler' => [
-            fn() => (new SwissScheduler())->schedule([new Participant('a', 'A')], new SwissOptions(rounds: 1)),
+            fn() => new SwissScheduler()->schedule([new Participant('a', 'A')], new SwissOptions(rounds: 1)),
             'Invalid scheduler configuration: Swiss scheduling requires at least 2 participants',
         ],
         'the Swiss plan' => [
@@ -932,7 +932,7 @@ describe('the message of a configuration error', function (): void {
             'Invalid scheduler configuration: Swiss scheduling requires at least 2 participants',
         ],
         'the Swiss pairing engine' => [
-            fn() => (new SwissPairingEngine())->pairNextRound(StageState::start([new Participant('a', 'A')])),
+            fn() => new SwissPairingEngine()->pairNextRound(StageState::start([new Participant('a', 'A')])),
             'Invalid scheduler configuration: Swiss pairing requires at least 2 participants',
         ],
     ]);
@@ -954,7 +954,7 @@ describe('the requirements of a configuration error', function (): void {
                 . '• Scheduler must support the requested configuration'
             );
     })->with([
-        'the scheduler' => [fn() => (new RoundRobinScheduler())->schedule([new Participant('a', 'A')])],
+        'the scheduler' => [fn() => new RoundRobinScheduler()->schedule([new Participant('a', 'A')])],
         'the options' => [fn() => new RoundRobinOptions(legs: 0)],
         'the options as plain data' => [fn() => RoundRobinOptions::fromArray(['legs' => '2'])],
         'the plan' => [fn() => new RoundRobinPlan([new Participant('a', 'A')], 1)],
@@ -988,7 +988,7 @@ describe('the requirements of a configuration error', function (): void {
             configurationErrorGrid(2)
         )],
         'one participant in a Swiss stage' => [fn() => new SwissPlan([new Participant('a', 'A')], 1)],
-        'a pot draw of an odd field' => [fn() => (new PotDrawScheduler())->schedule(
+        'a pot draw of an odd field' => [fn() => new PotDrawScheduler()->schedule(
             configurationErrorField(19),
             new PotDrawOptions(pots: 1, opponentsPerPot: 2)
         )],
@@ -1019,9 +1019,9 @@ describe('the requirements of a configuration error', function (): void {
             fn() => StageState::start([new Participant('a', 'A')])->withEngineFingerprint(''),
         ],
         'a state stamped by another engine' => [
-            fn() => (new SingleEliminationEngine())->isComplete(
+            fn() => new SingleEliminationEngine()->isComplete(
                 StageState::start([new Participant('a', 'A'), new Participant('b', 'B')])
-                    ->withEngineFingerprint((new SwissPairingEngine())->getFingerprint())
+                    ->withEngineFingerprint(new SwissPairingEngine()->getFingerprint())
             ),
         ],
     ]);
@@ -1242,9 +1242,9 @@ describe('a configuration error of StageState', function (): void {
     })->with(fn(): array => stageStateMistakes());
 
     it('is raised through the engines with the same reason', function (): void {
-        $exception = configurationErrorFrom(fn() => (new SingleEliminationEngine())->isComplete(
+        $exception = configurationErrorFrom(fn() => new SingleEliminationEngine()->isComplete(
             StageState::start([new Participant('a', 'A'), new Participant('b', 'B')])
-                ->withEngineFingerprint((new SwissPairingEngine())->getFingerprint())
+                ->withEngineFingerprint(new SwissPairingEngine()->getFingerprint())
         ));
 
         expect($exception->getReason())->toBe(InvalidConfigurationReason::EngineFingerprintMismatch);

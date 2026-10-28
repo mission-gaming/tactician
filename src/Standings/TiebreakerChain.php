@@ -93,9 +93,8 @@ final class TiebreakerChain
      *
      * @return list<string|array{tiebreaker: string, byes: string}>
      *
-     * @throws InvalidConfigurationException When a tiebreaker is not one of the library's, or is
-     *                                       a subclass of one: it has no identifier (reason
-     *                                       `NotSerializable`)
+     * @throws InvalidConfigurationException When a tiebreaker is not one of the library's: it has
+     *                                       no identifier (reason `NotSerializable`)
      */
     public static function identifiersOf(array $tiebreakers): array
     {

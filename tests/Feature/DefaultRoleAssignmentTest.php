@@ -89,14 +89,14 @@ describe('the default role assignment', function (): void {
     // the least there is, and an even number in a field of odd size.
     it('ends a single leg 1 out of balance in an even field and level in an odd one', function (): void {
         for ($size = 2; $size <= 30; ++$size) {
-            $schedule = (new RoundRobinScheduler())->schedule(defaultRoleField($size));
+            $schedule = new RoundRobinScheduler()->schedule(defaultRoleField($size));
 
             Assert::assertSame($size % 2 === 0 ? 1 : 0, RoleCounts::worstEndImbalance($schedule), "n={$size}");
         }
     });
 
     it('names every one of four participants first once or twice in its three events', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(defaultRoleField(4));
+        $schedule = new RoundRobinScheduler()->schedule(defaultRoleField(4));
 
         expect(RoleCounts::differences($schedule))->toBe(['p4' => 1, 'p1' => -1, 'p2' => -1, 'p3' => 1]);
     });
@@ -108,7 +108,7 @@ describe('the default role assignment', function (): void {
     it('gives four participants the roles the 0.3.0 changelog prints, and round parity the ones before', function (): void {
         $print = static function (RoundRobinOptions $options): array {
             $rounds = [];
-            foreach ((new RoundRobinScheduler())->schedule(defaultRoleField(4), $options) as $event) {
+            foreach (new RoundRobinScheduler()->schedule(defaultRoleField(4), $options) as $event) {
                 [$first, $second] = $event->getParticipants();
                 $rounds[$event->getRound()?->getNumber()][] = substr($first->getId(), 1) . '-' . substr($second->getId(), 1);
             }
@@ -122,7 +122,7 @@ describe('the default role assignment', function (): void {
 
     it('repeats a role at most twice in a row in a single leg, and is never further than 2 apart on the way', function (): void {
         for ($size = 2; $size <= 30; ++$size) {
-            $schedule = (new RoundRobinScheduler())->schedule(defaultRoleField($size));
+            $schedule = new RoundRobinScheduler()->schedule(defaultRoleField($size));
 
             Assert::assertSame($size <= 3 ? 1 : 2, RoleCounts::worstStreak($schedule), "n={$size}");
             // An odd field from five up: the bye shifts one parity
@@ -140,7 +140,7 @@ describe('the default role assignment', function (): void {
         for ($size = 2; $size <= 30; ++$size) {
             $factor = $strategyName === 'mirrored' ? $legs % 2 : $legs;
 
-            $schedule = (new RoundRobinScheduler())->schedule(
+            $schedule = new RoundRobinScheduler()->schedule(
                 defaultRoleField($size),
                 new RoundRobinOptions(legs: $legs, strategy: defaultRoleLegStrategy($strategyName))
             );
@@ -175,7 +175,7 @@ describe('the default role assignment', function (): void {
                 default => 3,
             };
 
-            Assert::assertSame($expected, RoleCounts::worstStreak((new RoundRobinScheduler())->schedule(
+            Assert::assertSame($expected, RoleCounts::worstStreak(new RoundRobinScheduler()->schedule(
                 defaultRoleField($size),
                 new RoundRobinOptions(legs: $legs, strategy: defaultRoleLegStrategy($strategyName))
             )), "{$strategyName}, {$legs} legs, n={$size}");
@@ -188,14 +188,14 @@ describe('the default role assignment', function (): void {
 describe('the round-parity role assignment', function (): void {
     it('ends a single leg 3 out of balance in an even field and 4 in an odd one', function (): void {
         for ($size = 2; $size <= 30; ++$size) {
-            $schedule = (new RoundRobinScheduler())->schedule(defaultRoleField($size), roundParityOptions());
+            $schedule = new RoundRobinScheduler()->schedule(defaultRoleField($size), roundParityOptions());
 
             Assert::assertSame(roundParitySingleLegImbalance($size), RoleCounts::worstEndImbalance($schedule), "n={$size}");
         }
     });
 
     it('names one of four participants second in all three of its events', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(defaultRoleField(4), roundParityOptions());
+        $schedule = new RoundRobinScheduler()->schedule(defaultRoleField(4), roundParityOptions());
 
         expect(RoleCounts::differences($schedule))->toBe(['p1' => 1, 'p4' => 1, 'p2' => 1, 'p3' => -3]);
     });
@@ -203,7 +203,7 @@ describe('the round-parity role assignment', function (): void {
     it('repeats a role up to four times in a row in a single leg', function (): void {
         $worst = [];
         for ($size = 2; $size <= 30; ++$size) {
-            $worst[$size] = RoleCounts::worstStreak((new RoundRobinScheduler())->schedule(defaultRoleField($size), roundParityOptions()));
+            $worst[$size] = RoleCounts::worstStreak(new RoundRobinScheduler()->schedule(defaultRoleField($size), roundParityOptions()));
         }
 
         expect(array_slice($worst, 0, 7, true))->toBe([2 => 1, 3 => 2, 4 => 3, 5 => 2, 6 => 2, 7 => 4, 8 => 2]);
@@ -232,7 +232,7 @@ describe('the round-parity role assignment', function (): void {
         for ($size = 2; $size <= 30; ++$size) {
             $factor = $strategyName === 'mirrored' ? $legs % 2 : $legs;
 
-            $schedule = (new RoundRobinScheduler())->schedule(
+            $schedule = new RoundRobinScheduler()->schedule(
                 defaultRoleField($size),
                 roundParityOptions($legs, defaultRoleLegStrategy($strategyName))
             );
@@ -265,7 +265,7 @@ describe('the round-parity role assignment', function (): void {
     ): void {
         $worst = [];
         for ($size = 2; $size <= 30; ++$size) {
-            $worst[$size] = RoleCounts::worstStreak((new RoundRobinScheduler())->schedule(
+            $worst[$size] = RoleCounts::worstStreak(new RoundRobinScheduler()->schedule(
                 defaultRoleField($size),
                 roundParityOptions($legs, defaultRoleLegStrategy($strategyName))
             ));
@@ -290,8 +290,8 @@ describe('the round-parity role assignment', function (): void {
     // first leg has figures to pin: the ones of a single leg.
     it('gives the first leg of a shuffled schedule the roles of a single leg', function (int $legs): void {
         for ($size = 2; $size <= 30; ++$size) {
-            $single = (new RoundRobinScheduler())->schedule(defaultRoleField($size), roundParityOptions());
-            $shuffled = (new RoundRobinScheduler())->schedule(
+            $single = new RoundRobinScheduler()->schedule(defaultRoleField($size), roundParityOptions());
+            $shuffled = new RoundRobinScheduler()->schedule(
                 defaultRoleField($size),
                 roundParityOptions($legs, new ShuffledLegStrategy(new Randomizer(new Mt19937($size))))
             );

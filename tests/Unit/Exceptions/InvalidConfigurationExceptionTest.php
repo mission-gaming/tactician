@@ -102,8 +102,8 @@ describe('InvalidConfigurationException', function (): void {
         ];
 
         // When: Getting the report twice
-        $first = (new InvalidConfigurationException('Test issue', $context))->getDiagnosticReport();
-        $second = (new InvalidConfigurationException('Test issue', $context))->getDiagnosticReport();
+        $first = new InvalidConfigurationException('Test issue', $context)->getDiagnosticReport();
+        $second = new InvalidConfigurationException('Test issue', $context)->getDiagnosticReport();
 
         // Then: Keys are kept, order is the array's own, and the text repeats
         expect($first)->toContain("• window: [to: \"2026-01-02\", from: \"2026-01-01\"]\n");

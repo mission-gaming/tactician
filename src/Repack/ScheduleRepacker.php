@@ -395,7 +395,7 @@ final readonly class ScheduleRepacker
             // And single events are moved where that serves an objective
             // and costs nothing that outranks it
             $indexById = array_flip($ids);
-            $positions = (new ObjectivePolish(
+            $positions = new ObjectivePolish(
                 $metrics,
                 $objectives,
                 $pairs,
@@ -405,7 +405,7 @@ final readonly class ScheduleRepacker
                 $capacityPerSlot,
                 $current,
                 $recolourBudget
-            ))->improve(
+            )->improve(
                 $positions,
                 array_map(static fn(UnplacedEvent $event): int => $indexById[$event->getEventId()], $unplaced)
             );
@@ -417,7 +417,7 @@ final readonly class ScheduleRepacker
         );
 
         // The audit reports what is true of the returned schedule
-        $violations = (new RepackAuditor())->audit(
+        $violations = new RepackAuditor()->audit(
             $positions,
             $pairs,
             $pins,
@@ -653,7 +653,7 @@ final readonly class ScheduleRepacker
             // events may move again to let them in, along as short a path
             // as the last placement step finds
             if (count($leftOut) > $given[0]) {
-                $leftOut = (new LeftoverRecolourer($recolourBudget))->place(
+                $leftOut = new LeftoverRecolourer($recolourBudget)->place(
                     $pairs,
                     $placed,
                     $leftOut,
@@ -669,7 +669,7 @@ final readonly class ScheduleRepacker
             // As many placed and more gap slots: the events around the
             // gaps may move again to close them
             if (count($leftOut) <= $given[0] && [count($leftOut), $metrics->gapSlots($placed)] > $given) {
-                $leftOut = (new GapSearch($recolourBudget))->improve(
+                $leftOut = new GapSearch($recolourBudget)->improve(
                     $pairs,
                     $placed,
                     $leftOut,
@@ -905,7 +905,7 @@ final readonly class ScheduleRepacker
         // And where the schedule still has a gap, look for a placement of
         // as many events that has fewer gap slots. It spends from the
         // second budget, and a schedule with no gap never reaches it
-        $stillLeft = (new GapSearch($recolourBudget))->improve(
+        $stillLeft = new GapSearch($recolourBudget)->improve(
             $edges,
             $positions,
             $stillLeft,
@@ -969,7 +969,7 @@ final readonly class ScheduleRepacker
             sort($otherLeft);
 
             if (count($otherLeft) <= count($stillLeft)) {
-                $otherLeft = (new GapSearch($recolourBudget))->improve(
+                $otherLeft = new GapSearch($recolourBudget)->improve(
                     $edges,
                     $otherPositions,
                     $otherLeft,
@@ -1038,7 +1038,7 @@ final readonly class ScheduleRepacker
         StepBudget $recolourBudget
     ): array {
         // Phase A: which session does every event play in?
-        $plan = (new LoadPlanner($options, $budget))->plan(
+        $plan = new LoadPlanner($options, $budget)->plan(
             $edges,
             $pinSlots,
             $pinCounts,

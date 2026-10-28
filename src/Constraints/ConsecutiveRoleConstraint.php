@@ -19,7 +19,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class ConsecutiveRoleConstraint implements ConstraintInterface
+final readonly class ConsecutiveRoleConstraint implements ConstraintInterface
 {
     /**
      * @param int $maxConsecutive The longest run of one role a participant may have
@@ -55,13 +55,7 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
-        foreach ($event->getParticipants() as $participant) {
-            if (!$this->validateParticipantRoleHistory($participant, $event, $context)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($event->getParticipants(), fn($participant) => $this->validateParticipantRoleHistory($participant, $event, $context));
     }
 
     /**

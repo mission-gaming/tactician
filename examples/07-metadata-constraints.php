@@ -31,7 +31,7 @@ $participants = [
 $regionCap = ConstraintSet::create()
     ->add(MetadataConstraint::maxUniqueValues('region', 2))
     ->build();
-$capped = (new RoundRobinScheduler($regionCap))->schedule($participants);
+$capped = new RoundRobinScheduler($regionCap)->schedule($participants);
 
 // requireSameValue('platform'): only participants on the same platform may
 // meet. A complete round robin needs every pair to meet, PC against Console
@@ -44,7 +44,7 @@ $samePlatform = ConstraintSet::create()
 
 $platformFailure = null;
 try {
-    (new RoundRobinScheduler($samePlatform))->schedule($participants);
+    new RoundRobinScheduler($samePlatform)->schedule($participants);
 } catch (IncompleteScheduleException $exception) {
     $platformFailure = $exception;
 }
@@ -61,7 +61,7 @@ $closeTimezones = ConstraintSet::create()
 
 $timezoneFailure = null;
 try {
-    (new RoundRobinScheduler($closeTimezones))->schedule($participants);
+    new RoundRobinScheduler($closeTimezones)->schedule($participants);
 } catch (IncompleteScheduleException $exception) {
     $timezoneFailure = $exception;
 }

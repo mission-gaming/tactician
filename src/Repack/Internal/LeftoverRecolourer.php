@@ -1008,13 +1008,7 @@ final class LeftoverRecolourer
 
     private function hasRoomAnywhere(): bool
     {
-        foreach ($this->room as $room) {
-            if ($room > 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($this->room, fn($room) => $room > 0);
     }
 
     /**

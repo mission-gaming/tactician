@@ -36,7 +36,7 @@ describe('TimelineAssigner', function (): void {
     it('staggers each round across its slots in schedule order', function (): void {
         // A 4-team round has 2 events; every slot holds one event in this
         // cut, so the timeline declares 2 slots per round
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(4));
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(4));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
             new DateInterval('P7D'),
@@ -44,7 +44,7 @@ describe('TimelineAssigner', function (): void {
             slotInterval: new DateInterval('PT2H')
         );
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+        $scheduled = new TimelineAssigner()->assign($schedule, $timeline);
 
         expect($scheduled)->toHaveCount(6);
 
@@ -58,13 +58,13 @@ describe('TimelineAssigner', function (): void {
     });
 
     it('assigns a truly round-aligned timeline for single-event rounds', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(2));
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(2));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
             new DateInterval('P7D')
         );
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+        $scheduled = new TimelineAssigner()->assign($schedule, $timeline);
 
         expect($scheduled)->toHaveCount(1);
         expect($scheduled->getScheduledEvents()[0]->getKickoff()->format('Y-m-d H:i'))
@@ -72,7 +72,7 @@ describe('TimelineAssigner', function (): void {
     });
 
     it('is deterministic: same schedule and timeline, same kickoffs', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(6));
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(6));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
             new DateInterval('P7D'),
@@ -80,8 +80,8 @@ describe('TimelineAssigner', function (): void {
             slotInterval: new DateInterval('PT1H')
         );
 
-        $first = (new TimelineAssigner())->assign($schedule, $timeline);
-        $second = (new TimelineAssigner())->assign($schedule, $timeline);
+        $first = new TimelineAssigner()->assign($schedule, $timeline);
+        $second = new TimelineAssigner()->assign($schedule, $timeline);
 
         $kickoffs = fn(ScheduledSchedule $s) => array_map(
             fn(ScheduledEvent $e) => $e->getKickoff()->format(DATE_ATOM),
@@ -92,13 +92,13 @@ describe('TimelineAssigner', function (): void {
     });
 
     it('rejects rounds with more events than slots', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(4)); // 2 events per round
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(4)); // 2 events per round
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
             new DateInterval('P7D')
         );
 
-        expect(fn() => (new TimelineAssigner())->assign($schedule, $timeline))
+        expect(fn() => new TimelineAssigner()->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'more events than the timeline can hold');
     });
 
@@ -112,7 +112,7 @@ describe('TimelineAssigner', function (): void {
             new DateInterval('P7D')
         );
 
-        expect(fn() => (new TimelineAssigner())->assign($schedule, $timeline))
+        expect(fn() => new TimelineAssigner()->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'round number');
     });
 
@@ -128,7 +128,7 @@ describe('TimelineAssigner', function (): void {
             slotInterval: new DateInterval('PT1H')
         );
 
-        $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
+        $scheduledEvents = new TimelineAssigner()->assignRound($pairing, $timeline);
 
         expect($scheduledEvents)->toHaveCount(2);
         expect($scheduledEvents[0]->getKickoff()->format('H:i'))->toBe('18:00');
@@ -185,7 +185,7 @@ describe('TimelineAssigner', function (): void {
         expect($whole?->getContext()['violations'] ?? null)->toBe($thrown?->getContext()['violations'] ?? null);
 
         // An assigner with no rule assigns the round, as before
-        expect((new TimelineAssigner())->assignRound($round(2), $timeline))->toHaveCount(2);
+        expect(new TimelineAssigner()->assignRound($round(2), $timeline))->toHaveCount(2);
     });
 
     it('reports a participant in two events of one round when given a rest rule', function (): void {
@@ -203,7 +203,7 @@ describe('TimelineAssigner', function (): void {
             slotInterval: new DateInterval('PT1H')
         );
 
-        expect(fn() => (new TimelineAssigner([new MinimumRestRule(new DateInterval('PT2H'))]))->assignRound($pairing, $timeline))
+        expect(fn() => new TimelineAssigner([new MinimumRestRule(new DateInterval('PT2H'))])->assignRound($pairing, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'time-rule violation');
     });
 
@@ -219,7 +219,7 @@ describe('TimelineAssigner', function (): void {
             new DateInterval('P7D')
         );
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+        $scheduled = new TimelineAssigner()->assign($schedule, $timeline);
 
         expect($scheduled->getScheduledEvents()[1]->getKickoff()->format('Y-m-d'))->toBe('2026-08-15');
     });
@@ -227,7 +227,7 @@ describe('TimelineAssigner', function (): void {
 
 describe('ScheduledSchedule', function (): void {
     it('round-trips through JSON with kickoffs, rounds, and resources intact', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(4));
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(4));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('Europe/London')),
             new DateInterval('P7D'),
@@ -236,7 +236,7 @@ describe('ScheduledSchedule', function (): void {
             resources: ['Centre Court']
         );
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+        $scheduled = new TimelineAssigner()->assign($schedule, $timeline);
         $rebuilt = ScheduledSchedule::fromJson($scheduled->toJson());
 
         expect($rebuilt)->toHaveCount(6);
@@ -253,13 +253,13 @@ describe('ScheduledSchedule', function (): void {
     });
 
     it('iterates its scheduled events', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(2));
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(2));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
             new DateInterval('P7D')
         );
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+        $scheduled = new TimelineAssigner()->assign($schedule, $timeline);
 
         $seen = 0;
         foreach ($scheduled as $scheduledEvent) {
@@ -337,14 +337,14 @@ describe('ScheduledSchedule', function (): void {
     it('hosts concurrent events per slot across named resources', function (): void {
         // A 4-team round has 2 events; one slot with two pitches hosts
         // them concurrently
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(4));
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(4));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
             new DateInterval('P7D'),
             resources: ['Pitch 1', 'Pitch 2']
         );
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+        $scheduled = new TimelineAssigner()->assign($schedule, $timeline);
 
         $byRound = $scheduled->getEventsByRound();
         foreach ($byRound as $scheduledEvents) {
@@ -358,7 +358,7 @@ describe('ScheduledSchedule', function (): void {
     it('fills slot by slot, resource by resource', function (): void {
         // A 6-team round has 3 events; 2 slots x 2 pitches hold them:
         // slot 0 fills both pitches, slot 1 takes the remainder
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(6));
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(6));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
             new DateInterval('P7D'),
@@ -367,7 +367,7 @@ describe('ScheduledSchedule', function (): void {
             resources: ['Pitch 1', 'Pitch 2']
         );
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+        $scheduled = new TimelineAssigner()->assign($schedule, $timeline);
         $round1 = $scheduled->getEventsByRound()[1];
 
         expect(array_map(fn(ScheduledEvent $e) => [$e->getKickoff()->format('H:i'), $e->getResource()], $round1))
@@ -379,14 +379,14 @@ describe('ScheduledSchedule', function (): void {
     });
 
     it('counts resources toward the round capacity', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule(timelineField(6)); // 3 events per round
+        $schedule = new RoundRobinScheduler()->schedule(timelineField(6)); // 3 events per round
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
             new DateInterval('P7D'),
             resources: ['Pitch 1', 'Pitch 2']
         ); // 1 slot x 2 resources = capacity 2
 
-        expect(fn() => (new TimelineAssigner())->assign($schedule, $timeline))
+        expect(fn() => new TimelineAssigner()->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'more events than the timeline can hold');
     });
 });

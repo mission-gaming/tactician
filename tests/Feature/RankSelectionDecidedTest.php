@@ -42,10 +42,10 @@ function selectionIds(array $participants): array
 function selectionPool(array $pool, Closure $winner, bool $played = true): StageOutcome
 {
     $results = $played
-        ? array_map(fn(Event $event): Result => new Result($event, $winner($event)), (new RoundRobinScheduler())->schedule($pool)->getEvents())
+        ? array_map(fn(Event $event): Result => new Result($event, $winner($event)), new RoundRobinScheduler()->schedule($pool)->getEvents())
         : [];
 
-    return new StageOutcome((new StandingsCalculator())->calculate($pool, $results), $results, [], null, [], $pool);
+    return new StageOutcome(new StandingsCalculator()->calculate($pool, $results), $results, [], null, [], $pool);
 }
 
 /**
@@ -197,8 +197,8 @@ describe('a rank selection that results do not decide', function (): void {
     it('leaves a table that was built without an entrant list in the order it was given', function (): void {
         // No entrant list: the table is the calculator's own, in its
         // fallback order (the seed attribute, then the id)
-        $results = array_map(fn(Event $event): Result => new Result($event), (new RoundRobinScheduler())->schedule($this->pool)->getEvents());
-        $outcome = new StageOutcome((new StandingsCalculator())->calculate($this->pool, $results), $results);
+        $results = array_map(fn(Event $event): Result => new Result($event), new RoundRobinScheduler()->schedule($this->pool)->getEvents());
+        $outcome = new StageOutcome(new StandingsCalculator()->calculate($this->pool, $results), $results);
 
         expect($outcome->getEntrants())->toBe([])
             ->and(selectionIds(RankRangeSelector::overall(1, 2)->withTableOrderAccepted()->select($outcome)))->toBe(['a-amy', 'b-bob']);
@@ -418,7 +418,7 @@ describe('a per-group selection folded into a bracket', function (): void {
     it('pairs no two entrants of one pool in the first round', function (int $pools, int $ranks): void {
         $entrants = RankRangeSelector::topPerGroup($ranks)->select(crossPoolOutcome($pools, $ranks));
 
-        $firstRound = (new SingleEliminationEngine())->pairNextRound(StageState::start(array_values($entrants)));
+        $firstRound = new SingleEliminationEngine()->pairNextRound(StageState::start(array_values($entrants)));
         foreach ($firstRound->getEvents() as $event) {
             [$first, $second] = $event->getParticipants();
             expect($first->getId()[0])->not->toBe($second->getId()[0], "{$pools} pools, {$ranks} ranks: {$first->getId()} v {$second->getId()}");

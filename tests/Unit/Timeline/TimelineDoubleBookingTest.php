@@ -70,7 +70,7 @@ describe('a participant in two events of one slot', function (): void {
             new Event([$this->alice, $this->carol], new Round(1)),
         ]);
 
-        $exception = doubleBookingError(fn() => (new TimelineAssigner())->assign($schedule, twoPitchTimeline()));
+        $exception = doubleBookingError(fn() => new TimelineAssigner()->assign($schedule, twoPitchTimeline()));
 
         expect($exception->getReason())->toBe(InvalidConfigurationReason::ParticipantDoubleBooked)
             ->and($exception->getConfigurationIssue())->toBe(
@@ -95,7 +95,7 @@ describe('a participant in two events of one slot', function (): void {
             new Event([$this->carol, $this->alice], new Round(2)),
         ]);
 
-        $exception = doubleBookingError(fn() => (new TimelineAssigner())->assignRound($pairing, twoPitchTimeline()));
+        $exception = doubleBookingError(fn() => new TimelineAssigner()->assignRound($pairing, twoPitchTimeline()));
 
         expect($exception->getReason())->toBe(InvalidConfigurationReason::ParticipantDoubleBooked)
             ->and($exception->getContext()['round'])->toBe(2)
@@ -110,7 +110,7 @@ describe('a participant in two events of one slot', function (): void {
             new Event([$this->bob, $this->alice], new Round(1)),
         ]);
 
-        $exception = doubleBookingError(fn() => (new TimelineAssigner())->assign($schedule, twoPitchTimeline()));
+        $exception = doubleBookingError(fn() => new TimelineAssigner()->assign($schedule, twoPitchTimeline()));
 
         // In the order they are found: the participants of the later event, in its order
         expect(array_column($exception->getContext()['double_bookings'], 'participant'))->toBe(['b', 'a'])
@@ -151,7 +151,7 @@ describe('a participant in two events of one slot', function (): void {
             new Event([$this->dave, new Participant('e', 'Erin'), $this->alice], new Round(1)),
         ]);
 
-        $exception = doubleBookingError(fn() => (new TimelineAssigner())->assign($schedule, twoPitchTimeline()));
+        $exception = doubleBookingError(fn() => new TimelineAssigner()->assign($schedule, twoPitchTimeline()));
 
         expect($exception->getReason())->toBe(InvalidConfigurationReason::ParticipantDoubleBooked)
             ->and($exception->getContext()['double_bookings'])->toBe([
@@ -171,7 +171,7 @@ describe('a participant in two events of one slot', function (): void {
             resources: ['Pitch 1', 'Pitch 2', 'Pitch 3']
         );
 
-        expect(doubleBookingError(fn() => (new TimelineAssigner())->assign($schedule, $threePitches))->getContext()['double_bookings'])
+        expect(doubleBookingError(fn() => new TimelineAssigner()->assign($schedule, $threePitches))->getContext()['double_bookings'])
             ->toBe([['participant' => 'a', 'kickoff' => '2026-08-01T18:00:00+00:00', 'events' => ['a vs b', 'a vs c']]]);
     });
 
@@ -181,7 +181,7 @@ describe('a participant in two events of one slot', function (): void {
             new Event([new Participant('a', 'Alice, again'), $this->carol], new Round(1)),
         ]);
 
-        expect(doubleBookingError(fn() => (new TimelineAssigner())->assign($schedule, twoPitchTimeline()))->getReason())
+        expect(doubleBookingError(fn() => new TimelineAssigner()->assign($schedule, twoPitchTimeline()))->getReason())
             ->toBe(InvalidConfigurationReason::ParticipantDoubleBooked);
     });
 });
@@ -198,7 +198,7 @@ describe('a participant in two events of one round at different times', function
             new Event([$alice, new Participant('e', 'Erin')], new Round(1)),
         ]);
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, twoPitchTimeline(2));
+        $scheduled = new TimelineAssigner()->assign($schedule, twoPitchTimeline(2));
 
         expect(array_map(
             fn($scheduledEvent): string => $scheduledEvent->getKickoff()->format('H:i'),
@@ -209,16 +209,16 @@ describe('a participant in two events of one round at different times', function
 
 describe('a participant listed twice in one event', function (): void {
     // One event is one place: the participant is not in two events. An
-    // Event refuses such a list when it is built, and a class that extends
-    // it can still answer with one
+    // Event refuses such a list when it is built; one built past its
+    // constructor (UncheckedEvent) holds one
     it('is not a double booking', function (): void {
         $alice = new Participant('a', 'Alice');
         $schedule = new Schedule([
-            new UncheckedEvent([$alice, $alice], new Round(1)),
+            UncheckedEvent::of([$alice, $alice], new Round(1)),
             new Event([new Participant('b', 'Bob'), new Participant('c', 'Carol')], new Round(1)),
         ]);
 
-        expect((new TimelineAssigner())->assign($schedule, twoPitchTimeline())->getScheduledEvents())->toHaveCount(2);
+        expect(new TimelineAssigner()->assign($schedule, twoPitchTimeline())->getScheduledEvents())->toHaveCount(2);
     });
 });
 
@@ -228,9 +228,9 @@ describe('a schedule in which nobody is in two events of a slot', function (): v
         foreach (['a', 'b', 'c', 'd'] as $id) {
             $participants[] = new Participant($id, strtoupper($id));
         }
-        $schedule = (new RoundRobinScheduler())->schedule($participants);
+        $schedule = new RoundRobinScheduler()->schedule($participants);
 
-        $scheduled = (new TimelineAssigner())->assign($schedule, twoPitchTimeline());
+        $scheduled = new TimelineAssigner()->assign($schedule, twoPitchTimeline());
 
         expect($scheduled->getScheduledEvents())->toHaveCount(6)
             ->and($scheduled->getScheduledEvents()[1]->getResource())->toBe('Pitch 2');

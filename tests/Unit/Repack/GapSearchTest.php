@@ -47,7 +47,7 @@ describe('GapSearch', function (): void {
         expect(gapSlotsOf($edges, $positions))->toBe(1);
         $budget = new StepBudget(10_000);
 
-        $unplaced = (new GapSearch($budget))->improve($edges, $positions, [], [], [], [2, 4], 1);
+        $unplaced = new GapSearch($budget)->improve($edges, $positions, [], [], [], [2, 4], 1);
 
         expect($unplaced)->toBe([])
             ->and($positions)->toHaveCount(4)
@@ -64,7 +64,7 @@ describe('GapSearch', function (): void {
         $positions = [0 => [0, 1], 1 => [0, 2]];
         $budget = new StepBudget(0);
 
-        $unplaced = (new GapSearch($budget))->improve($edges, $positions, [], [], [], [3], 1);
+        $unplaced = new GapSearch($budget)->improve($edges, $positions, [], [], [], [3], 1);
 
         expect($unplaced)->toBe([])
             ->and($positions)->toBe([0 => [0, 1], 1 => [0, 2]])
@@ -77,7 +77,7 @@ describe('GapSearch', function (): void {
         $edges = [[0, 1]];
         $positions = [0 => [0, 2]];
 
-        (new GapSearch(new StepBudget(100)))->improve($edges, $positions, [], [0 => [0 => [0], 9 => [0]]], [0 => [0 => 1]], [3], 1);
+        new GapSearch(new StepBudget(100))->improve($edges, $positions, [], [0 => [0 => [0], 9 => [0]]], [0 => [0 => 1]], [3], 1);
 
         expect($positions)->toBe([0 => [0, 1]]);
     });
@@ -87,7 +87,7 @@ describe('GapSearch', function (): void {
         $before = $positions;
         $budget = new StepBudget(2);
 
-        $unplaced = (new GapSearch($budget))->improve($edges, $positions, [], [], [], [2, 4], 1);
+        $unplaced = new GapSearch($budget)->improve($edges, $positions, [], [], [], [2, 4], 1);
 
         expect($unplaced)->toBe([])
             ->and($positions)->toBe($before)
@@ -99,7 +99,7 @@ describe('GapSearch', function (): void {
         $before = $positions;
         $budget = new StepBudget(10_000);
 
-        $unplaced = (new GapSearch($budget, 3))->improve($edges, $positions, [], [], [], [2, 4], 1);
+        $unplaced = new GapSearch($budget, 3)->improve($edges, $positions, [], [], [], [2, 4], 1);
 
         expect($unplaced)->toBe([])
             ->and($positions)->toBe($before)
@@ -115,13 +115,13 @@ describe('GapSearch', function (): void {
         $before = $positions;
 
         $default = new StepBudget(PHP_INT_MAX, StepBudget::DEFAULT_STEPS);
-        (new GapSearch($default))->improve($edges, $positions, [], [], [], [2, 4], 1);
+        new GapSearch($default)->improve($edges, $positions, [], [], [], [2, 4], 1);
         expect(gapSlotsOf($edges, $positions))->toBe(0)
             ->and($default->stoppedASearch())->toBeFalse();
 
         $positions = $before;
         $oneStep = new StepBudget(PHP_INT_MAX, 1);
-        $unplaced = (new GapSearch($oneStep))->improve($edges, $positions, [], [], [], [2, 4], 1);
+        $unplaced = new GapSearch($oneStep)->improve($edges, $positions, [], [], [], [2, 4], 1);
         expect($unplaced)->toBe([])
             ->and($positions)->toBe($before)
             ->and($oneStep->stoppedASearch())->toBeTrue();
@@ -137,7 +137,7 @@ describe('GapSearch', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 1], 2 => [0, 2]];
         $pinSlots = [0 => [1 => [2], 5 => [2]]];
 
-        $unplaced = (new GapSearch(new StepBudget(10_000)))->improve($edges, $positions, [3], $pinSlots, [0 => [2 => 1]], [3], 2);
+        $unplaced = new GapSearch(new StepBudget(10_000))->improve($edges, $positions, [3], $pinSlots, [0 => [2 => 1]], [3], 2);
 
         expect($unplaced)->toHaveCount(1)
             ->and($positions)->toHaveCount(3)
@@ -154,7 +154,7 @@ describe('GapSearch', function (): void {
         $edges = [[0, 1], [0, 2], [3, 4]];
         $positions = [0 => [0, 0], 1 => [0, 2]];
 
-        $unplaced = (new GapSearch(new StepBudget(10_000)))->improve($edges, $positions, [2], [], [], [3], 2);
+        $unplaced = new GapSearch(new StepBudget(10_000))->improve($edges, $positions, [2], [], [], [3], 2);
 
         expect(gapSlotsOf($edges, $positions))->toBe(0)
             ->and($unplaced)->toBe([])

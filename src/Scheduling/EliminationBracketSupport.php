@@ -24,9 +24,6 @@ use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
-use MissionGaming\Tactician\Standings\TiedParticipantsTiebreaker;
-use ReflectionException;
-use ReflectionProperty;
 
 /**
  * Shared bracket mechanics for the elimination presets: positional fold
@@ -295,21 +292,9 @@ trait EliminationBracketSupport
      * calculated with the same number: the ranking a re-seeded round is
      * folded from and the placement table
      * (docs/adr/0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md).
-     *
-     * A subclass of the calculator whose constructor does not call the one
-     * it inherits has no ranking strategy set, and so none that says what
-     * a bye is worth: nothing is read from it.
      */
     private function creditsPerBye(StandingsCalculator $calculator, int $legsPerTie): int
     {
-        try {
-            if (!(new ReflectionProperty(StandingsCalculator::class, 'rankingStrategy'))->isInitialized($calculator)) {
-                return 0;
-            }
-        } catch (ReflectionException) {
-            // Not thrown: the class declares the property
-        }
-
         return $calculator->getRankingStrategy() instanceof RankingStrategyWithByeValue ? $legsPerTie : 0;
     }
 
@@ -331,51 +316,6 @@ trait EliminationBracketSupport
         }
 
         return $counts;
-    }
-
-    /**
-     * Refuse a calculator that cannot form the tied sets of the table of
-     * the bracket.
-     *
-     * The table of every bracket has tiers, and a tiebreaker between the
-     * tied participants forms its tied sets inside a tier
-     * (StandingsCalculator::calculateWith()). A subclass of the calculator
-     * forms them over the whole table in its own calculate(), and the
-     * calculator refuses it tiers. The engine says all of that before a
-     * round is paired, so the bracket is refused then, on every call, and
-     * not once it has been played to its end and its table is asked for.
-     *
-     * @throws InvalidConfigurationException When the calculator is a subclass of StandingsCalculator
-     *                                       with a tiebreaker between the tied participants
-     *                                       (reason `IncompatibleOptions`)
-     */
-    private function requireTiedSetsInsideATier(StandingsCalculator $calculator): void
-    {
-        if ($calculator::class === StandingsCalculator::class) {
-            return;
-        }
-
-        // A subclass whose constructor does not call the one it inherits
-        // has no tiebreakers set, and so none of the kind: nothing is read
-        try {
-            if (!(new ReflectionProperty(StandingsCalculator::class, 'tiebreakers'))->isInitialized($calculator)) {
-                return;
-            }
-        } catch (ReflectionException) {
-            // Not thrown: the class declares the property
-        }
-
-        foreach ($calculator->getTiebreakers() as $tiebreaker) {
-            if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
-                throw new InvalidConfigurationException(
-                    'The table of a bracket has tiers, and a tiebreaker between the tied participants forms its tied sets'
-                        . ' inside a tier, which a subclass of StandingsCalculator cannot do: its own calculate() forms them'
-                        . ' over the whole table. Use StandingsCalculator itself, or a chain without a tiebreaker of that kind',
-                    ['calculator' => $calculator::class, 'tiebreaker' => $tiebreaker->getName()],
-                    reason: InvalidConfigurationReason::IncompatibleOptions
-                );
-            }
-        }
     }
 
     /**
@@ -417,9 +357,10 @@ trait EliminationBracketSupport
      * @param int $legsPerTie How many times a bye is credited: the legs of the tie it stands for
      * @param array<Adjustment> $adjustments The adjustments recorded on the stage state
      *
-     * @throws InvalidConfigurationException When the calculator is a subclass with a tiebreaker
-     *                                       between the tied participants (reason
-     *                                       `IncompatibleOptions`)
+     * @throws InvalidConfigurationException Not thrown: a bye is credited with a value only under a
+     *                                       ranking strategy that says what one is worth, which
+     *                                       is the one refusal of
+     *                                       StandingsCalculator::calculateWith()
      */
     private function placementStandings(
         StandingsCalculator $calculator,

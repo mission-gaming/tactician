@@ -83,7 +83,7 @@ describe('Standings::getTiedSets()', function (): void {
             }
         }
 
-        $standings = (new StandingsCalculator())->calculate($participants, $results);
+        $standings = new StandingsCalculator()->calculate($participants, $results);
 
         // The seeds alone order the table; every result-based figure is level
         expect(tableOrder($standings))->toBe(['d', 'c', 'b', 'a'])
@@ -124,7 +124,7 @@ describe('Standings::getTiedSets()', function (): void {
             new Result(new Event([$pool['c'], $pool['d']]), $pool['c']),
         ];
 
-        $standings = (new StandingsCalculator())->calculate(array_values($pool), $results);
+        $standings = new StandingsCalculator()->calculate(array_values($pool), $results);
 
         expect(tableOrder($standings))->toBe(['a', 'b', 'c', 'd'])
             ->and($standings->getTiedSets())->toBe([]);
@@ -148,7 +148,7 @@ describe('Standings::getTiedSets()', function (): void {
             new Result(new Event([$e, $f]), $e, ['e' => 2, 'f' => 1]),
         ];
 
-        $standings = (new StandingsCalculator())->calculate([$f, $e, $d, $c, $b, $a], $results);
+        $standings = new StandingsCalculator()->calculate([$f, $e, $d, $c, $b, $a], $results);
 
         expect(tableOrder($standings))->toBe(['e', 'a', 'b', 'f', 'c', 'd'])
             ->and(tiedSetSummary($standings))->toBe([
@@ -159,7 +159,7 @@ describe('Standings::getTiedSets()', function (): void {
 
     it('returns the entries of a set in table order, as the entries of the table', function (): void {
         $participants = array_values(tiedPool());
-        $standings = (new StandingsCalculator())->calculate($participants, []);
+        $standings = new StandingsCalculator()->calculate($participants, []);
 
         $tiedSets = $standings->getTiedSets();
 
@@ -199,12 +199,12 @@ describe('Standings::getTiedSets()', function (): void {
     });
 
     it('reports nothing for an empty table and for a table of one', function (): void {
-        expect((new StandingsCalculator())->calculate([], [])->getTiedSets())->toBe([])
-            ->and((new StandingsCalculator())->calculate([new Participant('a', 'Amy')], [])->getTiedSets())->toBe([]);
+        expect(new StandingsCalculator()->calculate([], [])->getTiedSets())->toBe([])
+            ->and(new StandingsCalculator()->calculate([new Participant('a', 'Amy')], [])->getTiedSets())->toBe([]);
     });
 
     it('returns the same sets on every call', function (): void {
-        $standings = (new StandingsCalculator())->calculate(array_values(tiedPool()), []);
+        $standings = new StandingsCalculator()->calculate(array_values(tiedPool()), []);
 
         expect($standings->getTiedSets())->toEqual($standings->getTiedSets());
     });
@@ -224,7 +224,7 @@ describe('what decides an order is not a tie', function (): void {
         ];
 
         foreach ($cases as [$first, $second, $order]) {
-            $standings = (new StandingsCalculator())->calculate([$first, $second], []);
+            $standings = new StandingsCalculator()->calculate([$first, $second], []);
 
             expect(tiedSetSummary($standings))->toBe([['ids' => $order, 'first' => 1, 'last' => 2]]);
         }
@@ -247,8 +247,8 @@ describe('what decides an order is not a tie', function (): void {
             new Result(new Event([$b, $y3])),
         ];
 
-        $level = (new StandingsCalculator())->calculate($participants, $results);
-        $broken = (new StandingsCalculator(WinDrawLossRanking::threeOneZero(), [new WinsTiebreaker()]))
+        $level = new StandingsCalculator()->calculate($participants, $results);
+        $broken = new StandingsCalculator(WinDrawLossRanking::threeOneZero(), [new WinsTiebreaker()])
             ->calculate($participants, $results);
 
         expect(tiedSetSummary($level)[0])->toBe(['ids' => ['a', 'b'], 'first' => 1, 'last' => 2])
@@ -274,12 +274,12 @@ describe('what decides an order is not a tie', function (): void {
         ];
         $ranking = WinDrawLossRanking::threeOneZero();
 
-        $level = (new StandingsCalculator($ranking))->calculate($participants, $results);
-        $buchholz = (new StandingsCalculator($ranking, [new BuchholzTiebreaker()]))->calculate($participants, $results);
-        $sonnebornBerger = (new StandingsCalculator($ranking, [new SonnebornBergerTiebreaker()]))
+        $level = new StandingsCalculator($ranking)->calculate($participants, $results);
+        $buchholz = new StandingsCalculator($ranking, [new BuchholzTiebreaker()])->calculate($participants, $results);
+        $sonnebornBerger = new StandingsCalculator($ranking, [new SonnebornBergerTiebreaker()])
             ->calculate($participants, $results);
         // Buchholz first leaves Amy and Bob level; Sonneborn-Berger second separates them
-        $both = (new StandingsCalculator($ranking, [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker()]))
+        $both = new StandingsCalculator($ranking, [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker()])
             ->calculate($participants, $results);
 
         expect(tiedSetSummary($level))->toBe([['ids' => ['a', 'b', 'c'], 'first' => 1, 'last' => 3]])
@@ -301,7 +301,7 @@ describe('what decides an order is not a tie', function (): void {
             new Result(new Event([$b, $y]), $b, ['b' => 2, 'y' => 1]),
         ];
 
-        $standings = (new StandingsCalculator())->calculate([$a, $b, $x, $y], $results);
+        $standings = new StandingsCalculator()->calculate([$a, $b, $x, $y], $results);
 
         expect(tiedSetSummary($standings))->toBe($expected);
     })->with([
@@ -325,7 +325,7 @@ describe('what decides an order is not a tie', function (): void {
             new Result(new Event([$low, $foilB]), null, ['lo' => 1, 'fb' => 1]),
         ];
 
-        $standings = (new StandingsCalculator())->calculate([$high, $low, $foilA, $foilB], $results);
+        $standings = new StandingsCalculator()->calculate([$high, $low, $foilA, $foilB], $results);
 
         expect(tiedSetSummary($standings))->toBe($expected);
     })->with([
@@ -354,7 +354,7 @@ describe('what decides an order is not a tie', function (): void {
             new Result(new Event([$b, $x])),
         ];
 
-        $standings = (new StandingsCalculator($ranking))->calculate([$a, $b, $x], $results);
+        $standings = new StandingsCalculator($ranking)->calculate([$a, $b, $x], $results);
 
         expect($standings->getEntryFor($a)?->getRankingValue())->not->toBe($standings->getEntryFor($b)?->getRankingValue())
             ->and(tableOrder($standings))->toBe(['a', 'b', 'x'])

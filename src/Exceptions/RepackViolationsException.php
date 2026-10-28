@@ -18,7 +18,7 @@ use Override;
  *
  * @api
  */
-class RepackViolationsException extends SchedulingException
+final class RepackViolationsException extends SchedulingException
 {
     /**
      * @param RepackOutcome $outcome The outcome the repacker would have returned. The message

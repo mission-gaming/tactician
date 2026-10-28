@@ -181,13 +181,13 @@ describe('PotDrawPlan', function (): void {
         it('accepts a valid draw written by hand', function (): void {
             $field = potPlanField(4);
 
-            expect((new PotDrawPlan($field, 2, 1))->validateIntegrity(potPlanSchedule(POT_PLAN_VALID_DRAW, $field)))->toBe([]);
+            expect(new PotDrawPlan($field, 2, 1)->validateIntegrity(potPlanSchedule(POT_PLAN_VALID_DRAW, $field)))->toBe([]);
         });
 
         it('accepts a valid draw with pots of odd size written by hand', function (): void {
             $field = potPlanField(6);
 
-            expect((new PotDrawPlan($field, 2, 2))->validateIntegrity(potPlanSchedule(POT_PLAN_VALID_ODD_POT_DRAW, $field)))->toBe([]);
+            expect(new PotDrawPlan($field, 2, 2)->validateIntegrity(potPlanSchedule(POT_PLAN_VALID_ODD_POT_DRAW, $field)))->toBe([]);
         });
 
         it('reports an entrant with the wrong number of opponents from a pot', function (): void {
@@ -197,7 +197,7 @@ describe('PotDrawPlan', function (): void {
             // each other
             $schedule = potPlanSchedule([1 => ['a-c', 'd-b'], 2 => ['d-a', 'b-c']], $field);
 
-            $violations = (new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule);
+            $violations = new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule);
 
             expect($violations)->toContain('Participant a has 0 opponent(s) from pot 1, expected 1.')
                 ->and($violations)->toContain('Participant a has 2 opponent(s) from pot 2, expected 1.')
@@ -208,7 +208,7 @@ describe('PotDrawPlan', function (): void {
             $field = potPlanField(4);
             $schedule = potPlanSchedule([1 => ['a-b', 'c-d'], 2 => ['b-a', 'd-c']], $field);
 
-            expect((new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule))
+            expect(new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule))
                 ->toContain('Pairing b vs a appears more than once; pot draw pairings may not repeat.');
         });
 
@@ -216,7 +216,7 @@ describe('PotDrawPlan', function (): void {
             $field = potPlanField(4);
             $schedule = potPlanSchedule([1 => ['a-b', 'a-c'], 2 => ['c-d', 'b-d']], $field);
 
-            $violations = (new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule);
+            $violations = new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule);
 
             expect($violations)->toContain('Participant a appears more than once in round 1.')
                 ->and($violations)->toContain('Round 1 has 3 of the 4 participants.');
@@ -226,7 +226,7 @@ describe('PotDrawPlan', function (): void {
             $field = potPlanField(4);
             $schedule = potPlanSchedule([1 => ['a-b', 'c-d']], $field);
 
-            expect((new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule))
+            expect(new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule))
                 ->toContain('Round 2 has 0 of the 4 participants.');
         });
 
@@ -234,7 +234,7 @@ describe('PotDrawPlan', function (): void {
             $field = potPlanField(4);
             $schedule = potPlanSchedule([1 => ['a-b', 'c-d'], 3 => ['c-a', 'b-d']], $field);
 
-            expect((new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule))
+            expect(new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule))
                 ->toContain('Event 3 has an invalid round number.');
         });
 
@@ -242,7 +242,7 @@ describe('PotDrawPlan', function (): void {
             $field = potPlanField(4);
             $schedule = new Schedule([new Event([$field[0], $field[1]])]);
 
-            expect((new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule))
+            expect(new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule))
                 ->toContain('Event 1 has an invalid round number.');
         });
 
@@ -250,7 +250,7 @@ describe('PotDrawPlan', function (): void {
             $field = potPlanField(4);
             $schedule = potPlanSchedule([1 => ['a-b', 'c-z'], 2 => ['c-a', 'b-d']], $field);
 
-            expect((new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule))
+            expect(new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule))
                 ->toContain('Event 2 contains a participant that is not in the stage.');
         });
 
@@ -258,7 +258,7 @@ describe('PotDrawPlan', function (): void {
             $field = potPlanField(4);
             $schedule = potPlanSchedule([1 => ['a-a', 'c-d'], 2 => ['c-a', 'b-d']], $field);
 
-            expect((new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule))
+            expect(new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule))
                 ->toContain('Event 1 contains participant a twice.');
         });
 
@@ -271,7 +271,7 @@ describe('PotDrawPlan', function (): void {
                 ...potPlanSchedule([2 => ['c-a', 'b-d']], $field)->getEvents(),
             ]);
 
-            $violations = (new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule);
+            $violations = new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule);
 
             expect($violations)->toContain('Event 1 has 3 participants; pot draw events must have exactly 2 participants.')
                 // and its participants were not counted as opponents of each other
@@ -283,7 +283,7 @@ describe('PotDrawPlan', function (): void {
             // The valid draw with the second round turned round: a is first twice
             $schedule = potPlanSchedule([1 => ['a-b', 'c-d'], 2 => ['a-c', 'd-b']], $field);
 
-            $violations = (new PotDrawPlan($field, 2, 1))->validateIntegrity($schedule);
+            $violations = new PotDrawPlan($field, 2, 1)->validateIntegrity($schedule);
 
             expect($violations)->toContain('The two role counts of participant a differ by 2; they may differ by at most 1.')
                 ->and($violations)->toContain('The two role counts of participant b differ by 2; they may differ by at most 1.');
@@ -297,7 +297,7 @@ describe('PotDrawPlan', function (): void {
             $rounds = POT_PLAN_VALID_ODD_POT_DRAW;
             $rounds[4] = ['b-d', 'e-c', 'a-f'];
 
-            $violations = (new PotDrawPlan($field, 2, 2))->validateIntegrity(potPlanSchedule($rounds, $field));
+            $violations = new PotDrawPlan($field, 2, 2)->validateIntegrity(potPlanSchedule($rounds, $field));
 
             expect($violations)->toContain('Participant a is not in each role equally often against pot 2.')
                 ->and($violations)->toContain('Participant d is not in each role equally often against pot 1.')
@@ -310,14 +310,14 @@ describe('PotDrawPlan', function (): void {
             $wrongPots = potPlanSchedule([1 => ['a-c', 'd-b'], 2 => ['d-a', 'b-c']], $field);
 
             // The counts are right (4 events), so only the pot rules can fail it
-            expect(fn() => (new ScheduleValidator())->validateScheduleCompleteness($wrongPots, $plan, new ConstraintViolationCollector(), $field))
+            expect(fn() => new ScheduleValidator()->validateScheduleCompleteness($wrongPots, $plan, new ConstraintViolationCollector(), $field))
                 ->toThrow(IncompleteScheduleException::class, 'Generated schedule failed pot-draw integrity validation');
 
             $tooFew = potPlanSchedule([1 => ['a-b', 'c-d']], $field);
-            expect(fn() => (new ScheduleValidator())->validateScheduleCompleteness($tooFew, $plan, new ConstraintViolationCollector(), $field))
+            expect(fn() => new ScheduleValidator()->validateScheduleCompleteness($tooFew, $plan, new ConstraintViolationCollector(), $field))
                 ->toThrow(IncompleteScheduleException::class);
 
-            (new ScheduleValidator())->validateScheduleCompleteness(
+            new ScheduleValidator()->validateScheduleCompleteness(
                 potPlanSchedule(POT_PLAN_VALID_DRAW, $field),
                 $plan,
                 new ConstraintViolationCollector(),

@@ -15,8 +15,6 @@ use MissionGaming\Tactician\Exceptions\RejectedDecisionReason;
 use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Stage\FormatMetadataKey;
 use MissionGaming\Tactician\Stage\PairKey;
-use ReflectionException;
-use ReflectionProperty;
 
 /**
  * Calculates an ordered standings table from recorded results.
@@ -64,7 +62,7 @@ use ReflectionProperty;
  *
  * @experimental
  */
-readonly class StandingsCalculator
+final readonly class StandingsCalculator
 {
     /**
      * @param RankingStrategy $rankingStrategy Computes the primary ranking value
@@ -167,17 +165,17 @@ readonly class StandingsCalculator
      *
      * @return array{format_version: int, ranking: array<string, float>, tiebreakers: list<string|array{tiebreaker: string, byes: string}>, awarded_results: array<string, bool>}
      *
-     * @throws InvalidConfigurationException When the calculator cannot be written as plain data: it
-     *                                       is a subclass, its ranking strategy is not a
-     *                                       WinDrawLossRanking, or a tiebreaker is not one of the
-     *                                       library's (reason `NotSerializable`)
+     * @throws InvalidConfigurationException When the calculator cannot be written as plain data: its
+     *                                       ranking strategy is not a WinDrawLossRanking, or a
+     *                                       tiebreaker is not one of the library's (reason
+     *                                       `NotSerializable`)
      */
     public function toArray(): array
     {
-        if (static::class !== self::class || !$this->rankingStrategy instanceof WinDrawLossRanking) {
+        if (!$this->rankingStrategy instanceof WinDrawLossRanking) {
             throw new InvalidConfigurationException(
                 'Only a StandingsCalculator of the library with a WinDrawLossRanking can be written as plain data',
-                ['calculator' => static::class, 'ranking_strategy' => $this->rankingStrategy::class],
+                ['calculator' => self::class, 'ranking_strategy' => $this->rankingStrategy::class],
                 reason: InvalidConfigurationReason::NotSerializable
             );
         }
@@ -351,16 +349,6 @@ readonly class StandingsCalculator
      * a tier after every tier given, with the others they do not name.
      * Without tiers the table is ordered by its figures alone.
      *
-     * A subclass is always calculated the second way, through its own
-     * calculate(), withByesCredited() and withAdjustments(): one that
-     * orders a table by rules of its own is asked as it was before this
-     * method existed, and with a tiebreaker of one of the two kinds it is
-     * refused the byes and adjustments those methods refuse. It is given
-     * its tiers after calculate() (an entry keeps the order calculate()
-     * gave it inside its tier), and is refused them when it has a
-     * tiebreaker between the tied participants, whose sets its calculate()
-     * forms over the whole table.
-     *
      * @param array<Participant> $participants Everyone the table lists, in any order
      * @param array<Result> $results The recorded results, in any order
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
@@ -383,10 +371,8 @@ readonly class StandingsCalculator
      * @throws InvalidConfigurationException When there is a bye to credit with a value
      *                                       ($creditsPerBye above 0) and the ranking strategy does
      *                                       not say what a bye is worth (it is no
-     *                                       RankingStrategyWithByeValue), or the calculator is a
-     *                                       subclass with a tiebreaker between the tied
-     *                                       participants and is given tiers (reason
-     *                                       `IncompatibleOptions` for both)
+     *                                       RankingStrategyWithByeValue) (reason
+     *                                       `IncompatibleOptions`)
      */
     public function calculateWith(
         array $participants,
@@ -396,9 +382,9 @@ readonly class StandingsCalculator
         int $creditsPerBye = 1,
         array $tiers = []
     ): Standings {
-        // A subclass is asked through the three methods it may override,
-        // and nothing of this class is read before they are
-        if (static::class !== self::class || !$this->isCalculatedInOneGo(true)) {
+        // Without a tiebreaker that depends on more than the results, the
+        // table of the results is given its tiers, byes and adjustments
+        if (!$this->isCalculatedInOneGo(true)) {
             $table = $this->calculate($participants, $results);
 
             return $this->withAdjustments(
@@ -465,42 +451,16 @@ readonly class StandingsCalculator
     }
 
     /**
-     * Whether the tiebreakers of a calculator can be read: a subclass whose
-     * constructor does not call the one it inherits has none set, and
-     * reading them would be an Error. Such a calculator orders its tables
-     * by its own calculate(), and has no tiebreaker of any kind to refuse.
-     */
-    private static function hasTiebreakersToRead(self $calculator): bool
-    {
-        try {
-            return (new ReflectionProperty(self::class, 'tiebreakers'))->isInitialized($calculator);
-        } catch (ReflectionException) {
-            // Not thrown: the class declares the property
-            return true;
-        }
-    }
-
-    /**
      * The given table with tiers: each entry in its tier, and in the order
-     * the table has it inside the tier (see calculateWith()).
+     * the table has it inside the tier (see calculateWith()). Only a
+     * calculator without a tiebreaker between the tied participants is
+     * given its tiers this way: one with such a tiebreaker forms its tied
+     * sets inside a tier, in one go.
      *
      * @param array<int|string, int> $tiers By participant ID
-     *
-     * @throws InvalidConfigurationException When a tiebreaker of the calculator is computed between
-     *                                       the tied participants (reason `IncompatibleOptions`)
      */
     private function inTiers(Standings $table, array $tiers): Standings
     {
-        if ($this->isCalculatedInOneGo(false)) {
-            throw new InvalidConfigurationException(
-                'A subclass of StandingsCalculator calculates a table through its own calculate(), which forms the tied'
-                    . ' sets of a tiebreaker between the tied participants over the whole table and not inside a tier.'
-                    . ' Calculate a table with tiers with StandingsCalculator itself, or without a tiebreaker of that kind',
-                ['calculator' => static::class, 'tiebreakers' => $this->tiebreakerNames()],
-                reason: InvalidConfigurationReason::IncompatibleOptions
-            );
-        }
-
         $entries = array_values($table->getEntries());
         $tierOf = self::tierOfEach(
             array_map(static fn(StandingEntry $entry): string => $entry->getParticipant()->getId(), $entries),
@@ -525,16 +485,10 @@ readonly class StandingsCalculator
      * (TiedParticipantsTiebreaker), or, when asked for, on the byes
      * (TiebreakerWithByeTreatment with a treatment other than Uncounted).
      * A table with such a tiebreaker cannot have byes or adjustments
-     * applied to it after it was calculated. A subclass whose constructor
-     * does not call the one it inherits has no tiebreaker set, and so none
-     * of the kind (see hasTiebreakersToRead()).
+     * applied to it after it was calculated.
      */
     private function isCalculatedInOneGo(bool $forByes): bool
     {
-        if (!self::hasTiebreakersToRead($this)) {
-            return false;
-        }
-
         foreach ($this->tiebreakers as $tiebreaker) {
             if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
                 return true;
@@ -1301,18 +1255,12 @@ readonly class StandingsCalculator
     }
 
     /**
-     * The names of the tiebreakers, in order; none for a subclass whose
-     * constructor does not call the one it inherits (see
-     * hasTiebreakersToRead()).
+     * The names of the tiebreakers, in order.
      *
      * @return list<string>
      */
     private function tiebreakerNames(): array
     {
-        if (!self::hasTiebreakersToRead($this)) {
-            return [];
-        }
-
         return array_values(array_map(
             static fn(TiebreakerInterface $tiebreaker): string => $tiebreaker->getName(),
             $this->tiebreakers

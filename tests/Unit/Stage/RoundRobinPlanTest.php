@@ -58,9 +58,9 @@ describe('RoundRobinPlan', function (): void {
     it('scales expected events linearly with legs', function (): void {
         $participants = roundRobinPlanParticipants(4);
 
-        expect((new RoundRobinPlan($participants, 1))->getExpectedEventCount())->toBe(6);
-        expect((new RoundRobinPlan($participants, 2))->getExpectedEventCount())->toBe(12);
-        expect((new RoundRobinPlan($participants, 3))->getExpectedEventCount())->toBe(18);
+        expect(new RoundRobinPlan($participants, 1)->getExpectedEventCount())->toBe(6);
+        expect(new RoundRobinPlan($participants, 2)->getExpectedEventCount())->toBe(12);
+        expect(new RoundRobinPlan($participants, 3)->getExpectedEventCount())->toBe(18);
     });
 
     // Regression: the pre-plan strategy math reported n-1 rounds per leg for
@@ -183,7 +183,7 @@ describe('RoundRobinPlan', function (): void {
 
         $violations = $plan->validateIntegrity(new Schedule([
             new Event([$participant1, $outsider], new Round(1)),
-            new UncheckedEvent([$participant2, $participant2], new Round(1)),
+            UncheckedEvent::of([$participant2, $participant2], new Round(1)),
         ]));
 
         expect($violations)->toContain('Event 1 contains a participant that is not in the tournament.');
@@ -204,7 +204,7 @@ describe('RoundRobinPlan', function (): void {
         ]);
         $repeated = new Schedule([
             new Event([$keys[0] => $participant1, $keys[1] => $participant2], new Round(1)),
-            new UncheckedEvent([$keys[0] => $participant2, $keys[1] => $participant2], new Round(2)),
+            UncheckedEvent::of([$keys[0] => $participant2, $keys[1] => $participant2], new Round(2)),
         ]);
 
         expect($plan->validateIntegrity($complete))->toBe([])

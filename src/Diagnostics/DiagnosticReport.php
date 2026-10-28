@@ -31,7 +31,7 @@ namespace MissionGaming\Tactician\Diagnostics;
  *
  * @experimental
  */
-readonly class DiagnosticReport
+final readonly class DiagnosticReport
 {
     /**
      * Nothing is validated, and the counts are not checked against each

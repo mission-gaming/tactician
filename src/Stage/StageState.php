@@ -394,14 +394,7 @@ final readonly class StageState
                 $afterRound = 0;
             }
             $requireRecordedRound($afterRound, 'the adjustment for', $id);
-
-            $participant = null;
-            foreach ($state->getAllSeenParticipants() as $seen) {
-                if ($seen->getId() === $id) {
-                    $participant = $seen;
-                    break;
-                }
-            }
+            $participant = array_find($state->getAllSeenParticipants(), fn($seen) => $seen->getId() === $id);
             if ($participant === null) {
                 throw new InvalidInputException("Adjustment references participant {$id} who is not in the stage");
             }
@@ -1108,13 +1101,8 @@ final readonly class StageState
                 }
             }
         }
-        foreach ($pairing->getByes() as $bye) {
-            if ($bye->getId() === $id) {
-                return true;
-            }
-        }
 
-        return false;
+        return array_any($pairing->getByes(), fn($bye) => $bye->getId() === $id);
     }
 
     /**
@@ -1276,14 +1264,7 @@ final readonly class StageState
     public function withAdjustment(Adjustment $adjustment): self
     {
         $id = $adjustment->getParticipantId();
-
-        $participant = null;
-        foreach ($this->getAllSeenParticipants() as $seen) {
-            if ($seen->getId() === $id) {
-                $participant = $seen;
-                break;
-            }
-        }
+        $participant = array_find($this->getAllSeenParticipants(), fn($seen) => $seen->getId() === $id);
 
         if ($participant === null) {
             throw new InvalidInputException(

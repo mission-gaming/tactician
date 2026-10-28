@@ -156,8 +156,7 @@ final class LegRoleSearch
         $this->verdictsAreLocal = ConstraintPurity::readsOwnEventsOnly($constraints);
         $this->ruleIsLocal = ConstraintPurity::ruleReadsOwnEventsOnly($firstLegRule);
         $this->explainsRejections = $firstLegRule instanceof ConstraintInterface
-            && $constraints instanceof ConstraintSet
-            && $constraints::class === ConstraintSet::class;
+            && $constraints instanceof ConstraintSet;
     }
 
     /**

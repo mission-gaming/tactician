@@ -22,7 +22,7 @@ describe('RepackAuditor', function (): void {
             new Participant('p3', 'P3'),
         ];
 
-        $violations = (new RepackAuditor())->audit(
+        $violations = new RepackAuditor()->audit(
             [0 => [0, 0], 1 => [0, 0]],
             [0 => [0, 1], 1 => [0, 2]],
             [],
@@ -51,7 +51,7 @@ describe('RepackAuditor', function (): void {
             new Participant('p3', 'P3'),
         ];
 
-        $violations = (new RepackAuditor())->audit(
+        $violations = new RepackAuditor()->audit(
             [0 => [1, 0]],
             [0 => [0, 1]],
             [new PinnedEvent('x1', $participants[0], $participants[2], 1, 0)],
@@ -82,7 +82,7 @@ describe('RepackAuditor', function (): void {
         // p1/p2 movable at slots 1 and 3 of session 0: late start 1,
         // gap at slot 2. p3/p4 purely pinned deep in session 1:
         // historical fact, not a repack compromise — no violations
-        $violations = (new RepackAuditor())->audit(
+        $violations = new RepackAuditor()->audit(
             [0 => [0, 1], 1 => [0, 3]],
             [0 => [0, 1], 1 => [0, 1]],
             [new PinnedEvent('x1', $participants[2], $participants[3], 1, 2)],

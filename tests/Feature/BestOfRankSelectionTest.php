@@ -730,7 +730,7 @@ describe('a best-of-rank selection that results do not decide', function (): voi
     it('is refused for a pool with no results, naming the pool', function (): void {
         $pools = $this->outcome->getPools();
         $unplayed = [new Participant('e1', 'E1'), new Participant('e2', 'E2'), new Participant('e3', 'E3')];
-        $pools['e'] = new StageOutcome((new StandingsCalculator())->calculate($unplayed, []), [], entrants: $unplayed);
+        $pools['e'] = new StageOutcome(new StandingsCalculator()->calculate($unplayed, []), [], entrants: $unplayed);
         $outcome = StageOutcome::combining($pools);
 
         try {

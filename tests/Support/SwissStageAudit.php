@@ -10,7 +10,7 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
-use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageState;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
@@ -83,7 +83,7 @@ final class SwissStageAudit
      * @throws JsonConversionException When the state does not survive JSON
      */
     public static function drive(
-        SwissPairingEngine $engine,
+        StageEngineInterface $engine,
         array $participants,
         int $rounds,
         int $seed,
@@ -357,13 +357,7 @@ final class SwissStageAudit
             return self::hasPerfectMatching($field, $blocked, $random);
         }
 
-        foreach ($field as $bye) {
-            if (self::hasPerfectMatching(array_values(array_diff($field, [$bye])), $blocked, $random)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($field, fn($bye) => self::hasPerfectMatching(array_values(array_diff($field, [$bye])), $blocked, $random));
     }
 
     /**

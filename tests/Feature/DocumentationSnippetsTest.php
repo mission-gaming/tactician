@@ -1839,10 +1839,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($back->getEvents()[0]->getParticipants()[0]->getMetadataValue('rating') === 1);
                 PHP,
         ],
-        // Records a known defect (issue #54: Schedule becomes an IteratorAggregate); the
-        // first count is 120 * 120 when it is fixed.
-        // "the outer loop stops after its first event"
-        'a schedule has one cursor' => [
+        // "each visits every event" (issue #54: until 0.3.0 a schedule was its
+        // own iterator, and the first count was 120)
+        'loops over one schedule nest' => [
             'docs/USAGE.md',
             '$eventsByRound = $largeSchedule->getEventsByRound();',
             <<<'PHP'
@@ -1852,7 +1851,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                         ++$visited;
                     }
                 }
-                assert($visited === 120);
+                assert($visited === 120 * 120);
                 $visited = 0;
                 foreach ($largeSchedule as $outer) {
                     foreach ($largeSchedule->getEvents() as $inner) {

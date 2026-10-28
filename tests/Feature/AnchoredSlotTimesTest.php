@@ -245,7 +245,7 @@ describe('Slot times computed from the anchor', function (): void {
         foreach ([...ANCHORED_ZONES, 'Australia/Lord_Howe', 'America/Sao_Paulo'] as $zoneName) {
             $zone = new DateTimeZone($zoneName);
             for ($day = 0; $day < 731; ++$day) {
-                $date = (new DateTimeImmutable('2027-01-01', $zone))->modify("+{$day} days")->format('Y-m-d');
+                $date = new DateTimeImmutable('2027-01-01', $zone)->modify("+{$day} days")->format('Y-m-d');
                 $dayOfMonth = (int) substr($date, 8);
 
                 // One interval of each kind from every day, taken in turn
@@ -325,7 +325,7 @@ describe('Slot times computed from the anchor', function (): void {
             ->and($lordHowe->getSlotTime(12)->format('j M Y H:i'))->toBe('3 May 2027 15:15');
 
         // A start that is the second 01:30 is kept as the instant it is
-        $second = (new DateTimeImmutable('2026-10-25 01:30', new DateTimeZone('UTC')))->setTimezone($london);
+        $second = new DateTimeImmutable('2026-10-25 01:30', new DateTimeZone('UTC'))->setTimezone($london);
         $fromSecond = new TimelineDefinition($second, new DateInterval('P7D'), slotsPerRound: 2, slotInterval: new DateInterval('PT30M'));
         expect($fromSecond->getSlotTime(1)->format('j M H:i'))->toBe('25 Oct 01:30')
             ->and($fromSecond->getSlotTime(1, 1)->format('j M H:i'))->toBe('25 Oct 02:00')
@@ -408,13 +408,13 @@ describe('Slot times computed from the anchor', function (): void {
 
         $third = new DateInterval('PT0S');
         $third->f = 0.29;
-        expect((new TimelineDefinition($start, $third))->getSlotTime(4)->format('s.u'))->toBe('00.870000');
+        expect(new TimelineDefinition($start, $third)->getSlotTime(4)->format('s.u'))->toBe('00.870000');
 
         // The microseconds of many steps are more than PHP's integers hold
         // long before the seconds are: they are carried, not wrapped round
         $quarter = new DateInterval('PT0S');
         $quarter->f = 0.25;
-        $far = (new TimelineDefinition($start, $quarter))->getSlotTime(4_000_000_000_000_000_001);
+        $far = new TimelineDefinition($start, $quarter)->getSlotTime(4_000_000_000_000_000_001);
         expect($far->getTimestamp() - $start->getTimestamp())->toBe(1_000_000_000_000_000_000);
 
         // And a fraction counts towards the furthest time there is
@@ -422,7 +422,7 @@ describe('Slot times computed from the anchor', function (): void {
         $second->f = 0.999999;
         $reason = null;
         try {
-            (new TimelineDefinition($start, $second))->getSlotTime(PHP_INT_MAX);
+            new TimelineDefinition($start, $second)->getSlotTime(PHP_INT_MAX);
         } catch (InvalidConfigurationException $exception) {
             $reason = $exception->getReason();
         }
@@ -525,7 +525,7 @@ describe('Slot times computed from the anchor', function (): void {
         // PT168H from the constructor is 168 elapsed hours.
         $utc = new DateTimeZone('UTC');
         $london = new DateTimeZone('Europe/London');
-        $week = (new DateTimeImmutable('2026-01-01', $utc))->diff(new DateTimeImmutable('2026-01-08', $utc));
+        $week = new DateTimeImmutable('2026-01-01', $utc)->diff(new DateTimeImmutable('2026-01-08', $utc));
         $week->d = 0;
         $week->h = 168;
 

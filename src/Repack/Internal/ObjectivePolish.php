@@ -291,13 +291,7 @@ final class ObjectivePolish
      */
     private function admitsOneOf(array $unplaced, int $session, int $slot): bool
     {
-        foreach ($unplaced as $eventIndex) {
-            if ($this->fits($eventIndex, $session, $slot)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($unplaced, fn($eventIndex) => $this->fits($eventIndex, $session, $slot));
     }
 
     private function put(int $eventIndex, int $session, int $slot): void

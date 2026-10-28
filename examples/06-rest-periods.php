@@ -37,7 +37,7 @@ $twoLegs = new RoundRobinOptions(legs: 2);
 $fiveRounds = ConstraintSet::create()
     ->add(new MinimumRestPeriodsConstraint(5))
     ->build();
-$schedule = (new RoundRobinScheduler($fiveRounds))->schedule($participants, $twoLegs);
+$schedule = new RoundRobinScheduler($fiveRounds)->schedule($participants, $twoLegs);
 
 // Asking for 6 rounds between meetings cannot be met by this structure. A
 // constraint is a hard filter, so generation fails loudly instead of
@@ -48,7 +48,7 @@ $sixRounds = ConstraintSet::create()
 
 $failure = null;
 try {
-    (new RoundRobinScheduler($sixRounds))->schedule($participants, $twoLegs);
+    new RoundRobinScheduler($sixRounds)->schedule($participants, $twoLegs);
 } catch (IncompleteScheduleException $exception) {
     $failure = $exception;
 }

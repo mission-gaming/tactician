@@ -261,7 +261,7 @@ it('keeps the scheduled workflow off pull requests and pushes', function () use 
 
     // The supported versions run the whole gate and must pass; a failure is
     // tolerated on the next PHP version only
-    expect($jobs['unlocked'])->toContain("        php-version: ['8.3', '8.4', '8.5']\n")
+    expect($jobs['unlocked'])->toContain("        php-version: ['8.4', '8.5']\n")
         ->toContain("      fail-fast: false\n")
         ->toContain("      run: composer ci\n");
     Assert::assertStringNotContainsString('continue-on-error', $jobs['unlocked'], 'The `unlocked` job is allowed to fail');
@@ -761,7 +761,7 @@ it('audits dependencies in a job of its own that is not a required check, and ke
 
 // Branch protection requires these checks by name; renaming one leaves the
 // required check waiting forever on every pull request.
-it('reports the checks named PHP 8.3, PHP 8.4, PHP 8.5 and Coverage', function () use ($root): void {
+it('reports the checks named PHP 8.4, PHP 8.5 and Coverage', function () use ($root): void {
     $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
 
     if (preg_match('/^  test:\n((?:(?:    .*)?\n)*)/m', $workflow, $test) !== 1) {
@@ -771,7 +771,7 @@ it('reports the checks named PHP 8.3, PHP 8.4, PHP 8.5 and Coverage', function (
         Assert::fail('ci.yml has no `coverage` job');
     }
 
-    expect($test[1])->toContain("        php-version: ['8.3', '8.4', '8.5']\n")
+    expect($test[1])->toContain("        php-version: ['8.4', '8.5']\n")
         ->toContain('    name: PHP ${{ matrix.php-version }}' . "\n")
         // One version failing must not cancel the others' checks
         ->toContain("      fail-fast: false\n");

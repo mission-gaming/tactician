@@ -26,7 +26,7 @@ describe('Withdrawal', function (): void {
     });
 
     it('holds round 0 for a participant who withdrew before the first round was recorded', function (): void {
-        expect((new Withdrawal(new Participant('ines', 'Ines'), 0))->getAfterRound())->toBe(0);
+        expect(new Withdrawal(new Participant('ines', 'Ines'), 0)->getAfterRound())->toBe(0);
     });
 
     it('refuses a round below 0', function (int $round): void {
@@ -263,7 +263,7 @@ describe('StageState withdrawals', function (): void {
                 [($test->round)(1), ($test->round)(2)],
                 [],
                 [],
-                [(new Adjustment('jun', 1.0))->madeAfterRound(3)]
+                [new Adjustment('jun', 1.0)->madeAfterRound(3)]
             ),
             ['participant' => 'jun', 'after_round' => 3, 'last_round' => 2],
         ],
@@ -278,7 +278,7 @@ describe('StageState withdrawals', function (): void {
                 [($this->round)(1), ($this->round)(2)],
                 [],
                 [],
-                [(new Adjustment('ines', -1.0))->madeAfterRound(1), new Adjustment('jun', 1.0)]
+                [new Adjustment('ines', -1.0)->madeAfterRound(1), new Adjustment('jun', 1.0)]
             );
             $this->fail('The history was accepted.');
         } catch (InvalidConfigurationException $exception) {

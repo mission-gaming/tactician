@@ -41,7 +41,7 @@ describe('ShortestGridFinder', function (): void {
     it('finds the fewest sessions that place every event, and says when counting proves it', function (): void {
         // Six participants meet once each: five events each, so no grid of
         // fewer than five one-slot sessions can hold them, and five do
-        $result = (new ShortestGridFinder())->find(
+        $result = new ShortestGridFinder()->find(
             everyPairingOnce(6),
             [],
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 1, capacityPerSlot: 3),
@@ -62,7 +62,7 @@ describe('ShortestGridFinder', function (): void {
         // Three participants meet once each. Each has two events, so
         // counting allows two sessions of one slot; but any two of the
         // three events share a participant, so each needs a session
-        $result = (new ShortestGridFinder())->find(
+        $result = new ShortestGridFinder()->find(
             everyPairingOnce(3),
             [],
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 1, capacityPerSlot: null),
@@ -76,7 +76,7 @@ describe('ShortestGridFinder', function (): void {
     });
 
     it('says so when no number it may try places everything, and hands back the outcome on the largest grid', function (): void {
-        $result = (new ShortestGridFinder())->find(
+        $result = new ShortestGridFinder()->find(
             everyPairingOnce(3),
             [],
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 1, capacityPerSlot: null),
@@ -93,7 +93,7 @@ describe('ShortestGridFinder', function (): void {
     });
 
     it('has no outcome when every number was ruled out without a repack', function (): void {
-        $result = (new ShortestGridFinder())->find(
+        $result = new ShortestGridFinder()->find(
             everyPairingOnce(4),
             [],
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 1, capacityPerSlot: 2),
@@ -110,7 +110,7 @@ describe('ShortestGridFinder', function (): void {
         // Each case is made when the test runs: the events, the pins, the
         // capacity of a slot, the numbers ruled out and the number found
         [$movable, $pinned, $capacity, $ruledOut, $found] = $case;
-        $result = (new ShortestGridFinder())->find(
+        $result = new ShortestGridFinder()->find(
             $movable,
             $pinned,
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 1, capacityPerSlot: $capacity),
@@ -152,7 +152,7 @@ describe('ShortestGridFinder', function (): void {
 
     it('starts at the smallest number it is given and asks for a grid once for each number, in ascending order', function (): void {
         $asked = [];
-        $result = (new ShortestGridFinder())->find(
+        $result = new ShortestGridFinder()->find(
             everyPairingOnce(4),
             [],
             static function (int $sessions) use (&$asked): SessionGrid {
@@ -169,7 +169,7 @@ describe('ShortestGridFinder', function (): void {
             ->and($result->getRuledOut())->toBe([2]);
 
         // A larger smallest number is where it starts, although fewer would do
-        $late = (new ShortestGridFinder())->find(
+        $late = new ShortestGridFinder()->find(
             everyPairingOnce(4),
             [],
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 1, capacityPerSlot: 2),
@@ -184,7 +184,7 @@ describe('ShortestGridFinder', function (): void {
     it('takes whatever grid the function makes of a number: slots and capacity are the caller\'s', function (): void {
         // Sessions of two slots: six participants need five positions, so
         // three sessions
-        $result = (new ShortestGridFinder())->find(
+        $result = new ShortestGridFinder()->find(
             everyPairingOnce(6),
             [],
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 2, capacityPerSlot: 3),
@@ -206,7 +206,7 @@ describe('ShortestGridFinder', function (): void {
         $gridOf = static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 1);
         $options = new RepackOptions(throwOnViolations: true, objectives: [RepackObjective::LeastChurn]);
 
-        $result = (new ShortestGridFinder())->find($movable, [], $gridOf, 5, 1, $options);
+        $result = new ShortestGridFinder()->find($movable, [], $gridOf, 5, 1, $options);
 
         // One session cannot hold two events of a; two can. On two sessions
         // m1's position is off the grid, so it has moved
@@ -214,12 +214,12 @@ describe('ShortestGridFinder', function (): void {
             ->and($result->getOutcome()?->getMovedEventIds())->toBe(['m1'])
             ->and($result->getOutcome()?->getAssignmentFor('m2')?->getSession())->toBe(0);
 
-        $fromThree = (new ShortestGridFinder())->find($movable, [], $gridOf, 5, 3, $options);
+        $fromThree = new ShortestGridFinder()->find($movable, [], $gridOf, 5, 3, $options);
         expect($fromThree->getOutcome()?->getMovedEventIds())->toBe([]);
     });
 
     it('gives the same result for the same events, function and options', function (): void {
-        $find = static fn(): ShortestGridResult => (new ShortestGridFinder())->find(
+        $find = static fn(): ShortestGridResult => new ShortestGridFinder()->find(
             everyPairingOnce(7),
             [],
             static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, 2, capacityPerSlot: 3),
@@ -243,7 +243,7 @@ describe('ShortestGridFinder', function (): void {
         try {
             // Through reflection, because one of the functions breaks the
             // declared type of the argument on purpose
-            (new ReflectionMethod(ShortestGridFinder::class, 'find'))->invoke(new ShortestGridFinder(), everyPairingOnce(4), [], $gridOf, $max, $min);
+            new ReflectionMethod(ShortestGridFinder::class, 'find')->invoke(new ShortestGridFinder(), everyPairingOnce(4), [], $gridOf, $max, $min);
             $thrown = null;
         } catch (InvalidConfigurationException $exception) {
             $thrown = $exception->getReason();
@@ -277,9 +277,9 @@ describe('ShortestGridResult', function (): void {
         $grid = SessionGrid::shapeOnly(4);
         $outcome = new RepackOutcome([], [], []);
 
-        expect((new ShortestGridResult(4, $grid, $outcome, [4 => 0], [1, 2, 3]))->isProvenShortest())->toBeTrue()
-            ->and((new ShortestGridResult(4, $grid, $outcome, [3 => 1, 4 => 0], [1, 2]))->isProvenShortest())->toBeFalse()
-            ->and((new ShortestGridResult(null, null, $outcome, [4 => 1], [1, 2, 3]))->isProvenShortest())->toBeFalse()
-            ->and((new ShortestGridResult(null, null, null, [], [1, 2, 3]))->isFound())->toBeFalse();
+        expect(new ShortestGridResult(4, $grid, $outcome, [4 => 0], [1, 2, 3])->isProvenShortest())->toBeTrue()
+            ->and(new ShortestGridResult(4, $grid, $outcome, [3 => 1, 4 => 0], [1, 2])->isProvenShortest())->toBeFalse()
+            ->and(new ShortestGridResult(null, null, $outcome, [4 => 1], [1, 2, 3])->isProvenShortest())->toBeFalse()
+            ->and(new ShortestGridResult(null, null, null, [], [1, 2, 3])->isFound())->toBeFalse();
     });
 });

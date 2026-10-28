@@ -12,7 +12,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-class CallableConstraint implements ConstraintInterface
+final class CallableConstraint implements ConstraintInterface
 {
     /**
      * @param callable(Event, SchedulingContext): bool $predicate Returns true to accept the candidate

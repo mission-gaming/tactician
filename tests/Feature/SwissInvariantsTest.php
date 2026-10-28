@@ -10,6 +10,9 @@ use MissionGaming\Tactician\Exceptions\JsonConversionException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Stage\StageEngineInterface;
+use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
 use MissionGaming\Tactician\Standings\RankingStrategy;
@@ -123,29 +126,44 @@ function swissInvariantsNoByeValue(): RankingStrategy
 }
 
 /**
- * An engine that pairs as the real one does and then changes the round.
+ * An engine that pairs as the real one does and then changes the round: an
+ * implementation of the engine interface that hands every call to a Swiss
+ * engine, and changes what pairNextRound() returns.
  *
  * @param Closure(RoundPairing, StageState): RoundPairing $tamper
  *
  * @throws InvalidConfigurationException Not thrown: the engine has no seed
  */
-function swissInvariantsTamperedEngine(int $rounds, Closure $tamper): SwissPairingEngine
+function swissInvariantsTamperedEngine(int $rounds, Closure $tamper): StageEngineInterface
 {
-    return new readonly class ($rounds, $tamper) extends SwissPairingEngine {
+    return new readonly class (new SwissPairingEngine(plannedRounds: $rounds), $tamper) implements StageEngineInterface {
         /**
          * @param Closure(RoundPairing, StageState): RoundPairing $tamper
-         *
-         * @throws InvalidConfigurationException Not thrown: the engine has no seed
          */
-        public function __construct(int $rounds, private Closure $tamper)
+        public function __construct(private SwissPairingEngine $engine, private Closure $tamper) {}
+
+        #[Override]
+        public function getPlan(StageState $state): StagePlan
         {
-            parent::__construct(plannedRounds: $rounds);
+            return $this->engine->getPlan($state);
         }
 
         #[Override]
         public function pairNextRound(StageState $state): RoundPairing
         {
-            return ($this->tamper)(parent::pairNextRound($state), $state);
+            return ($this->tamper)($this->engine->pairNextRound($state), $state);
+        }
+
+        #[Override]
+        public function isComplete(StageState $state): bool
+        {
+            return $this->engine->isComplete($state);
+        }
+
+        #[Override]
+        public function getOutcome(StageState $state): ?StageOutcome
+        {
+            return $this->engine->getOutcome($state);
         }
     };
 }

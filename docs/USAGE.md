@@ -519,8 +519,8 @@ tried, and a Swiss round search skips the branches that hold no pairing.
 Any other set gets the same results without the shortcuts, which on those
 two failure paths takes longer: a set that holds a `CallableConstraint`, a
 `MetadataConstraint` or a `ConsecutiveRoleConstraint` (each holds a
-callable, also when one of its factories built it), a class or subclass of
-your own, or a set that is a subclass of `ConstraintSet`.
+callable, also when one of its factories built it), or a class of your
+own.
 
 ### Role-Based Constraints
 
@@ -1199,9 +1199,8 @@ the order depends on what the search of roles can know about them:
   the schedule as under `RoundParityRoleAssignment`. A schedule with
   balanced roles is therefore found wherever `BalancedRoleAssignment` finds
   one, and a fall-back comes after the whole search, bounds included.
-- **Constraints of your own** (a closure, a `MetadataConstraint`, a class or
-  subclass of yours, a subclass of `ConstraintSet`, or any of them beside
-  the library's own). The scheduler cannot know what such a constraint
+- **Constraints of your own** (a closure, a `MetadataConstraint`, a class of
+  yours, or any of them beside the library's own). The scheduler cannot know what such a constraint
   reads, and the search goes back one event at a time for it, which can
   spend its whole allowance without a result. So the roles the generator
   proposes are tried before that search:
@@ -1279,8 +1278,8 @@ layout is then not searched again. A limit of three in a row written as a
 closure, over two shuffled legs of 32 participants (strategy seed 1),
 falls back after 40,839 more questions than round parity asks, in 2.8
 seconds for 0.9; the library's `ConsecutiveRoleConstraint` in a subclass
-of `ConstraintSet`, four shuffled legs of 32 (seed 7), in 7.3 seconds
-for 2.6.
+of `ConstraintSet` (which 0.3.0 made final), four shuffled legs of 32
+(seed 7), in 7.3 seconds for 2.6.
 
 The roles of a fall-back are those of round parity, which
 [Legs after the first](#legs-after-the-first) and the table of
@@ -3043,15 +3042,11 @@ describe, and these limits follow from that:
   `Randomizer` where the stamp is to cover the draw.
 - A `RankingStrategy` of your own is stated as "custom". The engine tells it
   from every `WinDrawLossRanking` scale and not from another strategy of
-  your own. A subclass of `StandingsCalculator` is stated as "custom" too,
-  whatever ranking strategy and tiebreakers it was built with: it may order
-  the table by rules of its own, so it differs from the library's
-  calculator and not from another subclass. A tiebreaker is stated by its
-  `getName()`, so one that orders differently needs a name of its own,
-  including a subclass of one of the library's.
-- A subclass of `SwissPairingEngine` (the class is not final) does not have
-  the fingerprint of the engine it extends, because it may pair differently.
-  Two subclasses have the same one unless they override `getFingerprint()`.
+  your own. A tiebreaker is stated by its `getName()`, so one of your own
+  that orders differently from one of the library's needs a name of its
+  own.
+- The engines are final classes. An engine of your own implements the
+  engine interfaces and gives a fingerprint of its own (see below).
 
 **Treat the string as opaque.** Compare it for equality with the one an
 engine gives. Do not parse it, write one by hand or rely on how it is
@@ -8937,10 +8932,12 @@ convenience, not a memory saving. Schedules are small in practice (a
 it is a question of how your application stores and pages events, not of
 how you iterate.
 
-A `Schedule` is its own iterator and has one cursor. A `foreach` over a
-schedule inside another `foreach` over the same object moves that cursor
-to the end, so the outer loop stops after its first event. To compare every
-event with every other, loop over `getEvents()`, which is a plain array.
+A `Schedule` keeps no position of an iteration: it is an
+`IteratorAggregate`, and every `foreach` gets an iterator of its own
+(`getIterator()`). Loops over the same schedule may therefore nest, and
+each visits every event: comparing every event with every other is two
+`foreach` loops over the schedule, or over `getEvents()`, which is a plain
+array.
 
 ```php
 use MissionGaming\Tactician\DTO\Participant;
@@ -9000,13 +8997,12 @@ is removed in `1.0.0`. Until then, each one is marked in two ways:
 
 - The `@deprecated` docblock tag, which an IDE and a static analyser such as
   PHPStan report where you call the method, on every PHP version.
-- PHP's `#[\Deprecated]` attribute. From PHP 8.4, a call emits an
-  `E_USER_DEPRECATED` notice that names the method and what to use instead.
-  PHP 8.3 does not act on the attribute, so a call there emits nothing.
+- PHP's `#[\Deprecated]` attribute. A call emits an `E_USER_DEPRECATED`
+  notice that names the method and what to use instead.
 
 An application that turns every notice into an exception will therefore see a
-call to one of these methods fail on PHP 8.4 or later where it passes on
-PHP 8.3. Nothing in the library calls a deprecated method.
+call to one of these methods fail. Nothing in the library calls a deprecated
+method.
 
 The methods are all deprecated since `0.2.2`. Namespaces are relative to
 `MissionGaming\Tactician`. One constant and the metadata key it names are
@@ -9113,8 +9109,8 @@ the library says it when it reads it:
   the tie as the engine settled it, and the notice came from the
   `getOutcome()` call that built the outcome. It is one notice for the
   call, however many ties of the bracket the key decided.
-- It is emitted on every PHP version, PHP 8.3 included, because it does not
-  come from the attribute.
+- It does not come from the attribute: the library raises it itself, with
+  `trigger_error()`.
 - A key that is not read emits nothing: on a result of a tie that its
   results decide (where it never was read), in a result that is only
   stored, loaded or counted in a table, and on a tie that carries a decider.

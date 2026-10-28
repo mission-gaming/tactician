@@ -26,7 +26,7 @@ use MissionGaming\Tactician\Stage\StagePlan;
  *
  * @experimental
  */
-readonly class SchedulingContext
+final readonly class SchedulingContext
 {
     /**
      * The lookup maps over $allEvents. A mutable object on purpose: the

@@ -183,7 +183,7 @@ describe('The Repack API reference in docs/USAGE.md', function (): void {
         $prose = substr($usage, $start, (int) strpos($usage, "\n" . REPACK_REFERENCE_HEADING . "\n") - $start);
 
         foreach (publicRepackTypes() as $type) {
-            $name = (new ReflectionClass($type))->getShortName();
+            $name = new ReflectionClass($type)->getShortName();
             expect(str_contains($prose, $name))->toBeTrue("{$name} is in the reference and nowhere in the section's prose.");
         }
     });

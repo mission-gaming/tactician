@@ -24,7 +24,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class MinimumRestPeriodsConstraint implements ConstraintInterface
+final readonly class MinimumRestPeriodsConstraint implements ConstraintInterface
 {
     /**
      * @param int $minRounds The smallest difference allowed between the round numbers of two
@@ -86,18 +86,8 @@ readonly class MinimumRestPeriodsConstraint implements ConstraintInterface
     {
         $lastRound = null;
 
-        // A context of exactly this class returns the pair's meetings from
-        // its index. A subclass may answer getExistingEvents() its own way,
-        // so for one the events it returns are scanned as before.
-        $meetings = $context::class === SchedulingContext::class
-            ? $context->getEventsBetween($participant1, $participant2)
-            : array_filter(
-                $context->getExistingEvents(),
-                static fn(Event $existingEvent): bool => $existingEvent->hasParticipant($participant1)
-                    && $existingEvent->hasParticipant($participant2)
-            );
-
-        foreach ($meetings as $meeting) {
+        // The context returns the pair's meetings from its index.
+        foreach ($context->getEventsBetween($participant1, $participant2) as $meeting) {
             $roundNumber = $meeting->getRound()?->getNumber();
             if ($roundNumber !== null && ($lastRound === null || $roundNumber > $lastRound)) {
                 $lastRound = $roundNumber;

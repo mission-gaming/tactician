@@ -46,7 +46,7 @@ function overlapLocalHour(): DateInterval
 {
     $utc = new DateTimeZone('UTC');
 
-    return (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+    return new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
 }
 
 describe('A timeline whose rounds overlap', function (): void {
@@ -247,7 +247,7 @@ describe('A timeline with two slots at one time', function (): void {
             overlapLocalHour()
         );
 
-        expect((new TimelineAssigner())->assignRound(new RoundPairing(2, null, []), $timeline))->toBe([]);
+        expect(new TimelineAssigner()->assignRound(new RoundPairing(2, null, []), $timeline))->toBe([]);
     });
 });
 

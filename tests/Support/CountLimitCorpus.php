@@ -129,7 +129,7 @@ final class CountLimitCorpus
         $instant = static fn(array $with): SessionGrid => SessionGrid::fromArray(
             $with + ['sessions' => ['2026-08-12 20:00'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT1S']
         );
-        $repack = static fn(SessionGrid $grid): mixed => (new ScheduleRepacker())->repack(new RepackRequest(
+        $repack = static fn(SessionGrid $grid): mixed => new ScheduleRepacker()->repack(new RepackRequest(
             [new MovableEvent('1', $a, $b), new MovableEvent('2', $a, $c), new MovableEvent('3', $b, $c)],
             [],
             $grid
@@ -153,18 +153,18 @@ final class CountLimitCorpus
             ['timeline: the time of the largest round number, weekly', $range, static fn() => $timeline([])->getSlotTime($huge)],
             ['timeline: the time of the largest round number, rounds a second apart', $range, static fn() => $timeline(['round_interval' => 'PT1S'])->getSlotTime($huge)],
             ['timeline: the time of round one million, weekly', 'loaded', static fn() => $timeline([])->getSlotTime(1_000_000)],
-            ['timeline: the time of the largest round number, a relative week apart', $range, static fn() => (new TimelineDefinition($start, $relative('1 week')))->getSlotTime($huge)],
-            ['timeline: the time of round 100,002, a relative week apart', $range, static fn() => (new TimelineDefinition($start, $relative('1 week')))->getSlotTime(100_002)],
-            ['timeline: the time of round 100,001, a relative week apart', 'loaded', static fn() => (new TimelineDefinition($start, $relative('1 week')))->getSlotTime(100_001)],
+            ['timeline: the time of the largest round number, a relative week apart', $range, static fn() => new TimelineDefinition($start, $relative('1 week'))->getSlotTime($huge)],
+            ['timeline: the time of round 100,002, a relative week apart', $range, static fn() => new TimelineDefinition($start, $relative('1 week'))->getSlotTime(100_002)],
+            ['timeline: the time of round 100,001, a relative week apart', 'loaded', static fn() => new TimelineDefinition($start, $relative('1 week'))->getSlotTime(100_001)],
             // Read in one pass to the limit and past it: here and not in the
             // test process, because a series computed step by step from its
             // anchor again would take hours to get there
             ['series: a relative second read to the limit of steps', 'loaded', static fn() => iterator_to_array(IntervalArithmetic::series($start, $relative('1 second'), 100_001))],
             ['series: a relative second read one step past the limit', $range, static fn() => iterator_to_array(IntervalArithmetic::series($start, $relative('1 second'), 100_002))],
-            ['assign: a schedule with an event in the largest round number, weekly', $range, static fn() => (new TimelineAssigner())->assign($inRound($huge), $timeline([]))],
-            ['assign: a schedule with an event in the largest round number, a relative week apart', $range, static fn() => (new TimelineAssigner())->assign($inRound($huge), new TimelineDefinition($start, $relative('1 week')))],
-            ['assignRound: a pairing of the largest round number, weekly', $range, static fn() => (new TimelineAssigner())->assignRound($pairing($huge), $timeline([]))],
-            ['assignRound: a pairing of the largest round number, a relative week apart', $range, static fn() => (new TimelineAssigner())->assignRound($pairing($huge), new TimelineDefinition($start, $relative('1 week')))],
+            ['assign: a schedule with an event in the largest round number, weekly', $range, static fn() => new TimelineAssigner()->assign($inRound($huge), $timeline([]))],
+            ['assign: a schedule with an event in the largest round number, a relative week apart', $range, static fn() => new TimelineAssigner()->assign($inRound($huge), new TimelineDefinition($start, $relative('1 week')))],
+            ['assignRound: a pairing of the largest round number, weekly', $range, static fn() => new TimelineAssigner()->assignRound($pairing($huge), $timeline([]))],
+            ['assignRound: a pairing of the largest round number, a relative week apart', $range, static fn() => new TimelineAssigner()->assignRound($pairing($huge), new TimelineDefinition($start, $relative('1 week')))],
 
             // --- positions of a grid: at most 100,000
             ['grid: session_count at the largest integer', $range, static fn() => $shape(['session_count' => $huge])],

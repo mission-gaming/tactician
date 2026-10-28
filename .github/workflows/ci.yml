@@ -49,8 +49,8 @@ jobs:
   # code blocks of README.md and docs/USAGE.md
   # (tests/Feature/DocumentationSnippetsTest.php) and checks other Markdown
   # files against the repository, so a documentation-only change can break
-  # it. Branch protection waits for the checks these jobs report (PHP 8.3,
-  # PHP 8.4, PHP 8.5 and Coverage), so they must never be skipped by a
+  # it. Branch protection waits for the checks these jobs report (PHP 8.4,
+  # PHP 8.5 and Coverage), so they must never be skipped by a
   # condition, a draft pull request included: GitHub reports a skipped job as
   # passed, and a required check is satisfied by that result. A check that
   # passed without running must never be what lets a pull request merge.
@@ -60,7 +60,7 @@ jobs:
 
     strategy:
       matrix:
-        php-version: ['8.3', '8.4', '8.5']
+        php-version: ['8.4', '8.5']
       fail-fast: false
 
     name: PHP ${{ matrix.php-version }}

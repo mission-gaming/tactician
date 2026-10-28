@@ -3,9 +3,13 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintInterface;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
@@ -16,6 +20,7 @@ use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use Random\Engine\Mt19937;
@@ -64,7 +69,7 @@ describe('RoundRobinOptions', function (): void {
         expect($options->strategy)->toBeInstanceOf(ShuffledLegStrategy::class)
             ->and($options->strategy instanceof ShuffledLegStrategy ? $options->strategy->seed : null)->toBe($seed)
             ->and($options->toArray())->toBe(['format_version' => 1, ...$data])
-            ->and((new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: $seed)))->toArray())
+            ->and(new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: $seed))->toArray())
             ->toBe(['format_version' => 1, ...$data]);
     })->with([[0], [7], [-3], [PHP_INT_MAX]]);
 
@@ -158,9 +163,21 @@ describe('RoundRobinOptions', function (): void {
     // Custom strategies have no stable identifier, so serializing them
     // would produce config fromArray() could not rebuild
     it('refuses to serialize a custom strategy', function (): void {
-        $custom = new readonly class extends MirroredLegStrategy {};
+        $custom = new readonly class implements LegStrategyInterface {
+            #[Override]
+            public function planLegs(array $participants, int $legs, ConstraintSet $constraints): LegPlanContribution
+            {
+                return new MirroredLegStrategy()->planLegs($participants, $legs, $constraints);
+            }
 
-        (new RoundRobinOptions(legs: 2, strategy: $custom))->toArray();
+            #[Override]
+            public function generateEventForLeg(array $participants, int $leg, int $round, SchedulingContext $context): ?Event
+            {
+                return new MirroredLegStrategy()->generateEventForLeg($participants, $leg, $round, $context);
+            }
+        };
+
+        new RoundRobinOptions(legs: 2, strategy: $custom)->toArray();
     })->throws(InvalidConfigurationException::class);
 
     // Balanced where possible since 0.3.0. Options that name no role
@@ -170,14 +187,14 @@ describe('RoundRobinOptions', function (): void {
     // so). It is a class of its own and not the strict balanced one, which
     // is balanced or refused.
     it('defaults to the role assignment that is balanced where possible', function (): void {
-        expect((new RoundRobinOptions())->roleAssignment)->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
+        expect(new RoundRobinOptions()->roleAssignment)->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
         expect(RoundRobinOptions::fromArray([])->roleAssignment)->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
 
         // A payload written before the option existed
         expect(RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => true])->roleAssignment)
             ->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
         // And one written by toArray() for options that named none
-        expect(RoundRobinOptions::fromArray((new RoundRobinOptions(legs: 2))->toArray())->roleAssignment)
+        expect(RoundRobinOptions::fromArray(new RoundRobinOptions(legs: 2)->toArray())->roleAssignment)
             ->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
     });
 
@@ -195,7 +212,7 @@ describe('RoundRobinOptions', function (): void {
     it('serializes no role assignment when none was named', function (array $payload): void {
         $threeKeys = ['format_version' => 1, 'legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false];
 
-        expect((new RoundRobinOptions())->toArray())->toBe($threeKeys);
+        expect(new RoundRobinOptions()->toArray())->toBe($threeKeys);
         expect(RoundRobinOptions::fromArray($payload)->toArray())->toBe($threeKeys);
         expect(RoundRobinOptions::fromArray(RoundRobinOptions::fromArray($payload)->toArray())->toArray())->toBe($threeKeys);
     })->with([
@@ -211,7 +228,7 @@ describe('RoundRobinOptions', function (): void {
     it('keeps a role assignment that was named, the default included', function (): void {
         $pinned = ['format_version' => 1, 'legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'round_parity'];
 
-        expect((new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))->toArray())->toBe($pinned);
+        expect(new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())->toArray())->toBe($pinned);
         expect(RoundRobinOptions::fromArray(['role_assignment' => 'round_parity'])->toArray())->toBe($pinned);
         expect(RoundRobinOptions::fromArray($pinned)->toArray())->toBe($pinned);
         expect(RoundRobinOptions::fromArray($pinned)->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
@@ -231,7 +248,7 @@ describe('RoundRobinOptions', function (): void {
             ->toBe(['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced_where_possible']);
         expect(RoundRobinOptions::fromArray($named->toArray())->toArray())->toBe($named->toArray());
         expect(RoundRobinOptions::fromArray(['legs' => 2, 'role_assignment' => 'balanced_where_possible'])->toArray())->toBe($named->toArray());
-        expect((new RoundRobinOptions(legs: 2))->toArray())->not->toHaveKey('role_assignment');
+        expect(new RoundRobinOptions(legs: 2)->toArray())->not->toHaveKey('role_assignment');
     });
 
     it('rejects a role assignment identifier it does not know', function (mixed $identifier): void {
@@ -254,14 +271,14 @@ describe('RoundRobinOptions', function (): void {
             }
         };
 
-        expect(fn() => (new RoundRobinOptions(roleAssignment: $custom))->toArray())
+        expect(fn() => new RoundRobinOptions(roleAssignment: $custom)->toArray())
             ->toThrow(InvalidConfigurationException::class, 'Custom role assignments');
     });
 });
 
 describe('SwissOptions', function (): void {
     it('defaults to 3 rounds', function (): void {
-        expect((new SwissOptions())->rounds)->toBe(3);
+        expect(new SwissOptions()->rounds)->toBe(3);
     });
 
     it('rejects a non-positive round count', function (): void {
@@ -291,18 +308,18 @@ describe('Scheduler options type checks', function (): void {
     });
 
     it('rejects another algorithm options type on the round-robin scheduler', function (): void {
-        expect(fn() => (new RoundRobinScheduler())->schedule($this->participants, new SwissOptions()))
+        expect(fn() => new RoundRobinScheduler()->schedule($this->participants, new SwissOptions()))
             ->toThrow(InvalidConfigurationException::class, 'RoundRobinOptions');
     });
 
     it('rejects another algorithm options type on the Swiss scheduler', function (): void {
-        expect(fn() => (new SwissScheduler())->schedule($this->participants, new RoundRobinOptions()))
+        expect(fn() => new SwissScheduler()->schedule($this->participants, new RoundRobinOptions()))
             ->toThrow(InvalidConfigurationException::class, 'SwissOptions');
     });
 
     // The plan reflects the configured strategy, not a default
     it('builds the round-robin plan from the configured strategy', function (): void {
-        $plan = (new RoundRobinScheduler())->getPlan(
+        $plan = new RoundRobinScheduler()->getPlan(
             $this->participants,
             new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1))
         );
@@ -313,7 +330,7 @@ describe('Scheduler options type checks', function (): void {
     });
 
     it('builds the Swiss plan from the configured rounds', function (): void {
-        $plan = (new SwissScheduler())->getPlan($this->participants, new SwissOptions(rounds: 2));
+        $plan = new SwissScheduler()->getPlan($this->participants, new SwissOptions(rounds: 2));
 
         expect($plan->getTotalRounds())->toBe(2);
         expect($plan->getLegs())->toBeNull();

@@ -25,7 +25,7 @@ $participants = [
     new Participant('lions', 'Lightning Lions', 6, ['experience' => 'rookie', 'budget' => 'low']),
 ];
 
-$unconstrained = (new RoundRobinScheduler())->schedule($participants);
+$unconstrained = new RoundRobinScheduler()->schedule($participants);
 
 // 1. A closure. The scheduler calls it for every event it is about to place,
 //    with the event (participants and round) and the scheduling context
@@ -45,9 +45,9 @@ $veteransApartEarly = new CallableConstraint(
     'Veterans apart in rounds 1 to 3'
 );
 
-$withVeteransApart = (new RoundRobinScheduler(
+$withVeteransApart = new RoundRobinScheduler(
     ConstraintSet::create()->add($veteransApartEarly)->build()
-))->schedule($participants);
+)->schedule($participants);
 
 // 2. A class, for a rule with its own configuration that you want to name,
 //    reuse and unit test.
@@ -75,7 +75,7 @@ $budgetSeparation = new class ('high', 'low') implements ConstraintInterface {
 // round robin needs them, so generation fails and names the constraint.
 $budgetFailure = null;
 try {
-    (new RoundRobinScheduler(ConstraintSet::create()->add($budgetSeparation)->build()))->schedule($participants);
+    new RoundRobinScheduler(ConstraintSet::create()->add($budgetSeparation)->build())->schedule($participants);
 } catch (IncompleteScheduleException $exception) {
     $budgetFailure = $exception;
 }

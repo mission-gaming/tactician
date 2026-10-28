@@ -32,7 +32,7 @@ $participants = [
 //    mistake from another reads that, never the message.
 $invalid = null;
 try {
-    (new RoundRobinScheduler())->schedule([
+    new RoundRobinScheduler()->schedule([
         new Participant('alpha', 'Alpha'),
         new Participant('alpha', 'Alpha again'),
     ]);
@@ -48,7 +48,7 @@ $rejectEverything = ConstraintSet::create()
 
 $incomplete = null;
 try {
-    (new RoundRobinScheduler($rejectEverything))->schedule($participants);
+    new RoundRobinScheduler($rejectEverything)->schedule($participants);
 } catch (IncompleteScheduleException $exception) {
     $incomplete = $exception;
 }
@@ -66,7 +66,7 @@ $report = $incomplete?->getDiagnosticReport();
 //    InvalidInputException, which is not a scheduling failure and does not
 //    extend SchedulingException; the marker interface covers both.
 $attempts = [
-    'A schedule the constraints rule out' => static fn() => (new RoundRobinScheduler($rejectEverything))->schedule($participants),
+    'A schedule the constraints rule out' => static fn() => new RoundRobinScheduler($rejectEverything)->schedule($participants),
     'A round numbered zero' => static fn() => new Round(0),
 ];
 
@@ -80,7 +80,7 @@ foreach ($attempts as $what => $attempt) {
 }
 
 // With nothing in the way the same call simply returns the schedule
-$schedule = (new RoundRobinScheduler())->schedule($participants);
+$schedule = new RoundRobinScheduler()->schedule($participants);
 
 return Example::present(__FILE__, 'Error handling', 'What the library throws, and what the exceptions carry: an invalid request with its reason, constraints that leave no complete schedule, and the one catch that covers every library exception.', [
     'Duplicate participant ids' => $invalid,

@@ -9,7 +9,7 @@ describe('DateTimeString::statesAnInstant()', function (): void {
     // it. The instant is written out here, not taken from the code.
     it('accepts a string whose date is stated, and PHP reads it to the instant written', function (string $value, string $instant): void {
         expect(DateTimeString::statesAnInstant($value))->toBeTrue()
-            ->and((new DateTimeImmutable($value, new DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.uP'))->toBe($instant);
+            ->and(new DateTimeImmutable($value, new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.uP'))->toBe($instant);
     })->with([
         'a space, with seconds' => ['2026-08-01 19:00:00', '2026-08-01T19:00:00.000000+00:00'],
         'a space, without seconds' => ['2026-08-01 19:00', '2026-08-01T19:00:00.000000+00:00'],
@@ -192,7 +192,7 @@ describe('DateTimeString::statesAnInstant()', function (): void {
     // written. The documentation states these readings.
     it('rejects what PHP reads to another instant than the one written', function (string $value, string $phpReads): void {
         expect(DateTimeString::statesAnInstant($value))->toBeFalse()
-            ->and((new DateTimeImmutable($value, new DateTimeZone('UTC')))->format(DATE_ATOM))->toBe($phpReads);
+            ->and(new DateTimeImmutable($value, new DateTimeZone('UTC'))->format(DATE_ATOM))->toBe($phpReads);
     })->with([
         '30 February, read as 2 March' => ['2026-02-30 20:00', '2026-03-02T20:00:00+00:00'],
         'hour 24, read as the next day' => ['2026-08-01 24:00', '2026-08-02T00:00:00+00:00'],
@@ -211,12 +211,12 @@ describe('DateTimeString::statesAnInstant()', function (): void {
         foreach ([1999, 2000, 2004, 2015, 2020, 2021, 2024, 2026, 2027, 2032] as $year) {
             for ($week = 1; $week <= 53; ++$week) {
                 for ($day = 1; $day <= 7; ++$day) {
-                    $expected = (new DateTimeImmutable('@0'))->setTimezone($utc)->setISODate($year, $week, $day)->setTime(19, 0)->format('Y-m-d H:i:s');
+                    $expected = new DateTimeImmutable('@0')->setTimezone($utc)->setISODate($year, $week, $day)->setTime(19, 0)->format('Y-m-d H:i:s');
                     foreach (['%04d-W%02d-%dT19:00', '%04dW%02d%dT19:00'] as $pattern) {
                         $value = sprintf($pattern, $year, $week, $day);
                         if (!DateTimeString::statesAnInstant($value)) {
                             $wrong[] = "{$value} was rejected";
-                        } elseif ((new DateTimeImmutable($value, $utc))->format('Y-m-d H:i:s') !== $expected) {
+                        } elseif (new DateTimeImmutable($value, $utc)->format('Y-m-d H:i:s') !== $expected) {
                             $wrong[] = "{$value} was not read as {$expected}";
                         }
                     }
@@ -234,7 +234,7 @@ describe('DateTimeString::statesAnInstant()', function (): void {
         $names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         $wrong = [];
         foreach ([2024, 2026] as $year) {
-            $date = (new DateTimeImmutable('@0'))->setDate($year, 1, 1);
+            $date = new DateTimeImmutable('@0')->setDate($year, 1, 1);
             while ((int) $date->format('Y') === $year) {
                 foreach ($names as $number => $name) {
                     $right = $number === (int) $date->format('w');
@@ -283,7 +283,7 @@ describe('DateTimeString::timezoneName()', function (): void {
         expect(DateTimeString::timezoneName($value))->toBe($name);
 
         if ($name !== null) {
-            expect((new DateTimeImmutable($value, new DateTimeZone('Asia/Tokyo')))->getTimezone()->getName())->toBe($name);
+            expect(new DateTimeImmutable($value, new DateTimeZone('Asia/Tokyo'))->getTimezone()->getName())->toBe($name);
         }
     })->with([
         'no zone' => ['2026-02-30 10:00', null],

@@ -66,7 +66,7 @@ function identifierFallenBackSchedule(): Schedule
         )->build();
 
         try {
-            $schedule = (new RoundRobinScheduler($never))->schedule(identifierField(4));
+            $schedule = new RoundRobinScheduler($never)->schedule(identifierField(4));
         } catch (IncompleteScheduleException) {
             continue;
         }
@@ -111,19 +111,19 @@ describe('Algorithm', function (): void {
     it('has a case for the identifier of every plan of the library', function (Closure $plan, Algorithm $algorithm): void {
         expect(Algorithm::from($plan()->getAlgorithm()))->toBe($algorithm);
     })->with([
-        'round robin' => [fn() => (new RoundRobinScheduler())->getPlan(identifierField(4)), Algorithm::RoundRobin],
-        'Swiss, whole schedule' => [fn() => (new SwissScheduler())->getPlan(identifierField(4)), Algorithm::Swiss],
-        'Swiss engine' => [fn() => (new SwissPairingEngine())->getPlan(StageState::start(identifierField(4))), Algorithm::Swiss],
+        'round robin' => [fn() => new RoundRobinScheduler()->getPlan(identifierField(4)), Algorithm::RoundRobin],
+        'Swiss, whole schedule' => [fn() => new SwissScheduler()->getPlan(identifierField(4)), Algorithm::Swiss],
+        'Swiss engine' => [fn() => new SwissPairingEngine()->getPlan(StageState::start(identifierField(4))), Algorithm::Swiss],
         'pot draw' => [
-            fn() => (new PotDrawScheduler())->getPlan(identifierField(8), new PotDrawOptions(pots: 2)),
+            fn() => new PotDrawScheduler()->getPlan(identifierField(8), new PotDrawOptions(pots: 2)),
             Algorithm::PotDraw,
         ],
         'single elimination' => [
-            fn() => (new SingleEliminationEngine())->getPlan(StageState::start(identifierField(4))),
+            fn() => new SingleEliminationEngine()->getPlan(StageState::start(identifierField(4))),
             Algorithm::SingleElimination,
         ],
         'double elimination' => [
-            fn() => (new DoubleEliminationEngine())->getPlan(StageState::start(identifierField(4))),
+            fn() => new DoubleEliminationEngine()->getPlan(StageState::start(identifierField(4))),
             Algorithm::DoubleElimination,
         ],
     ]);
@@ -131,10 +131,10 @@ describe('Algorithm', function (): void {
     it('is the value a generated schedule records under its algorithm key', function (Closure $schedule, Algorithm $algorithm): void {
         expect($schedule()->getMetadataValue(MetadataKey::ALGORITHM))->toBe($algorithm->value);
     })->with([
-        'round robin' => [fn() => (new RoundRobinScheduler())->schedule(identifierField(4)), Algorithm::RoundRobin],
-        'Swiss' => [fn() => (new SwissScheduler())->schedule(identifierField(4), new SwissOptions(rounds: 2, seed: 7)), Algorithm::Swiss],
+        'round robin' => [fn() => new RoundRobinScheduler()->schedule(identifierField(4)), Algorithm::RoundRobin],
+        'Swiss' => [fn() => new SwissScheduler()->schedule(identifierField(4), new SwissOptions(rounds: 2, seed: 7)), Algorithm::Swiss],
         'pot draw' => [
-            fn() => (new PotDrawScheduler())->schedule(identifierField(8), new PotDrawOptions(pots: 2)),
+            fn() => new PotDrawScheduler()->schedule(identifierField(8), new PotDrawOptions(pots: 2)),
             Algorithm::PotDraw,
         ],
     ]);
@@ -186,14 +186,14 @@ describe('MetadataKey', function (): void {
     it('names exactly the keys the round-robin scheduler writes, the keys the stable surface owns', function (): void {
         $written = [];
         foreach ([
-            (new RoundRobinScheduler())->schedule(identifierField(5), new RoundRobinOptions(legs: 2)),
-            (new RoundRobinScheduler())->schedule(identifierField(6)),
+            new RoundRobinScheduler()->schedule(identifierField(5), new RoundRobinOptions(legs: 2)),
+            new RoundRobinScheduler()->schedule(identifierField(6)),
             identifierFallenBackSchedule(),
         ] as $schedule) {
             array_push($written, ...array_keys($schedule->getMetadata()));
         }
         $written = array_values(array_unique($written));
-        $named = array_values((new ReflectionClass(MetadataKey::class))->getConstants());
+        $named = array_values(new ReflectionClass(MetadataKey::class)->getConstants());
         sort($written);
         sort($named);
 
@@ -201,8 +201,8 @@ describe('MetadataKey', function (): void {
     });
 
     it('leaves the keys of the experimental formats to FormatMetadataKey, and names none twice', function (): void {
-        $stable = (new ReflectionClass(MetadataKey::class))->getConstants();
-        $format = (new ReflectionClass(FormatMetadataKey::class))->getConstants();
+        $stable = new ReflectionClass(MetadataKey::class)->getConstants();
+        $format = new ReflectionClass(FormatMetadataKey::class)->getConstants();
 
         expect(array_intersect($stable, $format))->toBe([])
             ->and(array_intersect_key($stable, $format))->toBe([])
@@ -211,19 +211,19 @@ describe('MetadataKey', function (): void {
 
     it('names every key a whole-schedule generator writes', function (Closure $schedule): void {
         $keys = [
-            ...array_values((new ReflectionClass(MetadataKey::class))->getConstants()),
-            ...array_values((new ReflectionClass(FormatMetadataKey::class))->getConstants()),
+            ...array_values(new ReflectionClass(MetadataKey::class)->getConstants()),
+            ...array_values(new ReflectionClass(FormatMetadataKey::class)->getConstants()),
         ];
         /** @var Schedule $generated */
         $generated = $schedule();
 
         expect(array_diff(array_keys($generated->getMetadata()), $keys))->toBe([]);
     })->with([
-        'round robin, odd field' => [fn() => (new RoundRobinScheduler())->schedule(identifierField(5), new RoundRobinOptions(legs: 2))],
-        'round robin under a constraint' => [fn() => (new RoundRobinScheduler(ConstraintSet::create()->add(new NoRepeatPairings())->build()))->schedule(identifierField(6))],
+        'round robin, odd field' => [fn() => new RoundRobinScheduler()->schedule(identifierField(5), new RoundRobinOptions(legs: 2))],
+        'round robin under a constraint' => [fn() => new RoundRobinScheduler(ConstraintSet::create()->add(new NoRepeatPairings())->build())->schedule(identifierField(6))],
         'round robin that fell back' => [identifierFallenBackSchedule(...)],
-        'Swiss' => [fn() => (new SwissScheduler())->schedule(identifierField(5), new SwissOptions(rounds: 3, seed: 7))],
-        'pot draw' => [fn() => (new PotDrawScheduler())->schedule(identifierField(8), new PotDrawOptions(pots: 2))],
+        'Swiss' => [fn() => new SwissScheduler()->schedule(identifierField(5), new SwissOptions(rounds: 3, seed: 7))],
+        'pot draw' => [fn() => new PotDrawScheduler()->schedule(identifierField(8), new PotDrawOptions(pots: 2))],
     ]);
 
     it('names every key an elimination engine writes on a round or an event', function (StageEngineInterface $engine, int $size): void {

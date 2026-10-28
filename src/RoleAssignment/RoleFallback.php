@@ -68,8 +68,8 @@ enum RoleFallback: string
      * them, and with a schedule of the generator's roles already in hand
      * it did not search the others through. That happens only under
      * constraints the search of roles cannot reason about exactly: a
-     * closure, a metadata rule, a class of the caller's, a subclass of one
-     * of the library's, or any of them in a set with the library's own.
+     * closure, a metadata rule, a class of the caller's, or any of them in
+     * a set with the library's own.
      *
      * With that schedule in hand the search for balanced roles is the one
      * `BalancedRoleAssignment` has, held to 4,000 events put to the

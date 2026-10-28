@@ -21,7 +21,7 @@ $participants = [
     new Participant('clapton', 'Clapton Community FC', 6, ['city' => 'London', 'country' => 'England', 'founded' => 2018]),
 ];
 
-$schedule = (new RoundRobinScheduler())->schedule($participants);
+$schedule = new RoundRobinScheduler()->schedule($participants);
 
 // Reading a participant: metadata has a presence check and a default
 $first = $participants[0];

@@ -34,21 +34,21 @@ describe('RoleBalanceMetric', function (): void {
             new Event([$a, $b], new Round(1)),
             new Event([$b, $a], new Round(2)),
         ]);
-        expect((new RoleBalanceMetric())->measure($balanced))->toBe(0.0);
+        expect(new RoleBalanceMetric()->measure($balanced))->toBe(0.0);
 
         // Both appearances first for A, second for B: imbalance 2 each
         $lopsided = new Schedule([
             new Event([$a, $b], new Round(1)),
             new Event([$a, $b], new Round(2)),
         ]);
-        expect((new RoleBalanceMetric())->measure($lopsided))->toBe(2.0);
+        expect(new RoleBalanceMetric()->measure($lopsided))->toBe(2.0);
     });
 
     it('skips non-pairwise events and is zero for empty schedules', function (): void {
         [$a, $b, $c] = qualityField(3);
 
-        expect((new RoleBalanceMetric())->measure(new Schedule([])))->toBe(0.0);
-        expect((new RoleBalanceMetric())->measure(new Schedule([
+        expect(new RoleBalanceMetric()->measure(new Schedule([])))->toBe(0.0);
+        expect(new RoleBalanceMetric()->measure(new Schedule([
             new Event([$a, $b, $c], new Round(1)),
         ])))->toBe(0.0);
     });
@@ -63,7 +63,7 @@ describe('RoleStreakMetric', function (): void {
             new Event([$b, $a], new Round(2)),
             new Event([$a, $b], new Round(3)),
         ]);
-        expect((new RoleStreakMetric())->measure($alternating))->toBe(0.0);
+        expect(new RoleStreakMetric()->measure($alternating))->toBe(0.0);
 
         // A first three times in a row: streak 3, excess 2 (same for B)
         $streaky = new Schedule([
@@ -71,7 +71,7 @@ describe('RoleStreakMetric', function (): void {
             new Event([$a, $b], new Round(2)),
             new Event([$a, $b], new Round(3)),
         ]);
-        expect((new RoleStreakMetric())->measure($streaky))->toBe(2.0);
+        expect(new RoleStreakMetric()->measure($streaky))->toBe(2.0);
     });
 });
 
@@ -86,11 +86,11 @@ describe('metric edges', function (): void {
 
         // Non-pairwise events carry no role or pairing reading: only the
         // two pairwise events count, and they alternate cleanly
-        expect((new RoleStreakMetric())->measure($nonPairwise))->toBe(0.0);
-        expect((new PairingSpacingMetric())->measure($nonPairwise))->toBeGreaterThan(0.0);
+        expect(new RoleStreakMetric()->measure($nonPairwise))->toBe(0.0);
+        expect(new PairingSpacingMetric()->measure($nonPairwise))->toBeGreaterThan(0.0);
 
-        expect((new RestSpreadMetric())->getName())->toBe('Rest Spread');
-        expect((new RestSpreadMetric())->measure(new Schedule([])))->toBe(0.0);
+        expect(new RestSpreadMetric()->getName())->toBe('Rest Spread');
+        expect(new RestSpreadMetric()->measure(new Schedule([])))->toBe(0.0);
     });
 });
 
@@ -104,7 +104,7 @@ describe('RestSpreadMetric', function (): void {
             new Event([$a, $c], new Round(2)),
             new Event([$a, $b], new Round(3)),
         ]);
-        expect((new RestSpreadMetric())->measure($regular))->toBe(0.0);
+        expect(new RestSpreadMetric()->measure($regular))->toBe(0.0);
 
         // A plays rounds 1, 2, 5: gaps [1, 3], mean 2, variance 1 -
         // averaged over the three appearing participants (B and C have
@@ -114,7 +114,7 @@ describe('RestSpreadMetric', function (): void {
             new Event([$a, $c], new Round(2)),
             new Event([$a, $b], new Round(5)),
         ]);
-        expect((new RestSpreadMetric())->measure($irregular))->toEqualWithDelta(1 / 3, 1e-9);
+        expect(new RestSpreadMetric()->measure($irregular))->toEqualWithDelta(1 / 3, 1e-9);
     });
 });
 
@@ -124,15 +124,15 @@ describe('PairingSpacingMetric', function (): void {
 
         // Mirrored two-leg round robin: every pair meets rounds r and r+3,
         // gap 3 = ideal 6/2 exactly
-        $schedule = (new RoundRobinScheduler())->schedule(
+        $schedule = new RoundRobinScheduler()->schedule(
             qualityField(4),
             new RoundRobinOptions(legs: 2)
         );
-        expect((new PairingSpacingMetric())->measure($schedule))->toBe(0.0);
+        expect(new PairingSpacingMetric()->measure($schedule))->toBe(0.0);
 
         // Single meetings have no spacing to judge
         $single = new Schedule([new Event([$a, $b], new Round(1))]);
-        expect((new PairingSpacingMetric())->measure($single))->toBe(0.0);
+        expect(new PairingSpacingMetric()->measure($single))->toBe(0.0);
     });
 
     it('measures bunched repeats', function (): void {
@@ -146,14 +146,14 @@ describe('PairingSpacingMetric', function (): void {
             new Event([$a, $b], new Round(6)), // third meeting fixes maxRound
         ]);
         // Meetings at 1, 2, 6: ideal gap 2; gaps [1, 4] -> deviations [1, 2] -> mean 1.5
-        expect((new PairingSpacingMetric())->measure($schedule))->toBe(1.5);
+        expect(new PairingSpacingMetric()->measure($schedule))->toBe(1.5);
     });
 
     // Round numbers are continuous across legs and stages, so a schedule
     // need not start at round 1. The schedule's length is the rounds it
     // spans, not its highest round number.
     it('measures a schedule the same whatever number its first round carries', function (): void {
-        $fromRoundOne = (new RoundRobinScheduler())->schedule(
+        $fromRoundOne = new RoundRobinScheduler()->schedule(
             qualityField(4),
             new RoundRobinOptions(legs: 2)
         );
