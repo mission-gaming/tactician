@@ -28,10 +28,12 @@ the last one, which is about the library as a whole.
   the sake of balance. Naming a role assignment gives either strictly:
   balanced or refused, or the roles of 0.2.x.
   Legs after the first are mirrored, repeated or shuffled, and an odd field
-  gets a bye in every round.
+  gets a bye in every round. A league can also be held round by round as a
+  stage state (`RoundRobinEngine`), its rounds the scheduler's.
   [Basic usage](docs/USAGE.md#basic-usage),
   [multi-leg tournaments](docs/USAGE.md#multi-leg-tournaments),
-  [role assignment](docs/USAGE.md#role-assignment)
+  [role assignment](docs/USAGE.md#role-assignment),
+  [leagues run round by round](docs/USAGE.md#leagues-run-round-by-round)
 - **Swiss**: each round is paired from the standings so far (Monrad pairing),
   avoiding repeat pairings, rotating byes, balancing roles, and allowing
   withdrawals. A whole schedule can also be drawn before any result exists,
@@ -47,8 +49,11 @@ the last one, which is about the library as a whole.
   third-place tie for single elimination, and an optional grand-final reset
   for double elimination. An event or a tie that finishes level is decided
   by a typed decider on its result, which names who advances and changes no
-  score.
+  score. A structured view of the bracket (`getBracket()`) has every round
+  of every side, the rounds to come included, so a bracket can be drawn
+  from it at any point.
   [Elimination brackets](docs/USAGE.md#elimination-brackets),
+  [drawing the bracket](docs/USAGE.md#drawing-the-bracket),
   [a third-place tie](docs/USAGE.md#a-third-place-tie),
   [recording a level event](docs/USAGE.md#recording-a-level-event)
 - **Group stages and multi-stage tournaments**, composed from serpentine pools
@@ -124,8 +129,11 @@ the last one, which is about the library as a whole.
   plain data that an application stores between rounds. A recorded result of
   the last round can be replaced, and a state can be stamped with the
   fingerprint of the engine that pairs it, so that another engine or another
-  configuration refuses it.
+  configuration refuses it. A platform that keeps its own fixtures and
+  results builds the state from those rows on each request
+  (`StageState::fromHistory()`).
   [Correcting a recorded result](docs/USAGE.md#correcting-a-recorded-result),
+  [stages resolved from your own rows](docs/USAGE.md#stages-resolved-from-your-own-rows),
   [recording which engine pairs a state](docs/USAGE.md#recording-which-engine-pairs-a-state)
 - **Timeline assignment**: kickoff times and named resources for every event
   from a declarative slot pattern, with minimum-rest and blackout rules.
@@ -175,8 +183,8 @@ the last one, which is about the library as a whole.
   are stable.
 
 Runnable examples of most of the above are in [`examples/`](examples/README.md);
-the usage guide describes the rest (role constraints, Swiss withdrawals,
-two-legged ties and re-seeding).
+the usage guide describes the rest (role constraints and Swiss
+withdrawals).
 
 ## Installation
 
@@ -294,7 +302,7 @@ Tactician follows [Semantic Versioning](https://semver.org/) with the 0.x
 allowance: until `1.0.0`, a minor release may contain breaking changes. Every
 release is recorded in the [changelog](CHANGELOG.md).
 
-- **Patch releases (0.2.x)** never change a correct output for a fixed input
+- **Patch releases (0.x.y)** never change a correct output for a fixed input
   and seed, and never change a public signature.
 - **A patch may change an output that was itself broken**: one that reported
   its own failure, stated something false, or contradicted the documented
@@ -306,7 +314,7 @@ release is recorded in the [changelog](CHANGELOG.md).
   `1.0.0`. The usage guide lists each one with what to use instead, under
   [Deprecations](docs/USAGE.md#deprecations). Any release may deprecate a
   method, a patch release included. That changes no output and no signature,
-  but from PHP 8.4 a call to a deprecated method emits an `E_USER_DEPRECATED`
+  but a call to a deprecated method emits an `E_USER_DEPRECATED`
   notice, so an application that turns notices into exceptions can see such
   a call fail after a patch update. The library never calls a deprecated
   method itself.
