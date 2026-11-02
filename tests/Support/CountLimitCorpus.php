@@ -8,7 +8,6 @@ use Closure;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
-use LogicException;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
@@ -111,14 +110,8 @@ final class CountLimitCorpus
         );
         // A round interval long enough for any number of slots a second apart
         $roomy = ['round_interval' => 'P1000Y', 'slot_interval' => 'PT1S'];
-        $relative = static function (string $text): DateInterval {
-            $interval = DateInterval::createFromDateString($text);
-            if (!$interval instanceof DateInterval) {
-                throw new LogicException("Not a relative date string: {$text}");
-            }
-
-            return $interval;
-        };
+        // From PHP 8.3 a string PHP cannot read throws instead of giving false
+        $relative = static fn(string $text): DateInterval => DateInterval::createFromDateString($text);
         $microsecond = new DateInterval('PT0S');
         $microsecond->f = 0.000001;
 

@@ -4191,6 +4191,20 @@ entry on the engine fingerprint.
   white-space strings are now a corpus of their own, tested on what PHP
   makes of them. Test suite only; the library is unchanged.
 
+- The weekly run against the newest dependencies passes again. PHPStan
+  2.3.4 reports a cast of a value it already knows to be a string, and
+  two checks for a `false` that `DateInterval::createFromDateString()`
+  has not returned since PHP 8.3 (it throws
+  `DateMalformedIntervalStringException` instead). Test suite only; the
+  library is unchanged.
+
+- Example 29 (rescheduling with least churn) dates its curling draws in
+  `America/Regina`, which keeps one offset all year, and no longer in
+  `America/Winnipeg` a few days after the clocks go back: its pinned
+  output depended on the time zone data of the PHP build, and one CI
+  runner read the first draw an hour early. The UTC times, and so the
+  pinned output, are the same.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
