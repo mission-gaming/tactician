@@ -13,6 +13,8 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
 ### Output change (fix)
 
 The entries of this section before the one on slot times come from one
@@ -152,8 +154,9 @@ entry on the engine fingerprint.
   ```
 
   Golden fixture: `single-elimination.txt` (the re-seeded 12-entrant
-  bracket: rounds 2 to 4 and the `standings:` line; the fixed-path brackets
-  in the file changed in nothing).
+  bracket: rounds 2 to 4 and the `standings:` line; the pairings of the
+  fixed-path brackets in the file are unchanged, and their `standings:`
+  lines change under the bracket placement entry above).
 - **A Swiss round is paired in list order where results do not decide, and
   the first bye goes to the last position.** `SwissPairingEngine` took the
   order of level participants from the standings fallback: seed attribute,
@@ -1273,22 +1276,14 @@ entry on the engine fingerprint.
   (`Standings::getTiers()`), the figures order it inside a tier, and a
   tiebreaker between the tied participants forms its tied sets inside a
   tier. A participant the tiers do not name is in a tier after all of
-  those named. A subclass of the calculator is put into tiers after its
-  own `calculate()`, and refused tiers (`IncompatibleOptions`) when its
-  chain holds a tiebreaker between the tied participants, whose sets its
-  `calculate()` forms over the whole table. The bracket engines give the
-  calculator their tiers, so a bracket whose calculator is such a subclass
-  is refused before its first round is paired (`IncompatibleOptions`), and
-  not once it has been played and its table is asked for.
+  those named. The bracket engines give the calculator their tiers.
 - **A bye counted and credited with nothing: `$creditsPerBye` 0** in
   `StandingsCalculator::calculateWith()` and `withByesCredited()` counts
   each bye (`StandingEntry::getByes()`) and adds nothing to the ranking
   value, under any ranking strategy, without reading a bye value. The
   bracket engines and the Swiss engine calculate their tables so under a
   ranking strategy that does not say what a bye is worth (ADR 0014,
-  ADR 0019). A subclass of the calculator whose constructor does not call
-  the one it inherits has no tiebreakers and no ranking strategy set: a
-  bracket under it counts its byes and credits them with nothing.
+  ADR 0019).
 - **The value of a bye is the caller's choice.** A ranking strategy says
   what one bye adds to a ranking value by implementing the optional
   interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).
@@ -1932,9 +1927,8 @@ entry on the engine fingerprint.
   schedule on every call and in every process; the roles are those of a
   strategy handed `new Randomizer(new Xoshiro256StarStar(2026))` and used
   once, and the engine is part of the output for a seed. The restart is
-  made in `planLegs()` only, so a class that extends the strategy and
-  overrides that method calls the parent's; a clone of a strategy built
-  from a seed has draws of its own, which start at the seed. The seed is the
+  made in `planLegs()`; a clone of a strategy built from a seed has draws
+  of its own, which start at the seed. The seed is the
   public property `ShuffledLegStrategy::$seed` (null for a strategy that
   holds a randomizer). In plain data it is the key `strategy_seed`:
   `RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'shuffled',
@@ -2411,8 +2405,10 @@ entry on the engine fingerprint.
   - To keep the roles of 0.2.x, name the old role assignment:
     `new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`,
     or `'role_assignment' => 'round_parity'` in plain data. A test holds
-    that output to fixtures whose bodies are the 0.2.x default's
-    (`round-parity-*.txt` below).
+    that output to the `round-parity-*.txt` fixtures below. Their bodies
+    are the 0.2.3 default's, apart from the fixes of this release to
+    mirrored legs and to later legs drawn from a `Randomizer` (above),
+    which the round parity assignment keeps.
   - **Not every schedule of the default is balanced.** Code that needs to
     know reads the mark: `RoleFallback::of($schedule)` is null for a
     schedule with balanced roles and the reason for one without. Code that
@@ -2744,8 +2740,7 @@ entry on the engine fingerprint.
   has a fourth parameter (`byeValue`), `StandingEntry::__construct()` a
   thirteenth (`rankingValueOfResults`), and `BuchholzTiebreaker` and
   `SonnebornBergerTiebreaker` have a constructor (`byes`), where they had
-  none: a subclass of either that declares a constructor of its own is not
-  affected. `WinDrawLossRanking` implements `RankingStrategyWithByeValue`
+  none. `WinDrawLossRanking` implements `RankingStrategyWithByeValue`
   and the two tiebreakers implement `TiebreakerWithByeTreatment`; both
   interfaces are optional, so a `RankingStrategy` or a
   `TiebreakerInterface` of your own needs no change and is treated as it
@@ -2753,13 +2748,8 @@ entry on the engine fingerprint.
   `StageOutcome::combining()` declare an `InvalidConfigurationException`
   they did not declare: the first throws it in the case above, the second
   does not throw it with a calculator of the library (static analysis that
-  checks exceptions asks a caller to declare or catch it). A class that
-  extends `StandingsCalculator`, `Standings` or `Schedule` and declares a
-  method named `calculateWith`, `fromArray`, `toArray`, `getRank`,
-  `getRanks`, `getByesByRound` or `getByeCounts` with another signature is
-  affected. The engines call `calculateWith()`; a subclass of
-  `StandingsCalculator` is still calculated through its own `calculate()`,
-  `withByesCredited()` and `withAdjustments()`.
+  checks exceptions asks a caller to declare or catch it). The engines
+  call `calculateWith()`.
 - **The score groups of a Swiss stage allow for the value of a bye.** The
   rounding allowance of the Swiss engine (two win/draw/loss totals that
   differ by no more than the rounding of a float sum are level) reads the
@@ -2978,12 +2968,14 @@ entry on the engine fingerprint.
 
   Golden fixtures: `tests/Fixtures/golden/wire/schedule.json` and
   `tests/Fixtures/golden/wire/stage-state.json` gain `"format_version":1`
-  as their first key and are otherwise byte for byte what they were;
+  as their first key, which is all this change does to them (the
+  participant order and the roles of `schedule.json` change under other
+  entries of this release);
   `tests/Fixtures/golden/examples/18-stateless-web-flow.txt` reports each
-  stored state 19 bytes longer, the length of that key. No other fixture
-  changes: the repack fixtures and the examples that print violations
-  render the records as the outcome writes them, which carry no key of
-  their own.
+  stored state 19 bytes longer, the length of that key. The repack
+  fixtures and the examples that print violations are not changed by it:
+  they render the records as the outcome writes them, which carry no key
+  of their own.
 - **Breaking: `StageState::fromArray()` and `fromJson()` refuse a history
   the verbs refuse.** The stored data was checked for its shape and its
   history was trusted: rounds in any order, a pairing filed under another
@@ -3073,8 +3065,9 @@ entry on the engine fingerprint.
   3`: `"participants":[{"id":"2",...},{"id":"3",...},{"id":"1",...}]`.
   After: `"participants":[{"id":"1",...},{"id":"2",...},{"id":"3",...}]`.
   Golden fixture: `tests/Fixtures/golden/wire/schedule.json` lists its
-  three participants as `1, 2, 3` where it listed `2, 3, 1`; its events and
-  metadata are unchanged (#53).
+  three participants as `1, 2, 3` where it listed `2, 3, 1`; this change
+  leaves its events and metadata as they were, and the roles of its events
+  change under the balanced default (#53).
 - **Breaking: `new Participant()` refuses an empty ID, and `new Event()`
   refuses a participant listed twice.** `Participant::fromArray()` already
   refused the empty string as an ID and the constructor took it; an event
@@ -3317,11 +3310,7 @@ entry on the engine fingerprint.
   `Standings::__construct()` throws an `InvalidInputException` for tiers
   that do not fit its entries, and `RankRangeSelector::select()` and
   `SwissScheduler::schedule()` each declare one more case of a checked
-  exception they already declared. A class that extends
-  `StandingsCalculator` or `Standings` and overrides a constructor is not
-  affected; one that declares a method named `withByesCredited`,
-  `withTiedSetsOrderedBy`, `getTiers` or `getByes` with another signature
-  is.
+  exception they already declared.
 - **Breaking: `ShuffledLegStrategy` is refused without a source of its
   draws.** `new ShuffledLegStrategy()` used to make an unseeded
   `Random\Randomizer` for every event, so a schedule with shuffled legs
@@ -4015,8 +4004,8 @@ entry on the engine fingerprint.
   - **How it is raised.** A metadata key cannot carry an attribute, so the
     library raises the notice itself: a call that takes an advancer from
     the key emits one `E_USER_DEPRECATED` notice, whatever the number of
-    ties the key decided in that call, and on every PHP version, PHP 8.3
-    included. Those calls are `isComplete()`, `pairNextRound()`,
+    ties the key decided in that call, and on every PHP version the
+    library supports. Those calls are `isComplete()`, `pairNextRound()`,
     `getOutcome()`, `getReadiness()`, `getRecordedRounds()` and
     `getStandings()` of the two elimination engines,
     `TieDecision::advancer()`, and `MatchOutcomeSelector::select()` where
@@ -5876,7 +5865,8 @@ PHP 8.3+.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
-[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mission-gaming/tactician/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/mission-gaming/tactician/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mission-gaming/tactician/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mission-gaming/tactician/compare/v0.2.0...v0.2.1
