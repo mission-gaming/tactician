@@ -20,17 +20,11 @@ use PHPUnit\Framework\AssertionFailedError;
 /**
  * An interval PHP made from a relative date string.
  *
- * @throws AssertionFailedError When PHP does not read the string
- * @throws DateMalformedIntervalStringException When PHP does not read the string, from PHP 8.3
+ * @throws DateMalformedIntervalStringException When PHP does not read the string
  */
 function relativeInterval(string $dateString): DateInterval
 {
-    $interval = DateInterval::createFromDateString($dateString);
-    if ($interval === false) {
-        Assert::fail("PHP does not read '{$dateString}' as an interval.");
-    }
-
-    return $interval;
+    return DateInterval::createFromDateString($dateString);
 }
 
 /**
