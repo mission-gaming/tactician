@@ -586,8 +586,8 @@ describe('Mutation testing configuration', function () use ($root): void {
 
         $attributes = static function (SimpleXMLElement $configuration): array {
             $attributes = [];
-            foreach ($configuration->attributes() ?? [] as $name => $value) {
-                $attributes[(string) $name] = (string) $value;
+            foreach ($configuration->attributes() ?? [] as $value) {
+                $attributes[$value->getName()] = (string) $value;
             }
             ksort($attributes);
 
