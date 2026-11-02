@@ -20,8 +20,8 @@ How to use Tactician, format by format. The test suite executes the `php` blocks
 - [Schedule Repacking](#schedule-repacking)
 - [Schedule Quality and Optimization](#schedule-quality-and-optimization)
 - [Serialization](#serialization)
-- [Framework Integration](#framework-integration)
 - [Schedule Validation](#schedule-validation)
+- [Framework Integration](#framework-integration)
 - [Error Handling](#error-handling)
 - [Advanced Patterns](#advanced-patterns)
 - [Real-World Examples](#real-world-examples)
@@ -5255,6 +5255,27 @@ The three selector classes are plain-data constructible
 say which class it belongs to, so store that beside it. Selectors are
 optional machinery, not a gate: a consumer computing its own qualification
 hands the next stage an ordered list directly, with no penalty.
+
+A selector says how it was built through typed accessors, whose backing
+values are the strings its plain data holds. `getMode()` gives the mode of a
+rank range selector (`Stage\RankRangeMode`: `overall` or `per-group`) and of
+an outcome selector (`Stage\MatchOutcomeMode`: `winners` or `losers`), and
+`getTiePolicy()` what a rank selector does where results leave a selected
+place undecided (`Stage\SelectionTiePolicy`: `refuse` by default,
+`accept-inside-selection`, or `accept-table-order`).
+
+```php
+use MissionGaming\Tactician\Stage\MatchOutcomeMode;
+use MissionGaming\Tactician\Stage\RankRangeMode;
+use MissionGaming\Tactician\Stage\SelectionTiePolicy;
+
+$losersRoute = RankRangeSelector::perGroup(from: 3, to: 4)->withTableOrderAccepted();
+echo $losersRoute->getMode()->value, "\n"; // per-group
+echo $losersRoute->getTiePolicy()->value, "\n"; // accept-table-order
+var_dump(RankRangeSelector::overall(from: 1, to: 8)->getMode() === RankRangeMode::Overall); // bool(true)
+var_dump(BestOfRankSelector::ofRank(rank: 3, count: 2)->getTiePolicy() === SelectionTiePolicy::Refused); // bool(true)
+var_dump(MatchOutcomeSelector::losers()->getMode() === MatchOutcomeMode::Losers); // bool(true)
+```
 
 **A per-group selection is ordered for a bracket.** It lists every pool's
 first selected rank, then every pool's second, and so on. The first block
