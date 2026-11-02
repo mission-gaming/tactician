@@ -28,8 +28,9 @@ foreach (['Aspen', 'Birch', 'Cedar', 'Dogwood', 'Elm', 'Fir', 'Hazel', 'Juniper'
     $rinks[] = new Participant(strtolower($name), "Rink {$name}");
 }
 
-// The calendar as it was published: two rounds a night, a round a draw
-$timezone = new DateTimeZone('America/Winnipeg');
+// The calendar as it was published: two rounds a night, a round a draw.
+// Saskatchewan keeps one offset all year, so no change of clocks moves a draw
+$timezone = new DateTimeZone('America/Regina');
 $published = ['2026-11-05', '2026-11-12', '2026-11-19', '2026-11-26'];
 $draws = ['18:30', '20:45'];
 
@@ -52,7 +53,7 @@ for ($round = 0; $round < 7; ++$round) {
 // The grid after the change: 19 November is gone, 3 December is new
 $grid = SessionGrid::fromArray([
     'sessions' => ['2026-11-05 18:30', '2026-11-12 18:30', '2026-11-26 18:30', '2026-12-03 18:30'],
-    'timezone' => 'America/Winnipeg',
+    'timezone' => 'America/Regina',
     'slot_interval' => 'PT2H15M',
     'slots_per_session' => 2,
     'capacity_per_slot' => 4,
@@ -104,7 +105,7 @@ $shortest = new ShortestGridFinder($repacker)->find(
     $played,
     static fn(int $sessions): SessionGrid => SessionGrid::fromArray([
         'sessions' => array_slice($nights, 0, $sessions),
-        'timezone' => 'America/Winnipeg',
+        'timezone' => 'America/Regina',
         'slot_interval' => 'PT2H15M',
         'slots_per_session' => 2,
         'capacity_per_slot' => 4,
