@@ -289,6 +289,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["56 events\n56 events\nRound parity, without backtracking: no schedule\n56 events\n"],
             [],
         ],
+        'the typed mode and tie policy of a selector' => [
+            'docs/USAGE.md',
+            '$losersRoute->getTiePolicy()->value',
+            ["per-group\naccept-table-order\nbool(true)\nbool(true)\nbool(true)\n"],
+            [],
+        ],
         'format versions' => [
             'docs/USAGE.md',
             "echo \$stored['format_version']",
