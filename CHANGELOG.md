@@ -4205,6 +4205,12 @@ entry on the engine fingerprint.
   runner read the first draw an hour early. The UTC times, and so the
   pinned output, are the same.
 
+- Rector's parallel workers may take ten minutes over a batch of files,
+  where the default was two. With no cache Rector takes about two minutes
+  on a CI runner, and a worker of the PHP 8.5 job reached the limit, which
+  failed the gate with nothing found. What Rector checks is unchanged.
+  Tooling only; the library is unchanged.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public

@@ -25,6 +25,11 @@ return RectorConfig::configure()
     // generators for style alone, the second adds closure types taken from
     // PHPDoc, which turns a value that is tolerated today into a TypeError.
     ->withPreparedSets(deadCode: true, earlyReturn: true)
+    // Parallel workers, as by default, but a batch of files may take ten
+    // minutes, not two: on a busy CI runner the default limit of 120 seconds
+    // was reached, and Rector then failed the gate without having found
+    // anything. The time limit does not change what Rector checks.
+    ->withParallel(timeoutSeconds: 600)
     // A rule is skipped where it would change what a consumer of the library
     // can see. Each entry says what the change would be.
     ->withSkip([

@@ -332,6 +332,19 @@ describe('Rector configuration', function () use ($root): void {
         expect(gateDevelopmentFloorProblem($root, 'rector/rector', '2.7'))->toBeNull();
     });
 
+    it('gives each parallel worker ten minutes, and leaves the rest of the parallel run as Rector has it', function () use ($root): void {
+        // With no cache a run takes about two minutes on a CI runner, and a
+        // worker that reaches Rector's default limit of 120 seconds fails
+        // the gate without having found anything. The limit is the one
+        // setting changed: the number of workers and the files each is
+        // given stay Rector's defaults, and the workers stay on.
+        $configuration = (string) file_get_contents($root . '/rector.php');
+
+        expect(substr_count($configuration, '->withParallel('))->toBe(1)
+            ->and($configuration)->toContain('->withParallel(timeoutSeconds: 600)')
+            ->and($configuration)->not->toContain('->withoutParallel(');
+    });
+
     // The rule the test above applies, on constraints this checkout does not
     // have: without these, the rule is only ever run on the one that passes.
     it('accepts a floor at or above the minimum, however many parts it has', function (string $constraint): void {
