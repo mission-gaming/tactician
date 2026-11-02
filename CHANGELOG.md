@@ -4192,10 +4192,10 @@ entry on the engine fingerprint.
   makes of them. Test suite only; the library is unchanged.
 
 - The weekly run against the newest dependencies passes again. PHPStan
-  2.3.4 reports a cast of a value it already knows to be a string, and,
-  with PHP 8.4 the floor, two checks for a `false` that
-  `DateInterval::createFromDateString()` no longer returns (from PHP 8.4
-  it throws `DateMalformedIntervalStringException`). Test suite only; the
+  2.3.4 reports a cast of a value it already knows to be a string, and
+  two checks for a `false` that `DateInterval::createFromDateString()`
+  has not returned since PHP 8.3 (it throws
+  `DateMalformedIntervalStringException` instead). Test suite only; the
   library is unchanged.
 
 - Example 29 (rescheduling with least churn) dates its curling draws in

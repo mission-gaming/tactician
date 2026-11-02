@@ -110,7 +110,7 @@ final class CountLimitCorpus
         );
         // A round interval long enough for any number of slots a second apart
         $roomy = ['round_interval' => 'P1000Y', 'slot_interval' => 'PT1S'];
-        // From PHP 8.4 a string PHP cannot read throws instead of giving false
+        // From PHP 8.3 a string PHP cannot read throws instead of giving false
         $relative = static fn(string $text): DateInterval => DateInterval::createFromDateString($text);
         $microsecond = new DateInterval('PT0S');
         $microsecond->f = 0.000001;
