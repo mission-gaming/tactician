@@ -258,7 +258,7 @@ describe('ScheduleOptimizer', function (): void {
             // Every randomness source in the pipeline must use the child
             // randomizer - the shuffled strategy included
             $result = $optimizer->optimize(
-                fn(Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
+                fn(Randomizer $r) => new RoundRobinScheduler(null, $r)->schedule(
                     $participants,
                     new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
                 ),
@@ -277,7 +277,7 @@ describe('ScheduleOptimizer', function (): void {
             $participants[] = new Participant("q{$i}", "Player {$i}", $i);
         }
         $scorer = ScheduleScorer::of(new PairingSpacingMetric());
-        $generate = fn(Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
+        $generate = fn(Randomizer $r) => new RoundRobinScheduler(null, $r)->schedule(
             $participants,
             new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
         );

@@ -13,7 +13,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class ConstraintSet
+final readonly class ConstraintSet
 {
     /**
      * @param array<ConstraintInterface> $constraints The constraints, in the order they are asked.
@@ -40,13 +40,7 @@ readonly class ConstraintSet
      */
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
-        foreach ($this->constraints as $constraint) {
-            if (!$constraint->isSatisfied($event, $context)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($this->constraints, fn($constraint) => $constraint->isSatisfied($event, $context));
     }
 
     /**

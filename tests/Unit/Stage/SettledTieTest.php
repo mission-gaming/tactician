@@ -22,7 +22,7 @@ describe('SettledTie', function (): void {
         $this->alice = new Participant('p1', 'Alice');
         $this->bob = new Participant('p2', 'Bob');
         $this->event = new Event([$this->alice, $this->bob], new Round(1));
-        $this->standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], []);
+        $this->standings = new StandingsCalculator()->calculate([$this->alice, $this->bob], []);
     });
 
     it('holds who went on and who did not, as a list', function (): void {

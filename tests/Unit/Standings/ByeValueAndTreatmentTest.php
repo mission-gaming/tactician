@@ -41,10 +41,10 @@ function byeRefusal(Closure $call): ?InvalidConfigurationReason
 
 describe('the value of a bye on a win/draw/loss scale', function (): void {
     it('is the value of a win unless another is given', function (): void {
-        expect((new WinDrawLossRanking())->getByeValue())->toBe(3.0)
+        expect(new WinDrawLossRanking()->getByeValue())->toBe(3.0)
             ->and(WinDrawLossRanking::oneHalfZero()->getByeValue())->toBe(1.0)
-            ->and((new WinDrawLossRanking(2.0, 1.0, -1.0))->getByeValue())->toBe(2.0)
-            ->and((new WinDrawLossRanking(3.0, 1.0, 0.0, 1.0))->getByeValue())->toBe(1.0)
+            ->and(new WinDrawLossRanking(2.0, 1.0, -1.0)->getByeValue())->toBe(2.0)
+            ->and(new WinDrawLossRanking(3.0, 1.0, 0.0, 1.0)->getByeValue())->toBe(1.0)
             ->and(WinDrawLossRanking::threeOneZero()->withByeValue(0.0)->getByeValue())->toBe(0.0)
             ->and(WinDrawLossRanking::threeOneZero()->withByeValue(4.5)->getByeValue())->toBe(4.5);
     });
@@ -97,7 +97,7 @@ describe('the value of a bye on a win/draw/loss scale', function (): void {
             ->and(WinDrawLossRanking::threeOneZero()->withByeValue(1.0)->toArray())
             ->toBe(['format_version' => 1, 'win' => 3.0, 'draw' => 1.0, 'loss' => 0.0, 'bye' => 1.0])
             // Also when the value given is that of a win
-            ->and((new WinDrawLossRanking(3.0, 1.0, 0.0, 3.0))->toArray()['bye'] ?? null)->toBe(3.0)
+            ->and(new WinDrawLossRanking(3.0, 1.0, 0.0, 3.0)->toArray()['bye'] ?? null)->toBe(3.0)
             ->and(WinDrawLossRanking::fromArray(['win' => 3.0, 'draw' => 1.0, 'loss' => 0.0]))->toEqual(new WinDrawLossRanking())
             ->and(WinDrawLossRanking::fromArray(WinDrawLossRanking::oneHalfZero()->withByeValue(0.0)->toArray()))
             ->toEqual(WinDrawLossRanking::oneHalfZero()->withByeValue(0.0));
@@ -121,8 +121,8 @@ describe('a table calculated with its byes', function (): void {
     });
 
     it('counts a bye as a figure of its own and credits it with the value the ranking gives it', function (?float $byeValue, array $expected): void {
-        $ranking = $byeValue === null ? new WinDrawLossRanking() : (new WinDrawLossRanking())->withByeValue($byeValue);
-        $entry = (new StandingsCalculator($ranking))->calculateWith($this->field, $this->results, $this->byes)->getEntryFor($this->p);
+        $ranking = $byeValue === null ? new WinDrawLossRanking() : new WinDrawLossRanking()->withByeValue($byeValue);
+        $entry = new StandingsCalculator($ranking)->calculateWith($this->field, $this->results, $this->byes)->getEntryFor($this->p);
         assert($entry instanceof StandingEntry);
 
         expect([
@@ -137,7 +137,7 @@ describe('a table calculated with its byes', function (): void {
     ]);
 
     it('shows what the results are worth, what was earned and the total apart', function (): void {
-        $entry = (new StandingsCalculator())
+        $entry = new StandingsCalculator()
             ->calculateWith($this->field, $this->results, $this->byes, [new Adjustment('p', -2.0)], creditsPerBye: 2)
             ->getEntryFor($this->p);
 
@@ -165,7 +165,7 @@ describe('a table calculated with its byes', function (): void {
             ->and($twice->getEntryFor($this->p)?->getEarnedRankingValue())->toBe(9.0)
             ->and($twice->getEntryFor($this->p)?->getByes())->toBe(2)
             // An entry built by hand without it has what it earned
-            ->and((new StandingEntry($this->p, 1, 1, 0, 0, 3.0))->getRankingValueOfResults())->toBe(3.0);
+            ->and(new StandingEntry($this->p, 1, 1, 0, 0, 3.0)->getRankingValueOfResults())->toBe(3.0);
     });
 
     it('credits a bye under a ranking strategy of the application that says what one is worth', function (): void {
@@ -183,7 +183,7 @@ describe('a table calculated with its byes', function (): void {
             }
         };
 
-        $table = (new StandingsCalculator($strategy))->calculateWith($this->field, $this->results, $this->byes);
+        $table = new StandingsCalculator($strategy)->calculateWith($this->field, $this->results, $this->byes);
 
         expect($table->getEntryFor($this->p)?->getRankingValue())->toBe(27.0)
             ->and($table->getEntryFor($this->a)?->getRankingValue())->toBe(20.0);
@@ -262,13 +262,13 @@ describe('the bye treatment of a tiebreaker computed from opponents', function (
     });
 
     it('is uncounted by default, and states itself', function (): void {
-        expect((new BuchholzTiebreaker())->getByeTreatment())->toBe(ByeTreatment::Uncounted)
-            ->and((new SonnebornBergerTiebreaker())->getByeTreatment())->toBe(ByeTreatment::Uncounted)
-            ->and((new BuchholzTiebreaker(ByeTreatment::Zero))->getByeTreatment())->toBe(ByeTreatment::Zero)
-            ->and((new SonnebornBergerTiebreaker(ByeTreatment::OwnRankingValue))->getByeTreatment())->toBe(ByeTreatment::OwnRankingValue)
+        expect(new BuchholzTiebreaker()->getByeTreatment())->toBe(ByeTreatment::Uncounted)
+            ->and(new SonnebornBergerTiebreaker()->getByeTreatment())->toBe(ByeTreatment::Uncounted)
+            ->and(new BuchholzTiebreaker(ByeTreatment::Zero)->getByeTreatment())->toBe(ByeTreatment::Zero)
+            ->and(new SonnebornBergerTiebreaker(ByeTreatment::OwnRankingValue)->getByeTreatment())->toBe(ByeTreatment::OwnRankingValue)
             // The name, and so the key of the value, is the same under each
-            ->and((new BuchholzTiebreaker(ByeTreatment::OwnRankingValue))->getName())->toBe('buchholz')
-            ->and((new SonnebornBergerTiebreaker(ByeTreatment::Zero))->getName())->toBe('sonneborn-berger')
+            ->and(new BuchholzTiebreaker(ByeTreatment::OwnRankingValue)->getName())->toBe('buchholz')
+            ->and(new SonnebornBergerTiebreaker(ByeTreatment::Zero)->getName())->toBe('sonneborn-berger')
             ->and(array_map(static fn(ByeTreatment $treatment): string => $treatment->value, ByeTreatment::cases()))
             ->toBe(['uncounted', 'zero', 'own-ranking-value']);
     });
@@ -279,7 +279,7 @@ describe('the bye treatment of a tiebreaker computed from opponents', function (
         float $ofA,
         float $ofB
     ): void {
-        $table = (new StandingsCalculator(tiebreakers: [new BuchholzTiebreaker($treatment)]))
+        $table = new StandingsCalculator(tiebreakers: [new BuchholzTiebreaker($treatment)])
             ->calculateWith($this->field, $this->results, $this->byes);
 
         expect(array_map(
@@ -301,7 +301,7 @@ describe('the bye treatment of a tiebreaker computed from opponents', function (
         float $ofA,
         float $ofB
     ): void {
-        $table = (new StandingsCalculator(tiebreakers: [new SonnebornBergerTiebreaker($treatment)]))
+        $table = new StandingsCalculator(tiebreakers: [new SonnebornBergerTiebreaker($treatment)])
             ->calculateWith($this->field, $this->results, $this->byes);
 
         expect(array_map(
@@ -321,7 +321,7 @@ describe('the bye treatment of a tiebreaker computed from opponents', function (
         // P drew with A, who had a bye, and lost to B
         $results = [new Result(new Event([$this->p, $this->a])), new Result(new Event([$this->b, $this->p]), $this->b)];
 
-        $table = (new StandingsCalculator(tiebreakers: [new SonnebornBergerTiebreaker($treatment)]))
+        $table = new StandingsCalculator(tiebreakers: [new SonnebornBergerTiebreaker($treatment)])
             ->calculateWith($this->field, $results, ['a' => 1]);
 
         expect($table->getEntryFor($this->p)?->getTiebreakerValue('sonneborn-berger'))->toBe($expected);
@@ -348,10 +348,10 @@ describe('the bye treatment of a tiebreaker computed from opponents', function (
     it('counts a bye once, whatever a bye is worth and however many legs it stands for', function (): void {
         // A bye worth nothing over a tie of two legs: P's own earned value is
         // 3, and its one bye adds it once
-        $table = (new StandingsCalculator(
+        $table = new StandingsCalculator(
             WinDrawLossRanking::threeOneZero()->withByeValue(0.0),
             [new BuchholzTiebreaker(ByeTreatment::OwnRankingValue)]
-        ))->calculateWith($this->field, $this->results, $this->byes, [], 2);
+        )->calculateWith($this->field, $this->results, $this->byes, [], 2);
 
         // A's 3 and B's 3, and 3 for the bye
         expect($table->getEntryFor($this->p)?->getTiebreakerValue('buchholz'))->toBe(9.0);
@@ -437,7 +437,7 @@ describe('what the calculator hands a tiebreaker', function (): void {
 
     it('hands a tiebreaker that reads byes the entries with the byes credited and no adjustment', function () use ($spyOn): void {
         $seen = new ArrayObject();
-        (new StandingsCalculator(tiebreakers: [$spyOn($seen, true)]))
+        new StandingsCalculator(tiebreakers: [$spyOn($seen, true)])
             ->calculateWith([$this->p, $this->a], $this->results, ['a' => 2], [new Adjustment('a', -1.0)]);
 
         expect($seen->getArrayCopy())->toBe([[
@@ -450,7 +450,7 @@ describe('what the calculator hands a tiebreaker', function (): void {
     // computed from the entries it was handed, it still computes
     it('hands every other tiebreaker the entries of the results alone', function () use ($spyOn): void {
         $seen = new ArrayObject();
-        (new StandingsCalculator(tiebreakers: [$spyOn($seen, false)]))
+        new StandingsCalculator(tiebreakers: [$spyOn($seen, false)])
             ->calculateWith([$this->p, $this->a], $this->results, ['a' => 2], [new Adjustment('a', -1.0)]);
 
         expect($seen->getArrayCopy())->toBe([[

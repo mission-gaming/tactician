@@ -43,7 +43,7 @@ function diffInterval(string $from, string $to): DateInterval
 {
     $zone = new DateTimeZone('Europe/London');
 
-    return (new DateTimeImmutable($from, $zone))->diff(new DateTimeImmutable($to, $zone));
+    return new DateTimeImmutable($from, $zone)->diff(new DateTimeImmutable($to, $zone));
 }
 
 /**

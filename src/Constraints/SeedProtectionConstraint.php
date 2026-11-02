@@ -27,7 +27,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class SeedProtectionConstraint implements ConstraintInterface
+final readonly class SeedProtectionConstraint implements ConstraintInterface
 {
     /**
      * @param int $topSeedsToProtect How many of the best-seeded participants are kept apart

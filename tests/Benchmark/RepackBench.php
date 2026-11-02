@@ -97,7 +97,7 @@ final class RepackBench
     private function repack(string $name): void
     {
         $request = $this->requests[$name];
-        $outcome = (new ScheduleRepacker())->repack($request);
+        $outcome = new ScheduleRepacker()->repack($request);
 
         if (count($outcome->getAssignments()) + count($outcome->getUnplaced()) !== count($request->getMovableEvents())) {
             throw new RuntimeException("The benchmark did not account for every movable event of the {$name} request.");
@@ -123,7 +123,7 @@ final class RepackBench
                 $pairs[] = [$a, $b];
             }
         }
-        $pairs = (new Randomizer(new Mt19937($size)))->shuffleArray($pairs);
+        $pairs = new Randomizer(new Mt19937($size))->shuffleArray($pairs);
 
         // Half the field can play at once. The even grid has two sessions
         // more than the events fill; the uneven one a fifth more room.

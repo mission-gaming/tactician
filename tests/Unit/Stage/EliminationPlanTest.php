@@ -172,15 +172,15 @@ describe('EliminationOptions', function (): void {
     // option existed: the key is written only when the option is on, as
     // `seed` is in Swiss options (an optional key of version 1, ADR 0005)
     it('writes no third-place key for options without the tie', function (): void {
-        expect((new EliminationOptions(thirdPlace: false))->toArray())
+        expect(new EliminationOptions(thirdPlace: false)->toArray())
             ->toBe(['format_version' => 1, 'legs_per_tie' => 1, 'reseed_each_round' => false, 'grand_final_reset' => true])
             ->and(EliminationOptions::fromArray(['third_place' => false])->toArray())->not->toHaveKey('third_place');
     });
 
     it('has no third-place tie unless it is asked for', function (): void {
-        expect((new EliminationOptions())->thirdPlace)->toBeFalse()
-            ->and((new EliminationOptions(2, true, false))->thirdPlace)->toBeFalse()
-            ->and((new EliminationOptions(thirdPlace: true))->thirdPlace)->toBeTrue();
+        expect(new EliminationOptions()->thirdPlace)->toBeFalse()
+            ->and(new EliminationOptions(2, true, false)->thirdPlace)->toBeFalse()
+            ->and(new EliminationOptions(thirdPlace: true)->thirdPlace)->toBeTrue();
     });
 
     // Options stored before the option existed hold three keys

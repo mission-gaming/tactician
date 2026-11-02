@@ -238,7 +238,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
     {
         $state->requireEngineFingerprint($this->getFingerprint());
 
-        return (new RoundRobinScheduler($this->constraints))->getPlan($this->field($state), $this->options);
+        return new RoundRobinScheduler($this->constraints)->getPlan($this->field($state), $this->options);
     }
 
     /**
@@ -692,7 +692,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
     {
         $randomizer = $this->seed === null ? null : new Randomizer(new Xoshiro256StarStar($this->seed));
 
-        return (new RoundRobinScheduler($this->constraints, $randomizer))->schedule($field, $this->options);
+        return new RoundRobinScheduler($this->constraints, $randomizer)->schedule($field, $this->options);
     }
 
     /**
@@ -803,13 +803,7 @@ final readonly class RoundRobinEngine implements StageEngineInterface, Fingerpri
      */
     private function contested(Event $event, array $active): bool
     {
-        foreach ($event->getParticipants() as $participant) {
-            if (!isset($active[$participant->getId()])) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($event->getParticipants(), fn($participant) => isset($active[$participant->getId()]));
     }
 
     /**

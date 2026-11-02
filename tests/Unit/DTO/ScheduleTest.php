@@ -6,6 +6,8 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Quality\RoleBalanceMetric;
+use MissionGaming\Tactician\Quality\ScheduleScorer;
 
 describe('Schedule', function (): void {
     beforeEach(function (): void {
@@ -63,9 +65,9 @@ describe('Schedule', function (): void {
         expect($newSchedule->getEvents())->toBe([$this->event1, $this->event2]);
     });
 
-    // Tests that schedules can be used in foreach loops by implementing
-    // the Iterator interface, allowing easy traversal of events
-    it('implements Iterator interface', function (): void {
+    // A schedule is traversed with foreach: it hands out an iterator of its
+    // own for each loop (IteratorAggregate), keyed from 0 in schedule order
+    it('is traversed with foreach, keyed from 0 in schedule order', function (): void {
         $events = [$this->event1, $this->event2];
         $schedule = new Schedule($events);
 
@@ -74,7 +76,74 @@ describe('Schedule', function (): void {
             $iteratedEvents[$key] = $event;
         }
 
-        expect($iteratedEvents)->toBe([0 => $this->event1, 1 => $this->event2]);
+        expect($schedule)->toBeInstanceOf(IteratorAggregate::class)
+            ->and($iteratedEvents)->toBe([0 => $this->event1, 1 => $this->event2])
+            ->and(iterator_to_array($schedule->getIterator()))->toBe([0 => $this->event1, 1 => $this->event2]);
+    });
+
+    // Until 0.3.0 a schedule was its own iterator with one cursor, so a loop
+    // over the schedule inside a loop over the same schedule moved the
+    // cursor and ended the outer loop after its first event (issue #54).
+    it('visits every pair of events in a loop nested inside a loop over the same schedule', function (): void {
+        $event3 = new Event([$this->participant1, $this->participant3], $this->round1);
+        $schedule = new Schedule([$this->event1, $this->event2, $event3]);
+
+        $pairs = [];
+        foreach ($schedule as $outer => $first) {
+            foreach ($schedule as $inner => $second) {
+                $pairs[] = [$outer, $inner];
+                expect($first)->toBe($schedule->getEvents()[$outer])
+                    ->and($second)->toBe($schedule->getEvents()[$inner]);
+            }
+        }
+
+        expect($pairs)->toBe([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]]);
+    });
+
+    // The case issue #54 names: a quality metric that loops over the
+    // schedule (RoleBalanceMetric does) measured inside a loop over the
+    // same schedule. The outer loop visits every event, and every
+    // measurement reads the whole schedule.
+    it('lets a metric that loops over the schedule measure it inside a loop over it', function (): void {
+        $event3 = new Event([$this->participant3, $this->participant1], $this->round2);
+        $schedule = new Schedule([$this->event1, $this->event2, $event3]);
+        $scorer = ScheduleScorer::of(new RoleBalanceMetric());
+        $alone = $scorer->score($schedule);
+
+        $visited = [];
+        $scores = [];
+        foreach ($schedule as $index => $event) {
+            $visited[] = $index;
+            $scores[] = $scorer->score($schedule);
+        }
+
+        expect($visited)->toBe([0, 1, 2])
+            ->and($scores)->toBe([$alone, $alone, $alone]);
+    });
+
+    it('hands out an iterator of its own on every call, which a loop elsewhere does not move', function (): void {
+        $schedule = new Schedule([$this->event1, $this->event2]);
+
+        $first = $schedule->getIterator();
+        $first->next();
+        foreach ($schedule as $event) {
+            // A whole loop over the same schedule
+        }
+        $second = $schedule->getIterator();
+
+        expect($first)->not->toBe($second)
+            ->and($first->key())->toBe(1)
+            ->and($first->current())->toBe($this->event2)
+            ->and($second->key())->toBe(0)
+            ->and($second->current())->toBe($this->event1);
+    });
+
+    it('is a final readonly class, and no iterator of its own', function (): void {
+        $class = new ReflectionClass(Schedule::class);
+
+        expect($class->isFinal())->toBeTrue()
+            ->and($class->isReadOnly())->toBeTrue()
+            ->and($class->implementsInterface(Iterator::class))->toBeFalse();
     });
 
     // Tests that schedules work with PHP's count() function by implementing
@@ -127,7 +196,7 @@ describe('Schedule', function (): void {
     });
 
     it('returns an empty round grouping for an empty schedule', function (): void {
-        expect((new Schedule())->getEventsByRound())->toBe([]);
+        expect(new Schedule()->getEventsByRound())->toBe([]);
     });
 
     // Tests finding the highest round number in the schedule, useful for

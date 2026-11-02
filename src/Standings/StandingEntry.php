@@ -19,7 +19,7 @@ use MissionGaming\Tactician\DTO\Participant;
  *
  * @experimental
  */
-readonly class StandingEntry
+final readonly class StandingEntry
 {
     /**
      * The figures are stored as given and are not checked against each

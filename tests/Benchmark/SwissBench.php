@@ -44,7 +44,7 @@ final class SwissBench
     public function benchSchedule24UnderARoleStreakLimit(): void
     {
         for ($repeat = 0; $repeat < 5; ++$repeat) {
-            $schedule = (new SwissScheduler(new ConstraintSet([ConsecutiveRoleConstraint::homeAway(2)])))
+            $schedule = new SwissScheduler(new ConstraintSet([ConsecutiveRoleConstraint::homeAway(2)]))
                 ->schedule($this->field, new SwissOptions(5));
 
             if (count($schedule) !== 60) {
@@ -64,7 +64,7 @@ final class SwissBench
     public function benchSchedule24ToTheLastRound(): void
     {
         for ($repeat = 0; $repeat < 3; ++$repeat) {
-            $schedule = (new SwissScheduler())->schedule($this->field, new SwissOptions(23));
+            $schedule = new SwissScheduler()->schedule($this->field, new SwissOptions(23));
 
             if (count($schedule) !== 276) {
                 throw new RuntimeException('The benchmark did not produce a Swiss schedule of 276 events.');

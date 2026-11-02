@@ -10,7 +10,7 @@ namespace MissionGaming\Tactician\Constraints;
  *
  * @experimental
  */
-class ConstraintSetBuilder
+final class ConstraintSetBuilder
 {
     /** @var array<ConstraintInterface> */
     private array $constraints = [];

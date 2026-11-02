@@ -106,7 +106,7 @@ function leagueSchedule(array $field, ?RoundRobinOptions $options, ?ConstraintSe
 {
     $randomizer = $seed === null ? null : new Randomizer(new Xoshiro256StarStar($seed));
 
-    return (new RoundRobinScheduler($constraints, $randomizer))->schedule($field, $options);
+    return new RoundRobinScheduler($constraints, $randomizer)->schedule($field, $options);
 }
 
 /**
@@ -286,8 +286,8 @@ describe('a league paired round by round', function (): void {
         $options = new RoundRobinOptions(legs: 2);
         $field = leagueField(5);
 
-        expect((new RoundRobinEngine($options))->getPlan(StageState::start($field)))
-            ->toEqual((new RoundRobinScheduler())->getPlan($field, $options));
+        expect(new RoundRobinEngine($options)->getPlan(StageState::start($field)))
+            ->toEqual(new RoundRobinScheduler()->getPlan($field, $options));
     });
 
     // A round drawn by hand moves no later fixture, and the engine never
@@ -507,12 +507,12 @@ describe('a league paired round by round', function (): void {
         $engine = new RoundRobinEngine(new RoundRobinOptions(legs: 2));
         $state = StageState::start($field)->withEngineFingerprint($engine->getFingerprint());
 
-        expect(leagueRefusal(fn() => (new RoundRobinEngine())->pairNextRound($state))->getReason())->toBe(InvalidConfigurationReason::EngineFingerprintMismatch)
-            ->and((new RoundRobinEngine(new RoundRobinOptions(legs: 2), ConstraintSet::create()->noRepeatPairings()->build()))->getFingerprint())
+        expect(leagueRefusal(fn() => new RoundRobinEngine()->pairNextRound($state))->getReason())->toBe(InvalidConfigurationReason::EngineFingerprintMismatch)
+            ->and(new RoundRobinEngine(new RoundRobinOptions(legs: 2), ConstraintSet::create()->noRepeatPairings()->build())->getFingerprint())
             ->toBe($engine->getFingerprint())
-            ->and((new RoundRobinEngine(new RoundRobinOptions(legs: 2), seed: 3))->getFingerprint())->not->toBe($engine->getFingerprint())
-            ->and((new RoundRobinEngine(standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero())))->getFingerprint())
-            ->toBe((new RoundRobinEngine())->getFingerprint());
+            ->and(new RoundRobinEngine(new RoundRobinOptions(legs: 2), seed: 3)->getFingerprint())->not->toBe($engine->getFingerprint())
+            ->and(new RoundRobinEngine(standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero()))->getFingerprint())
+            ->toBe(new RoundRobinEngine()->getFingerprint());
     });
 
     it('refuses a shuffled leg strategy that draws from a randomizer: the same round could not be paired twice', function (): void {
@@ -612,7 +612,7 @@ describe('a league paired round by round', function (): void {
     });
 
     it('refuses a state stamped by an engine with other options in every call', function (): void {
-        $state = StageState::start(leagueField(4))->withEngineFingerprint((new RoundRobinEngine(new RoundRobinOptions(legs: 2)))->getFingerprint());
+        $state = StageState::start(leagueField(4))->withEngineFingerprint(new RoundRobinEngine(new RoundRobinOptions(legs: 2))->getFingerprint());
         $engine = new RoundRobinEngine();
 
         foreach ([
@@ -762,8 +762,8 @@ describe('the table of a league', function (): void {
 
         expect($rests)->toBe(15 * $legs)
             // Nothing is paired from the table, so the bye value is not in the fingerprint
-            ->and((new RoundRobinEngine(standingsCalculator: $calculators['a bye worth a draw']))->getFingerprint())
-            ->toBe((new RoundRobinEngine())->getFingerprint());
+            ->and(new RoundRobinEngine(standingsCalculator: $calculators['a bye worth a draw'])->getFingerprint())
+            ->toBe(new RoundRobinEngine()->getFingerprint());
     })->with([1, 2]);
 });
 

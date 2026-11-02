@@ -109,7 +109,7 @@ $bestThirds = BestOfRankSelector::ofRank(3, 2)->select($stage);
 // come from. Composition validation checks the hand-off before any pool is
 // played: three pools, two from each and two best thirds, make eight
 $qualifiers = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 2));
-$violations = (new CompositionValidator())->validateChain(12, [
+$violations = new CompositionValidator()->validateChain(12, [
     new StageTransition('quarterfinals', 8, $qualifiers, sourcePools: 3),
 ]);
 $knockoutEntrants = $qualifiers->select($stage);
@@ -118,7 +118,7 @@ $firstRound = array_map(
         static fn(Participant $participant): string => $participant->getLabel(),
         $event->getParticipants()
     )),
-    (new SingleEliminationEngine())->pairNextRound(StageState::start($knockoutEntrants))->getEvents()
+    new SingleEliminationEngine()->pairNextRound(StageState::start($knockoutEntrants))->getEvents()
 );
 
 // Another year, one club fewer: the west pool has three clubs, who each

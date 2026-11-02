@@ -47,14 +47,14 @@ $fixturePolicy = ConstraintSet::create()->custom(static function (Event $event):
 // the policy
 $greedyFailure = null;
 try {
-    (new RoundRobinScheduler($fixturePolicy))->schedule($clubs);
+    new RoundRobinScheduler($fixturePolicy)->schedule($clubs);
 } catch (IncompleteScheduleException $exception) {
     $greedyFailure = $exception;
 }
 
 // Backtracking generation (opt-in) searches the round decompositions the
 // rotations cannot reach
-$schedule = (new RoundRobinScheduler($fixturePolicy))
+$schedule = new RoundRobinScheduler($fixturePolicy)
     ->schedule($clubs, new RoundRobinOptions(backtracking: true));
 
 // Genuinely unsatisfiable configurations still fail loudly - the search
@@ -64,7 +64,7 @@ $rejectEverything = ConstraintSet::create()->custom(fn() => false, 'Reject Every
 $unsatisfiable = null;
 $blocked = [];
 try {
-    (new RoundRobinScheduler($rejectEverything))->schedule($clubs, new RoundRobinOptions(backtracking: true));
+    new RoundRobinScheduler($rejectEverything)->schedule($clubs, new RoundRobinOptions(backtracking: true));
 } catch (IncompleteScheduleException $exception) {
     $unsatisfiable = $exception;
 

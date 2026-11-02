@@ -22,7 +22,7 @@ use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
  *
  * @api
  */
-class IncompleteScheduleException extends SchedulingException
+final class IncompleteScheduleException extends SchedulingException
 {
     /**
      * Nothing is validated: the exception reports the values it is given.

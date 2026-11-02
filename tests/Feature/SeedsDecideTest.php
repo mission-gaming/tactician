@@ -100,12 +100,12 @@ function seedsDecideFixturePlacement(array $field): ConstraintSet
 describe('a different seed gives a different result', function (): void {
     it('shuffles the field of a round robin', function (int $size): void {
         $field = seedsDecideField($size);
-        $unseeded = seedsDecideSignature((new RoundRobinScheduler())->schedule($field));
+        $unseeded = seedsDecideSignature(new RoundRobinScheduler()->schedule($field));
 
         $schedules = [];
         for ($seed = 1; $seed <= SEEDS_DECIDE_SEEDS; ++$seed) {
             $schedules[] = seedsDecideSignature(
-                (new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed))))->schedule($field)
+                new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed)))->schedule($field)
             );
         }
 
@@ -120,7 +120,7 @@ describe('a different seed gives a different result', function (): void {
         $laterLegs = [];
         $structures = [];
         for ($seed = 1; $seed <= SEEDS_DECIDE_SEEDS; ++$seed) {
-            $schedule = (new RoundRobinScheduler())->schedule(
+            $schedule = new RoundRobinScheduler()->schedule(
                 $field,
                 new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937($seed))))
             );
@@ -144,11 +144,11 @@ describe('a different seed gives a different result', function (): void {
         $balanced = [];
         for ($seed = 1; $seed <= SEEDS_DECIDE_SEEDS; ++$seed) {
             $schedules[] = seedsDecideSignature(
-                (new RoundRobinScheduler(seedsDecideFixturePlacement($field), new Randomizer(new Mt19937($seed))))
+                new RoundRobinScheduler(seedsDecideFixturePlacement($field), new Randomizer(new Mt19937($seed)))
                     ->schedule($field, new RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()))
             );
             $balanced[] = seedsDecideSignature(
-                (new RoundRobinScheduler(seedsDecideFixturePlacement($field), new Randomizer(new Mt19937($seed))))
+                new RoundRobinScheduler(seedsDecideFixturePlacement($field), new Randomizer(new Mt19937($seed)))
                     ->schedule($field, new RoundRobinOptions(backtracking: true))
             );
         }
@@ -196,7 +196,7 @@ describe('a different seed gives a different result', function (): void {
         $schedules = [];
         for ($seed = 1; $seed <= SEEDS_DECIDE_SEEDS; ++$seed) {
             $schedules[] = seedsDecideSignature(
-                (new SwissScheduler(null, new Randomizer(new Mt19937($seed))))->schedule($field, new SwissOptions(rounds: 4))
+                new SwissScheduler(null, new Randomizer(new Mt19937($seed)))->schedule($field, new SwissOptions(rounds: 4))
             );
         }
 
@@ -207,9 +207,9 @@ describe('a different seed gives a different result', function (): void {
         $field = seedsDecideField(8);
         $samplesOf = static function (int $masterSeed) use ($field): array {
             $samples = [];
-            (new ScheduleOptimizer(ScheduleScorer::of(new RoleBalanceMetric()), new Randomizer(new Mt19937($masterSeed))))
+            new ScheduleOptimizer(ScheduleScorer::of(new RoleBalanceMetric()), new Randomizer(new Mt19937($masterSeed)))
                 ->optimize(static function (Randomizer $child) use (&$samples, $field): Schedule {
-                    $schedule = (new RoundRobinScheduler(null, $child))->schedule($field);
+                    $schedule = new RoundRobinScheduler(null, $child)->schedule($field);
                     $samples[] = seedsDecideSignature($schedule);
 
                     return $schedule;
@@ -262,7 +262,7 @@ describe('a scheduler used twice', function (): void {
             ->and($twoCalls())->toBe([$first, $second])
             // The first call is what a new scheduler with the seed gives
             ->and($first)->toBe(seedsDecideSignature(
-                (new RoundRobinScheduler(null, new Randomizer(new Mt19937(2026))))->schedule($field)
+                new RoundRobinScheduler(null, new Randomizer(new Mt19937(2026)))->schedule($field)
             ));
     });
 
@@ -276,9 +276,9 @@ describe('a scheduler used twice', function (): void {
         // The randomizer is the only thing a scheduler carries from one call
         // to the next: advance one by a call, hand it to a new scheduler
         $randomizer = new Randomizer(new Mt19937(2026));
-        (new RoundRobinScheduler(null, $randomizer))->schedule($field);
+        new RoundRobinScheduler(null, $randomizer)->schedule($field);
 
-        expect(seedsDecideSignature((new RoundRobinScheduler(null, $randomizer))->schedule($field)))->toBe($second);
+        expect(seedsDecideSignature(new RoundRobinScheduler(null, $randomizer)->schedule($field)))->toBe($second);
     });
 
     it('continues the random sequence on the second call of a seeded Swiss scheduler', function (): void {
@@ -311,7 +311,7 @@ describe('a scheduler used twice', function (): void {
         // turn up in the even one that follows it
         expect(seedsDecideSignature($scheduler->schedule($odd, $options)))->toBe($firstOdd)
             ->and(seedsDecideSignature($scheduler->schedule($even, $options)))->toBe($firstEven)
-            ->and($firstEven)->toBe(seedsDecideSignature((new RoundRobinScheduler())->schedule($even, $options)))
+            ->and($firstEven)->toBe(seedsDecideSignature(new RoundRobinScheduler()->schedule($even, $options)))
             ->and($firstEven)->toEndWith('byes []')
             ->and($firstOdd)->toContain('byes {"1":"p');
     });
@@ -332,7 +332,7 @@ describe('a scheduler used twice', function (): void {
         $afterFailure = seedsDecideSignature($scheduler->schedule($field, new RoundRobinOptions(backtracking: true)));
 
         expect($afterFailure)->toBe(seedsDecideSignature(
-            (new RoundRobinScheduler(seedsDecideFixturePlacement($field)))->schedule($field, new RoundRobinOptions(backtracking: true))
+            new RoundRobinScheduler(seedsDecideFixturePlacement($field))->schedule($field, new RoundRobinOptions(backtracking: true))
         ));
     });
 });

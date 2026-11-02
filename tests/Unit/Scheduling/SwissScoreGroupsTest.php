@@ -107,7 +107,7 @@ describe('Swiss score groups', function (): void {
     });
 
     it('starts from two sums of the same results that differ in the last bits', function (): void {
-        $standings = (new StandingsCalculator(new WinDrawLossRanking(1.0, 0.1)))
+        $standings = new StandingsCalculator(new WinDrawLossRanking(1.0, 0.1))
             ->calculate(array_values($this->field), ($this->levelLeaders)()->getResults());
 
         $a = $standings->getEntryFor($this->field['a']);
@@ -230,7 +230,7 @@ describe('Swiss score groups', function (): void {
         $state = withScoredRound($state, 3, [[$a, $g, null], [$b, $h, null], [$c, $e, null], [$d, $f, null]]);
         $state = withScoredRound($state, 4, [[$a, $h, null], [$b, $e, $b], [$c, $f, null], [$d, $g, $d]]);
 
-        $standings = (new StandingsCalculator($ranking))->calculate(array_values($this->field), $state->getResults());
+        $standings = new StandingsCalculator($ranking)->calculate(array_values($this->field), $state->getResults());
         expect($standings->getEntryFor($a)?->getRankingValue())
             ->not->toBe($standings->getEntryFor($b)?->getRankingValue());
 
@@ -259,7 +259,7 @@ describe('Swiss score groups', function (): void {
         $state = withScoredRound($state, 2, [[$a, $f, $f], [$b, $g, null], [$c, $h, $h], [$d, $e, null]]);
         $state = withScoredRound($state, 3, [[$a, $g, $g], [$b, $h, null], [$c, $e, $e], [$d, $f, null]]);
 
-        $standings = (new StandingsCalculator($ranking))->calculate(array_values($this->field), $state->getResults());
+        $standings = new StandingsCalculator($ranking)->calculate(array_values($this->field), $state->getResults());
         expect($standings->getEntryFor($a)?->getRankingValue())->toBe(0.3)
             ->and($standings->getEntryFor($b)?->getRankingValue())->toBe(0.1 + 0.1 + 0.1)
             ->and(0.1 + 0.1 + 0.1)->not->toBe(0.3);
@@ -300,9 +300,9 @@ describe('Swiss score groups', function (): void {
         // s withdraws, leaving x, y, q and r. x and y have each been named
         // first once, so the role goes by placing: the lower-placed
         // participant, y, is named first.
-        $pairing = (new SwissPairingEngine(
+        $pairing = new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(0.6, 0.1))
-        ))->pairNextRound($state->withoutParticipant($s));
+        )->pairNextRound($state->withoutParticipant($s));
 
         $ids = array_map(
             fn(Event $event): array => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()),
@@ -361,9 +361,9 @@ describe('Swiss score groups', function (): void {
         $state = withScoredRound($state, 2, [[$x, $r, null], [$s, $y, null]], [$q]);
         $state = withScoredRound($state, 3, [[$q, $x, null], [$r, $y, $r]], [$s]);
 
-        $pairing = (new SwissPairingEngine(
+        $pairing = new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(1.0e15, 1.0))
-        ))->pairNextRound($state->withoutParticipant($s));
+        )->pairNextRound($state->withoutParticipant($s));
 
         // x is above y, so y, the lower placed of the two, is named first.
         // Were they level, the table would decide, and the table (which
@@ -463,7 +463,7 @@ describe('Swiss score groups', function (): void {
     it('pairs down the table without a randomizer, for every scale', function (array $values): void {
         $field = [$this->field['d'], $this->field['c'], $this->field['b'], $this->field['a']];
 
-        $pairing = (new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fixedRanking($values))))
+        $pairing = new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fixedRanking($values)))
             ->pairNextRound(StageState::start($field));
 
         expect(opponentIn($pairing, $this->field['a'])?->getId())->toBe('b')

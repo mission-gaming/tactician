@@ -86,7 +86,7 @@ describe('RoleBalanceConstraint', function (): void {
             ->add(RoleBalanceConstraint::homeAway(3))
             ->build();
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($this->participants, new RoundRobinOptions(legs: 2));
+        $schedule = new RoundRobinScheduler($constraints)->schedule($this->participants, new RoundRobinOptions(legs: 2));
 
         expect(count($schedule))->toBe(12);
 
@@ -123,7 +123,7 @@ describe('RoleBalanceConstraint', function (): void {
             ->build();
 
         foreach ([1, 2] as $legs) {
-            $schedule = (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: $legs));
+            $schedule = new RoundRobinScheduler($constraints)->schedule($participants, new RoundRobinOptions(legs: $legs));
 
             $expectedEvents = intdiv($fieldSize * ($fieldSize - 1), 2) * $legs;
             expect(count($schedule))->toBe($expectedEvents);

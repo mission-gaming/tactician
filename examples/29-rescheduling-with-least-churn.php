@@ -99,7 +99,7 @@ $figures = static fn(RepackOutcome $outcome): array => [
 // Could the club have done without the added night? The fewest nights
 // that hold the rest of the season, for a grid of two draws on four sheets
 $nights = ['2026-11-05 18:30', '2026-11-12 18:30', '2026-11-26 18:30', '2026-12-03 18:30', '2026-12-10 18:30'];
-$shortest = (new ShortestGridFinder($repacker))->find(
+$shortest = new ShortestGridFinder($repacker)->find(
     $outstanding,
     $played,
     static fn(int $sessions): SessionGrid => SessionGrid::fromArray([

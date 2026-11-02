@@ -17,7 +17,7 @@ use MissionGaming\Tactician\Serialization\PlainData;
  *
  * @api
  */
-readonly class Participant
+final readonly class Participant
 {
     /**
      * The ID must not be empty; nothing else is validated here. An ID that

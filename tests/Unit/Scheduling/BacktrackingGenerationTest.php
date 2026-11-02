@@ -61,10 +61,10 @@ describe('Backtracking round-robin generation', function (): void {
     it('finds schedules the greedy rotations cannot', function (): void {
         $constraints = fixturePlacementConstraints();
 
-        expect(fn() => (new RoundRobinScheduler($constraints))->schedule(backtrackingField(4)))
+        expect(fn() => new RoundRobinScheduler($constraints)->schedule(backtrackingField(4)))
             ->toThrow(IncompleteScheduleException::class);
 
-        $schedule = (new RoundRobinScheduler($constraints))
+        $schedule = new RoundRobinScheduler($constraints)
             ->schedule(backtrackingField(4), new RoundRobinOptions(backtracking: true));
 
         expect($schedule)->toHaveCount(6);
@@ -94,10 +94,10 @@ describe('Backtracking round-robin generation', function (): void {
         }, 'Odd Placement')->build();
 
         // Greedy fails this placement; the search does not
-        expect(fn() => (new RoundRobinScheduler($constraints))->schedule(backtrackingField(5)))
+        expect(fn() => new RoundRobinScheduler($constraints)->schedule(backtrackingField(5)))
             ->toThrow(IncompleteScheduleException::class);
 
-        $schedule = (new RoundRobinScheduler($constraints))
+        $schedule = new RoundRobinScheduler($constraints)
             ->schedule(backtrackingField(5), new RoundRobinOptions(backtracking: true));
 
         expect($schedule)->toHaveCount(10);
@@ -107,7 +107,7 @@ describe('Backtracking round-robin generation', function (): void {
     });
 
     it('derives later legs from the backtracked first leg', function (): void {
-        $schedule = (new RoundRobinScheduler(fixturePlacementConstraints()))
+        $schedule = new RoundRobinScheduler(fixturePlacementConstraints())
             ->schedule(backtrackingField(4), new RoundRobinOptions(legs: 2, backtracking: true));
 
         expect($schedule)->toHaveCount(12);
@@ -126,7 +126,7 @@ describe('Backtracking round-robin generation', function (): void {
     it('proves unsatisfiable configurations by exhausting the search space', function (): void {
         $never = ConstraintSet::create()->custom(fn() => false, 'Reject Everything')->build();
 
-        expect(fn() => (new RoundRobinScheduler($never))
+        expect(fn() => new RoundRobinScheduler($never)
             ->schedule(backtrackingField(4), new RoundRobinOptions(backtracking: true)))
             ->toThrow(IncompleteScheduleException::class, 'exhausted the search space');
     });
@@ -163,7 +163,7 @@ describe('Backtracking round-robin generation', function (): void {
             ->custom(fn(Event $e) => $e->getRound()?->getNumber() !== 11, 'No Round 11')
             ->build();
 
-        expect(fn() => (new RoundRobinScheduler($noFinalRound))
+        expect(fn() => new RoundRobinScheduler($noFinalRound)
             ->schedule(backtrackingField(12), new RoundRobinOptions(backtracking: true)))
             ->toThrow(IncompleteScheduleException::class, 'step budget');
     });
@@ -264,7 +264,7 @@ describe('Backtracking round-robin generation', function (): void {
             };
         }, 'Odd Placement')->build();
 
-        $schedule = (new RoundRobinScheduler($constraints))
+        $schedule = new RoundRobinScheduler($constraints)
             ->schedule(backtrackingField(5), new RoundRobinOptions(legs: 2, backtracking: true));
 
         expect($schedule)->toHaveCount(20);
@@ -281,7 +281,7 @@ describe('Backtracking round-robin generation', function (): void {
 
         // Odd fields exercise the bye-assignment backtracking: every bye
         // choice is tried and unwound before the space is exhausted
-        expect(fn() => (new RoundRobinScheduler($never))
+        expect(fn() => new RoundRobinScheduler($never)
             ->schedule(backtrackingField(3), new RoundRobinOptions(backtracking: true)))
             ->toThrow(IncompleteScheduleException::class, 'exhausted the search space');
     });
@@ -294,7 +294,7 @@ describe('Backtracking round-robin generation', function (): void {
             ->custom(fn(Event $e) => $e->getRound()?->getNumber() !== 13, 'No Round 13')
             ->build();
 
-        expect(fn() => (new RoundRobinScheduler($noFinalRound))
+        expect(fn() => new RoundRobinScheduler($noFinalRound)
             ->schedule(backtrackingField(13), new RoundRobinOptions(backtracking: true)))
             ->toThrow(IncompleteScheduleException::class, 'step budget');
     });
@@ -310,14 +310,14 @@ describe('Backtracking round-robin generation', function (): void {
             return implode(';', $parts);
         };
 
-        $run = fn() => $signature((new RoundRobinScheduler(fixturePlacementConstraints(), new Randomizer(new Mt19937(7))))
+        $run = fn() => $signature(new RoundRobinScheduler(fixturePlacementConstraints(), new Randomizer(new Mt19937(7)))
             ->schedule(backtrackingField(4), new RoundRobinOptions(backtracking: true)));
 
         expect($run())->toBe($run());
     });
 
     it('does not run when backtracking is disabled', function (): void {
-        expect(fn() => (new RoundRobinScheduler(fixturePlacementConstraints()))
+        expect(fn() => new RoundRobinScheduler(fixturePlacementConstraints())
             ->schedule(backtrackingField(4), new RoundRobinOptions()))
             ->toThrow(IncompleteScheduleException::class);
     });

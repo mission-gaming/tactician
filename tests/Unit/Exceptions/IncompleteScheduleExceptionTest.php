@@ -318,13 +318,13 @@ describe('IncompleteScheduleException', function (): void {
             ));
         }
 
-        $report = (new IncompleteScheduleException(
+        $report = new IncompleteScheduleException(
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: $violationCollector,
             plan: $this->plan,
             participants: $this->participants
-        ))->getDiagnosticReport();
+        )->getDiagnosticReport();
 
         expect($report)->toContain('Reduce the minimum rest period requirement');
         expect($report)->toContain('may be mathematically impossible');
@@ -374,13 +374,13 @@ describe('IncompleteScheduleException', function (): void {
             [$this->participant1]
         ));
 
-        $report = (new IncompleteScheduleException(
+        $report = new IncompleteScheduleException(
             expectedEventCount: 6,
             actualEventCount: 2,
             violationCollector: $violationCollector,
             plan: new MissionGaming\Tactician\Stage\SwissPlan($this->participants, 3),
             participants: $this->participants
-        ))->getDiagnosticReport();
+        )->getDiagnosticReport();
 
         expect($report)->toContain('Add more rounds to provide more scheduling flexibility');
         expect($report)->not->toContain('Add more legs');
@@ -403,7 +403,7 @@ describe('IncompleteScheduleException', function (): void {
             }, 'Derby Ban')->build();
 
         try {
-            (new MissionGaming\Tactician\Scheduling\RoundRobinScheduler($noDerby))->schedule($teams);
+            new MissionGaming\Tactician\Scheduling\RoundRobinScheduler($noDerby)->schedule($teams);
             expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
         } catch (IncompleteScheduleException $e) {
             expect($e->getAnalysis())->not->toBeNull();
@@ -445,7 +445,7 @@ describe('IncompleteScheduleException', function (): void {
             ));
         }
 
-        $report = (new IncompleteScheduleException(12, 2, $collector, $this->plan, $this->participants))->getDiagnosticReport();
+        $report = new IncompleteScheduleException(12, 2, $collector, $this->plan, $this->participants)->getDiagnosticReport();
 
         expect($report)->toContain("  Affected rounds: 2 (1)\n")
             ->and($report)->not->toContain('Affected rounds: 0')
@@ -462,7 +462,7 @@ describe('IncompleteScheduleException', function (): void {
             roundNumber: 0
         ));
 
-        $report = (new IncompleteScheduleException(12, 2, $collector, $this->plan, $this->participants))->getDiagnosticReport();
+        $report = new IncompleteScheduleException(12, 2, $collector, $this->plan, $this->participants)->getDiagnosticReport();
 
         expect($report)->not->toContain('Affected rounds')
             ->and($report)->toContain('Most affected participants: p1 (1)');

@@ -288,7 +288,7 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
     // eight keep the limit with as they are, so the witness has the first
     // leg of the shuffled schedule.
     it('is satisfiable: a schedule exists, and its second leg is one the shuffled strategy may draw', function (): void {
-        $witness = (new RoundRobinScheduler($this->constraints))->schedule(
+        $witness = new RoundRobinScheduler($this->constraints)->schedule(
             $this->field,
             new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy(), roleAssignment: new RoundParityRoleAssignment())
         );
@@ -297,7 +297,7 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
         expect(RoundRobinAudit::faults($witness, $this->field, 2))->toBe([])
             ->and(RoleCounts::worstStreak($witness))->toBe(2);
 
-        $shuffled = (new RoundRobinScheduler())->schedule(
+        $shuffled = new RoundRobinScheduler()->schedule(
             $this->field,
             new RoundRobinOptions(
                 legs: 2,
@@ -323,12 +323,12 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
             strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(1))),
             roleAssignment: $roleAssignment
         );
-        $schedule = (new RoundRobinScheduler($this->constraints))->schedule($this->field, $options());
+        $schedule = new RoundRobinScheduler($this->constraints)->schedule($this->field, $options());
 
         expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([])
             ->and(RoleCounts::worstStreak($schedule))->toBeLessThanOrEqual(2);
 
-        $unconstrained = (new RoundRobinScheduler())->schedule($this->field, $options());
+        $unconstrained = new RoundRobinScheduler()->schedule($this->field, $options());
 
         expect(RoleCounts::structure($schedule))->toBe(RoleCounts::structure($unconstrained))
             ->and(RoleCounts::leg($schedule, 1, 7))->toEqual(RoleCounts::leg($unconstrained, 1, 7))
@@ -347,11 +347,11 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
 
         for ($seed = 1; $seed <= 40; ++$seed) {
             $options = static fn(): RoundRobinOptions => new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: $seed));
-            $schedule = (new RoundRobinScheduler($limit))->schedule($this->field, $options());
+            $schedule = new RoundRobinScheduler($limit)->schedule($this->field, $options());
 
             expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([], "seed {$seed}")
                 ->and(RoleCounts::worstStreak($schedule))->toBeLessThanOrEqual(2)
-                ->and((new RoundRobinScheduler($limit))->schedule($this->field, $options())->toJson())->toBe($schedule->toJson());
+                ->and(new RoundRobinScheduler($limit)->schedule($this->field, $options())->toJson())->toBe($schedule->toJson());
 
             $schedules[$schedule->toJson()] = true;
         }
@@ -385,8 +385,8 @@ describe('a limit of two same-role events in a row over two repeated legs of eig
             strategy: new RepeatedLegStrategy(),
             roleAssignment: new RoundParityRoleAssignment()
         );
-        $single = (new RoundRobinScheduler($this->constraints))->schedule($this->field, $parity(1));
-        $twice = (new RoundRobinScheduler())->schedule($this->field, $parity(2));
+        $single = new RoundRobinScheduler($this->constraints)->schedule($this->field, $parity(1));
+        $twice = new RoundRobinScheduler()->schedule($this->field, $parity(2));
 
         expect(RoleCounts::worstStreak($single))->toBe(2)
             ->and(RoleCounts::leg($twice, 1, 7))->toEqual($single->getEvents())
@@ -394,7 +394,7 @@ describe('a limit of two same-role events in a row over two repeated legs of eig
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($this->constraints))->schedule($this->field, $parity(2));
+            new RoundRobinScheduler($this->constraints)->schedule($this->field, $parity(2));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
@@ -413,15 +413,15 @@ describe('a limit of two same-role events in a row over two repeated legs of eig
     it('schedules the two legs with the options as they come', function (): void {
         $options = new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy());
 
-        $schedule = (new RoundRobinScheduler($this->constraints))->schedule($this->field, $options);
+        $schedule = new RoundRobinScheduler($this->constraints)->schedule($this->field, $options);
 
         expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([])
             ->and(RoleCounts::worstStreak($schedule))->toBe(2)
-            ->and($schedule->toJson())->toBe((new RoundRobinScheduler())->schedule($this->field, $options)->toJson());
+            ->and($schedule->toJson())->toBe(new RoundRobinScheduler()->schedule($this->field, $options)->toJson());
     });
 
     it('schedules the two legs with backtracking, the second with the roles of the first', function (): void {
-        $schedule = (new RoundRobinScheduler($this->constraints))->schedule(
+        $schedule = new RoundRobinScheduler($this->constraints)->schedule(
             $this->field,
             new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy(), backtracking: true, roleAssignment: new RoundParityRoleAssignment())
         );
@@ -486,7 +486,7 @@ describe('a pairing with no round open to it in the second of two shuffled legs 
     ): void {
         $failure = null;
         try {
-            (new RoundRobinScheduler($this->constraints))->schedule(
+            new RoundRobinScheduler($this->constraints)->schedule(
                 $this->field,
                 new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1), roleAssignment: $roleAssignment)
             );
@@ -531,7 +531,7 @@ describe('a pairing with no round open to it in the second of two shuffled legs 
     it('fails loudly with backtracking, and never returns part of a schedule', function (): void {
         $failure = null;
         try {
-            (new RoundRobinScheduler($this->constraints))->schedule(
+            new RoundRobinScheduler($this->constraints)->schedule(
                 $this->field,
                 new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1), backtracking: true)
             );

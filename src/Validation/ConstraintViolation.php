@@ -16,7 +16,7 @@ use MissionGaming\Tactician\DTO\Participant;
  *
  * @experimental
  */
-readonly class ConstraintViolation
+final readonly class ConstraintViolation
 {
     /**
      * @param ConstraintInterface $constraint The constraint that rejected the event

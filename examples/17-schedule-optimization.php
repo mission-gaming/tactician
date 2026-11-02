@@ -45,15 +45,15 @@ $scorer = new ScheduleScorer([
 
 // Every randomness source uses the child randomizer, so the whole run
 // reproduces from the single master seed
-$generate = fn(Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
+$generate = fn(Randomizer $r) => new RoundRobinScheduler(null, $r)->schedule(
     $players,
     new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
 );
 
 // The same master seed twice: the first sample alone, then the best of 25
-$single = (new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026))))
+$single = new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026)))
     ->optimize($generate, 1);
-$best = (new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026))))
+$best = new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026)))
     ->optimize($generate, 25);
 
 $comparison = [];

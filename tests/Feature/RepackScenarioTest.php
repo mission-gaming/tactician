@@ -135,7 +135,7 @@ describe('Repack reference scenario', function (): void {
             $movableById[$event->getId()] = $event;
         }
 
-        $outcome = (new ScheduleRepacker())->repack(
+        $outcome = new ScheduleRepacker()->repack(
             new RepackRequest($movable, [], repackScenarioGrid($data))
         );
 
@@ -195,7 +195,7 @@ describe('Repack reference scenario', function (): void {
         $movable = repackScenarioMovables($data, $participants);
         $pinned = repackScenarioPins($data, $participants);
 
-        $outcome = (new ScheduleRepacker())->repack(
+        $outcome = new ScheduleRepacker()->repack(
             new RepackRequest($movable, $pinned, repackScenarioGrid($data))
         );
 

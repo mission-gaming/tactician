@@ -81,9 +81,9 @@ describe('ShuffledLegStrategy', function (): void {
     });
 
     it('says which seed it was built from, and none when it holds a randomizer', function (): void {
-        expect((new ShuffledLegStrategy(seed: 2026))->seed)->toBe(2026)
-            ->and((new ShuffledLegStrategy(seed: 0))->seed)->toBe(0)
-            ->and((new ShuffledLegStrategy(new Randomizer(new Mt19937(2026))))->seed)->toBeNull();
+        expect(new ShuffledLegStrategy(seed: 2026)->seed)->toBe(2026)
+            ->and(new ShuffledLegStrategy(seed: 0)->seed)->toBe(0)
+            ->and(new ShuffledLegStrategy(new Randomizer(new Mt19937(2026)))->seed)->toBeNull();
     });
 
     it('draws from its seed what a Xoshiro256StarStar randomizer of that seed gives', function (int $seed): void {

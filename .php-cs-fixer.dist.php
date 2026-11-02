@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 // The style is PER Coding Style (`@PER-CS` follows the current version of the
-// standard) and the PHP 8.3 migration set, with the additions below.
+// standard) and the PHP 8.4 migration set, with the additions below.
 //
 // The migration set is named, not derived from the running PHP, so the fixer
-// asks for the same code on PHP 8.3, 8.4 and 8.5. On a PHP newer than the
+// asks for the same code on PHP 8.4 and 8.5. On a PHP newer than the
 // Composer floor it prints a notice that says so; the notice does not change
 // the exit status. It does refuse to run on a PHP newer than it supports,
 // which is deliberate: `setUnsupportedPhpVersionAllowed()` is not called.
@@ -26,7 +26,7 @@ return (new PhpCsFixer\Config())
     ->setRiskyAllowed(true)
     ->setRules([
         '@PER-CS' => true,
-        '@PHP8x3Migration' => true,
+        '@PHP8x4Migration' => true,
         'declare_strict_types' => true,
 
         // Where the project differs from the preset.

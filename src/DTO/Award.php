@@ -20,7 +20,7 @@ use MissionGaming\Tactician\Serialization\PlainData;
  *
  * @api
  */
-readonly class Award
+final readonly class Award
 {
     /**
      * @param string|null $label A short name the application gives the kind of award, in its own

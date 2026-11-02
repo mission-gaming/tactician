@@ -65,7 +65,7 @@ function roundsHeldLocalHalfHour(): DateInterval
 {
     $utc = new DateTimeZone('UTC');
 
-    return (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 00:30', $utc));
+    return new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 00:30', $utc));
 }
 
 /**
@@ -162,7 +162,7 @@ describe('assign() compares the rounds the schedule holds', function (): void {
             roundsHeldLocalHalfHour()
         );
 
-        $refusal = roundsHeldRefusal(fn() => (new TimelineAssigner())->assign(roundsHeldSchedule(6, 4, 2), $timeline));
+        $refusal = roundsHeldRefusal(fn() => new TimelineAssigner()->assign(roundsHeldSchedule(6, 4, 2), $timeline));
 
         expect($refusal?->getReason())->toBe(InvalidConfigurationReason::OverlappingTime)
             ->and($refusal?->getContext()['round'] ?? null)->toBe(2)
@@ -210,7 +210,7 @@ describe('assign() compares the rounds the schedule holds', function (): void {
             slotInterval: new DateInterval('P30D')
         );
 
-        expect((new TimelineAssigner())->assign(roundsHeldSchedule(2), $timeline))->toHaveCount(1);
+        expect(new TimelineAssigner()->assign(roundsHeldSchedule(2), $timeline))->toHaveCount(1);
     });
 
     it('refuses a later round that is at an earlier time, as it refuses one at the same time', function (): void {
@@ -233,7 +233,7 @@ describe('assign() compares the rounds the schedule holds', function (): void {
         // Round 2's two slots are both 02:30 on the night the clocks skip
         // 01:30; its one event fills the first of them
         $utc = new DateTimeZone('UTC');
-        $localHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+        $localHour = new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
         $timeline = new TimelineDefinition(
             new DateTimeImmutable('2026-03-22 00:30', new DateTimeZone('Europe/London')),
             new DateInterval('P7D'),
@@ -241,7 +241,7 @@ describe('assign() compares the rounds the schedule holds', function (): void {
             slotInterval: $localHour
         );
 
-        $refusal = roundsHeldRefusal(fn() => (new TimelineAssigner())->assign(roundsHeldSchedule(1, 2), $timeline));
+        $refusal = roundsHeldRefusal(fn() => new TimelineAssigner()->assign(roundsHeldSchedule(1, 2), $timeline));
 
         expect($refusal?->getReason())->toBe(InvalidConfigurationReason::OverlappingTime)
             ->and($refusal?->getMessage())->toContain('Round 2 has two slots that are not at rising times');
@@ -315,7 +315,7 @@ describe('assignRound() compares the round with the one before it', function ():
         $timeline = new TimelineDefinition(new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')), new DateInterval('P7D'));
         $pairing = new RoundPairing($round, null, [new Event([new Participant('a', 'A'), new Participant('b', 'B')], new Round(1))]);
 
-        $refusal = roundsHeldRefusal(fn() => (new TimelineAssigner())->assignRound($pairing, $timeline));
+        $refusal = roundsHeldRefusal(fn() => new TimelineAssigner()->assignRound($pairing, $timeline));
 
         expect($refusal?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
             ->and($refusal?->getContext())->toBe(['round' => $round]);
@@ -345,7 +345,7 @@ describe('assignRound() compares the round with the one before it', function ():
 
     it('compares round 1 with nothing, and a pairing with no events with nothing', function (): void {
         $utc = new DateTimeZone('UTC');
-        $localHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+        $localHour = new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
         // Rounds 2 and 3 are both 02:30 local
         $timeline = new TimelineDefinition(new DateTimeImmutable('2026-03-29 00:30', new DateTimeZone('Europe/London')), $localHour);
         $assigner = new TimelineAssigner();
@@ -362,7 +362,7 @@ describe('No two rounds of an assigned schedule overlap', function (): void {
         $randomizer = new Randomizer(new Xoshiro256StarStar(152));
         $utc = new DateTimeZone('UTC');
 
-        $localHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+        $localHour = new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
         $monthLessDays = static function (int $days): DateInterval {
             $interval = new DateInterval('P1M');
             $interval->d = -$days;

@@ -83,7 +83,7 @@ describe('an event blocked by one that could be elsewhere', function (): void {
     it('is placed by moving the other event to a session that has room', function (): void {
         [$movable, $pinned, $grid] = relocationInstance();
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         // Both are placed, each in the only place the instance leaves it:
         // slot 0 of session 1 is full, so e1 is in slot 1
@@ -98,7 +98,7 @@ describe('an event blocked by one that could be elsewhere', function (): void {
     it('is reported as unplaced when the other event has nowhere else to go', function (): void {
         [$movable, $pinned, $grid] = relocationInstance(bIsPinnedWithC: true);
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
         $positions = relocationPositions($outcome);
 
         expect($positions)->toHaveCount(2);
@@ -116,7 +116,7 @@ describe('an event blocked by one that could be elsewhere', function (): void {
     it('is placed, with the budget flag, when the step budget ends the search for a move', function (): void {
         [$movable, $pinned, $grid] = relocationInstance();
 
-        $outcome = (new ScheduleRepacker())->repack(
+        $outcome = new ScheduleRepacker()->repack(
             new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: 1))
         );
 

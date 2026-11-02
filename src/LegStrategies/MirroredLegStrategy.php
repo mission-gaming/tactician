@@ -48,7 +48,7 @@ use Override;
  *
  * @api
  */
-readonly class MirroredLegStrategy implements LegStrategyInterface
+final readonly class MirroredLegStrategy implements LegStrategyInterface
 {
     /**
      * States that roles mirror across legs (reversed in the even-numbered

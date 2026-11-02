@@ -284,7 +284,7 @@ describe('Golden output', function (): void {
 
         // 4 v 5 finished level at 1-1 and 5 advances: 5 meets the top
         // entrant, who had a bye
-        $next = (new SingleEliminationEngine())->pairNextRound($state);
+        $next = new SingleEliminationEngine()->pairNextRound($state);
         $pairs = array_map(
             static fn(Event $event): string => implode('-', array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants())),
             $next->getEvents()

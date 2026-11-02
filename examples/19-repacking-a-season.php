@@ -66,7 +66,7 @@ $movable = [
 
 // Infeasibility is an outcome, not an exception: every compromise comes
 // back as structured data for the caller to render and judge
-$outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+$outcome = new ScheduleRepacker()->repack(new RepackRequest(
     $movable,
     $pinned,
     $grid,
@@ -78,7 +78,7 @@ $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
 
 // The same request on a grid whose final session has two slots like the
 // first: some fixtures find no position, and the outcome says which
-$withoutTheDeeperSession = (new ScheduleRepacker())->repack(
+$withoutTheDeeperSession = new ScheduleRepacker()->repack(
     new RepackRequest($movable, $pinned, SessionGrid::fromArray($shape))
 );
 

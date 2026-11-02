@@ -36,7 +36,7 @@ use Override;
  *
  * @experimental
  */
-readonly class Standings implements IteratorAggregate, Countable
+final readonly class Standings implements IteratorAggregate, Countable
 {
     /** @var array<StandingEntry> */
     private array $entries;

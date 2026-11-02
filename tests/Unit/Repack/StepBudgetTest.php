@@ -125,11 +125,11 @@ describe('StepBudget', function (): void {
     it('takes the default of the options as the budget at which every work limit is whole', function (): void {
         // The limits were sized with the default budget, and a budget below
         // it gets a share of them: the two numbers must not drift apart
-        expect(StepBudget::DEFAULT_STEPS)->toBe((new RepackOptions())->stepBudget);
+        expect(StepBudget::DEFAULT_STEPS)->toBe(new RepackOptions()->stepBudget);
     });
 
     it('gives a search its whole work limit at the default budget and above, and the same share as the budget below', function (int $callersBudget, int $whole, int $limit): void {
-        expect((new StepBudget(1_000, $callersBudget))->workLimit($whole))->toBe($limit);
+        expect(new StepBudget(1_000, $callersBudget)->workLimit($whole))->toBe($limit);
     })->with([
         'the default budget' => [200_000, 3_000_000, 3_000_000],
         'one step more than the default' => [200_001, 3_000_000, 3_000_000],
@@ -145,7 +145,7 @@ describe('StepBudget', function (): void {
     it('gives every search its whole work limit when it is made without a budget of the caller', function (): void {
         // How the unit tests of the searches make one: a few steps to spend
         // are not a small budget of the caller
-        expect((new StepBudget(3))->workLimit(500_000))->toBe(500_000);
+        expect(new StepBudget(3)->workLimit(500_000))->toBe(500_000);
     });
 
     it('records a search stopped at a work limit the budget made smaller, and not one stopped at its whole limit', function (int $callersBudget, bool $recorded): void {
@@ -185,7 +185,7 @@ describe('The step budget in each phase', function (): void {
         }
         $budget = new StepBudget($steps);
 
-        (new LoadPlanner(new RepackOptions(), $budget))->plan(
+        new LoadPlanner(new RepackOptions(), $budget)->plan(
             fourParticipantEdges(),
             [],
             [],
@@ -204,7 +204,7 @@ describe('The step budget in each phase', function (): void {
     it('is recorded by the session packer', function (int $steps, bool $stopped): void {
         $budget = new StepBudget($steps);
 
-        $packed = (new SessionPacker($budget))->pack(fourParticipantEdges(), [], [], 3, 2);
+        $packed = new SessionPacker($budget)->pack(fourParticipantEdges(), [], [], 3, 2);
 
         expect($budget->stoppedASearch())->toBe($stopped);
         // Stopped or not, the packer accounts for every event

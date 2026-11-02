@@ -60,7 +60,7 @@ it('runs a full groups-into-knockout tournament from the composition primitives'
     $calculator = new StandingsCalculator();
 
     // The declared structure telescopes before any fixture exists
-    $violations = (new CompositionValidator())->validateChain(8, [
+    $violations = new CompositionValidator()->validateChain(8, [
         new StageTransition('knockout', 4, RankRangeSelector::topPerGroup(2)),
         new StageTransition('final', 2, MatchOutcomeSelector::winners()),
     ]);

@@ -22,7 +22,7 @@ $participants = [
     new Participant('dynamo', 'Dynamo Kyiv'),
 ];
 
-$schedule = (new RoundRobinScheduler())->schedule($participants);
+$schedule = new RoundRobinScheduler()->schedule($participants);
 
 // The scores of the six events, by the ids of the two participants. A
 // result is recorded against the event the scheduler produced.
@@ -58,7 +58,7 @@ $ranking = WinDrawLossRanking::threeOneZero();
 
 // With no tiebreakers a tie on the ranking value falls through to score
 // difference: Boca Juniors (+2) finish above Ajax (-1)
-$plain = (new StandingsCalculator($ranking))->calculate($participants, $results);
+$plain = new StandingsCalculator($ranking)->calculate($participants, $results);
 
 // A tiebreaker chain is applied in order, before score difference. Wins
 // cannot separate the two (2 each), nor can Buchholz, the sum of the
@@ -66,7 +66,7 @@ $plain = (new StandingsCalculator($ranking))->calculate($participants, $results)
 // ranking values of the opponents a participant beat, can: Ajax beat Boca
 // Juniors, so Ajax finish first.
 $chain = [new WinsTiebreaker(), new BuchholzTiebreaker(), new SonnebornBergerTiebreaker()];
-$withChain = (new StandingsCalculator($ranking, $chain))->calculate($participants, $results);
+$withChain = new StandingsCalculator($ranking, $chain)->calculate($participants, $results);
 
 return Example::present(__FILE__, 'Standings and tiebreakers', 'One set of results, two tables. Two participants tie on points; a chain of tiebreakers (wins, then Buchholz, then Sonneborn-Berger) orders them differently from the default fall-back to score difference.', [
     'Results' => $results,

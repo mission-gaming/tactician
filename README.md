@@ -1,6 +1,6 @@
 # Tactician
 
-[![PHP Version](https://img.shields.io/badge/php-%5E8.3-blue)](https://packagist.org/packages/mission-gaming/tactician)
+[![PHP Version](https://img.shields.io/badge/php-%5E8.4-blue)](https://packagist.org/packages/mission-gaming/tactician)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Build Status](https://github.com/mission-gaming/tactician/actions/workflows/ci.yml/badge.svg)](https://github.com/mission-gaming/tactician/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/mission-gaming/tactician/graph/badge.svg?token=B5QQBW434A)](https://codecov.io/github/mission-gaming/tactician)
@@ -169,8 +169,8 @@ the last one, which is about the library as a whole.
 - **Schedules are plain collections**: a schedule holds its events in memory
   and is iterable, countable, and groupable by round.
   [Iterating and counting](docs/USAGE.md#iterating-and-counting)
-- **PHP 8.3+, strictly typed**: `strict_types` throughout, immutable value
-  objects, and `src/` held to PHPStan level 9 with zero errors by the build. The library is at 0.x: see
+- **PHP 8.4+, strictly typed**: `strict_types` throughout, immutable value
+  objects, final classes, and `src/` held to PHPStan level 9 with zero errors by the build. The library is at 0.x: see
   [Versioning and stability](#versioning-and-stability) for which namespaces
   are stable.
 
@@ -187,7 +187,7 @@ composer require mission-gaming/tactician
 ```
 
 **Requirements:**
-- PHP 8.3+
+- PHP 8.4+
 - No external dependencies in production
 
 ## Quick Start
@@ -324,8 +324,21 @@ release is recorded in the [changelog](CHANGELOG.md).
   instead of shipping unnoticed. The fixtures cover those cases only; they are
   not a proof about every input.
 
-**Supported PHP versions:** `^8.3` (the Composer constraint). CI runs the suite
-on PHP 8.3, 8.4, and 8.5.
+**Supported PHP versions:** `^8.4` (the Composer constraint). CI runs the suite
+on PHP 8.4 and 8.5.
+
+**Classes are final; the extension points are the interfaces.** Every
+concrete class of the library is `final`, so a class is extended by no one
+and its with-ers return exactly that class. To change what the library does,
+implement one of its interfaces (`Constraints\ConstraintInterface`,
+`LegStrategies\LegStrategyInterface`, `RoleAssignment\RoleAssignmentInterface`,
+`Standings\RankingStrategy`, `Standings\TiebreakerInterface`,
+`Stage\StageEngineInterface`, `Quality\QualityMetric` and the others), or
+wrap a class of the library in one of your own. The one class left open is
+`Exceptions\InvalidConfigurationException`, which the library's own
+exceptions extend; catch it, and do not extend it. Making a class final
+that was not is a breaking change, made in a minor release before `1.0.0`
+([ADR 0022](docs/adr/0022-classes-are-final-and-the-interfaces-are-the-extension-points.md)).
 
 The rules above apply to every namespace. The two lists below say where
 breaking changes are expected. Namespaces are relative to
@@ -402,8 +415,8 @@ interfaces, as types to implement or to type against, are experimental.
 No public signature hands out or asks for an `@internal` type. A public
 method that a class takes from an `@internal` trait belongs to that class and
 has its status: `getViolationCollector()` on a scheduler is one. The
-protected members such a trait supplies are internal, like the trait: a
-subclass of a scheduler must not rely on them.
+members such a trait supplies that are not public are internal, like the
+trait.
 
 Releases are cut with the [release checklist](docs/RELEASING.md).
 

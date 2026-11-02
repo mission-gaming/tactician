@@ -68,7 +68,7 @@ describe('the participants of an event', function (): void {
 
         expect(fn(): Event => new Event([$alice, $bob, $alice]))
             ->toThrow(InvalidInputException::class, 'An event cannot list participant a twice')
-            ->and((new Event([$alice, $bob, $carol]))->getParticipantCount())->toBe(3);
+            ->and(new Event([$alice, $bob, $carol])->getParticipantCount())->toBe(3);
     });
 
     // IDs are compared as strings. Two that PHP reads as the same number,
@@ -85,7 +85,7 @@ describe('the participants of an event', function (): void {
                     continue;
                 }
 
-                expect((new Event([$first, $second]))->getParticipants())->toBe([$first, $second]);
+                expect(new Event([$first, $second])->getParticipants())->toBe([$first, $second]);
             }
         }
     })->with(AwkwardIds::dataset());

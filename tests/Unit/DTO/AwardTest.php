@@ -19,15 +19,15 @@ describe('Award', function (): void {
 
         expect($award->getLabel())->toBe('no-show')
             ->and($award->getReason())->toBe('The squad did not check in before the deadline')
-            ->and((new Award())->getLabel())->toBeNull()
-            ->and((new Award())->getReason())->toBeNull();
+            ->and(new Award()->getLabel())->toBeNull()
+            ->and(new Award()->getReason())->toBeNull();
     });
 
     it('round-trips through its array form, with the version and both keys always written', function (): void {
         $award = new Award('ruling', 'Board decision 14');
 
         expect($award->toArray())->toBe(['format_version' => 1, 'label' => 'ruling', 'reason' => 'Board decision 14'])
-            ->and((new Award())->toArray())->toBe(['format_version' => 1, 'label' => null, 'reason' => null])
+            ->and(new Award()->toArray())->toBe(['format_version' => 1, 'label' => null, 'reason' => null])
             ->and(Award::fromArray($award->toArray()))->toEqual($award)
             ->and(Award::fromArray([]))->toEqual(new Award())
             ->and(Award::fromArray(['reason' => 'only a reason']))->toEqual(new Award(null, 'only a reason'));
@@ -136,14 +136,14 @@ describe('An awarded Result', function (): void {
     });
 
     it('reads a null award as a played result, and an empty array as an awarded one', function (): void {
-        $data = (new Result($this->event, $this->nova))->toArray();
+        $data = new Result($this->event, $this->nova)->toArray();
 
         expect(Result::fromArray([...$data, 'award' => null], $this->registry)->isAwarded())->toBeFalse()
             ->and(Result::fromArray([...$data, 'award' => []], $this->registry)->isAwarded())->toBeTrue();
     });
 
     it('refuses an award that is not an array', function (mixed $award): void {
-        $data = (new Result($this->event, $this->nova))->toArray();
+        $data = new Result($this->event, $this->nova)->toArray();
 
         Result::fromArray([...$data, 'award' => $award], $this->registry);
     })->with([
@@ -152,21 +152,21 @@ describe('An awarded Result', function (): void {
     ])->throws(InvalidInputException::class, 'Result award must be an array or null');
 
     it('refuses an award with a key the mark does not have', function (): void {
-        $data = (new Result($this->event, $this->nova))->toArray();
+        $data = new Result($this->event, $this->nova)->toArray();
 
         Result::fromArray([...$data, 'award' => ['winner' => 'nova']], $this->registry);
     })->throws(InvalidInputException::class, 'Unknown key in award data');
 
     it('refuses the award key misspelt, where it used to read the result as played', function (): void {
-        $data = (new Result($this->event, $this->nova))->toArray();
+        $data = new Result($this->event, $this->nova)->toArray();
 
         Result::fromArray([...$data, 'awrad' => ['label' => 'no-show', 'reason' => null]], $this->registry);
     })->throws(InvalidInputException::class, "Unknown key in result data: 'awrad'");
 
     it('reads an award that was serialized by itself, with its version, inside a result', function (): void {
-        $data = (new Result($this->event, $this->nova))->toArray();
+        $data = new Result($this->event, $this->nova)->toArray();
 
-        $result = Result::fromArray([...$data, 'award' => (new Award('no-show'))->toArray()], $this->registry);
+        $result = Result::fromArray([...$data, 'award' => new Award('no-show')->toArray()], $this->registry);
 
         expect($result->getAward())->toEqual(new Award('no-show'))
             ->and($result->toArray()['award'] ?? null)->toBe(['label' => 'no-show', 'reason' => null]);

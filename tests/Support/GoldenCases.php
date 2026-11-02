@@ -196,7 +196,7 @@ final class GoldenCases
         $sections = [];
         foreach (self::ROUND_ROBIN_SIZES as $size) {
             foreach (self::ROUND_ROBIN_LEGS as $legs) {
-                $schedule = (new RoundRobinScheduler(null, self::randomizer($seed)))->schedule(
+                $schedule = new RoundRobinScheduler(null, self::randomizer($seed))->schedule(
                     self::field($size),
                     new RoundRobinOptions($legs, self::legStrategy($strategy), false, $roleAssignment)
                 );
@@ -241,8 +241,8 @@ final class GoldenCases
         $seeded = self::field(6, true);
         $options = new RoundRobinOptions(legs: 2, roleAssignment: $roleAssignment);
         $protected = ConstraintSet::create()->add(new SeedProtectionConstraint(2, 0.25))->build();
-        $retried = GoldenText::schedule((new RoundRobinScheduler($protected))->schedule($seeded, $options));
-        if ($retried === GoldenText::schedule((new RoundRobinScheduler())->schedule($seeded, $options))) {
+        $retried = GoldenText::schedule(new RoundRobinScheduler($protected)->schedule($seeded, $options));
+        if ($retried === GoldenText::schedule(new RoundRobinScheduler()->schedule($seeded, $options))) {
             throw new LogicException('The rotation-retry case no longer needs a retry: its first ordering satisfies the constraint.');
         }
         $sections['rotation retry: n=6 legs=2, seed protection (top 2, first 25% of rounds)'] = $retried;
@@ -290,9 +290,9 @@ final class GoldenCases
         ?RoleAssignmentInterface $roleAssignment = null
     ): array {
         try {
-            (new RoundRobinScheduler($constraints))->schedule(self::field($size, true), new RoundRobinOptions(roleAssignment: $roleAssignment));
+            new RoundRobinScheduler($constraints)->schedule(self::field($size, true), new RoundRobinOptions(roleAssignment: $roleAssignment));
         } catch (IncompleteScheduleException) {
-            return GoldenText::schedule((new RoundRobinScheduler($constraints))->schedule(
+            return GoldenText::schedule(new RoundRobinScheduler($constraints)->schedule(
                 self::field($size, true),
                 new RoundRobinOptions(backtracking: true, roleAssignment: $roleAssignment)
             ));
@@ -331,7 +331,7 @@ final class GoldenCases
         $sections = [];
         foreach ([[8, 3], [9, 4]] as [$size, $rounds]) {
             foreach ([null, ...self::SEEDS] as $seed) {
-                $schedule = (new SwissScheduler(null, self::randomizer($seed)))->schedule(
+                $schedule = new SwissScheduler(null, self::randomizer($seed))->schedule(
                     self::field($size),
                     new SwissOptions($rounds)
                 );
@@ -341,7 +341,7 @@ final class GoldenCases
             // The seed option: round n drawn from Xoshiro256StarStar seeded
             // with it and advanced by n - 1 jumps (SwissPairingEngine)
             foreach (self::SEEDS as $seed) {
-                $schedule = (new SwissScheduler())->schedule(self::field($size), new SwissOptions($rounds, $seed));
+                $schedule = new SwissScheduler()->schedule(self::field($size), new SwissOptions($rounds, $seed));
                 $sections["n={$size} rounds={$rounds} seed option {$seed}"] = GoldenText::schedule($schedule);
             }
         }
@@ -370,7 +370,7 @@ final class GoldenCases
         $sections = [];
         foreach (self::POT_DRAW_CASES as [$size, $pots, $opponentsPerPot]) {
             foreach (self::SEEDS as $seed) {
-                $schedule = (new PotDrawScheduler())->schedule(
+                $schedule = new PotDrawScheduler()->schedule(
                     self::field($size),
                     new PotDrawOptions($pots, $opponentsPerPot, $seed)
                 );
@@ -747,7 +747,7 @@ final class GoldenCases
             $grid = new SessionGrid($sessionStarts, new DateInterval('PT30M'), 4, [], $capacity);
 
             $sections["n={$size}: " . count($movable) . " events, {$sessionCount} sessions x 4 slots, capacityPerSlot={$capacity}"]
-                = GoldenText::repackOutcome((new ScheduleRepacker())->repack(new RepackRequest($movable, [], $grid)));
+                = GoldenText::repackOutcome(new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid)));
         }
 
         return GoldenText::document([
@@ -783,7 +783,7 @@ final class GoldenCases
                     $pairs[] = [$a, $b];
                 }
             }
-            $pairs = (new Randomizer(new Mt19937($size)))->shuffleArray($pairs);
+            $pairs = new Randomizer(new Mt19937($size))->shuffleArray($pairs);
 
             foreach (['tight' => 0, 'pinned' => 3] as $shape => $pinCount) {
                 // "tight": sessions of four slots at n/2 events a slot, one
@@ -815,7 +815,7 @@ final class GoldenCases
 
                 $lines = [];
                 foreach (self::REPACK_STEP_BUDGETS as $stepBudget) {
-                    $outcome = (new ScheduleRepacker())->repack(
+                    $outcome = new ScheduleRepacker()->repack(
                         new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $stepBudget))
                     );
                     $lines[] = 'step budget ' . $stepBudget
@@ -868,7 +868,7 @@ final class GoldenCases
      */
     private static function wireSchedule(): string
     {
-        return (new RoundRobinScheduler())->schedule(self::field(3, true))->toJson();
+        return new RoundRobinScheduler()->schedule(self::field(3, true))->toJson();
     }
 
     /**
@@ -882,7 +882,7 @@ final class GoldenCases
     private static function wireStageState(): string
     {
         $state = StageState::start(self::field(5, true));
-        $pairing = (new SingleEliminationEngine())->pairNextRound($state);
+        $pairing = new SingleEliminationEngine()->pairNextRound($state);
 
         $results = [];
         foreach ($pairing->getEvents() as $event) {
@@ -905,7 +905,7 @@ final class GoldenCases
     private static function wireStageStateDecidedTie(): string
     {
         $state = StageState::start(self::field(5, true));
-        $pairing = (new SingleEliminationEngine())->pairNextRound($state);
+        $pairing = new SingleEliminationEngine()->pairNextRound($state);
 
         $results = [];
         foreach ($pairing->getEvents() as $event) {

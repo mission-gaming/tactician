@@ -9,6 +9,15 @@ with a mark. [The default](#the-default) records that decision, the bar it
 had to meet, what was built to meet it, and why the default is not
 `BalancedRoleAssignment` itself.
 
+The sweeps recorded below were run while the classes of the library were
+open, and some of their constraints were written as a subclass of
+`ConsecutiveRoleConstraint` or inside a subclass of `ConstraintSet`. Since
+0.3.0 every concrete class is final
+([ADR 0022](../adr/0022-classes-are-final-and-the-interfaces-are-the-extension-points.md)),
+so those two forms cannot be written any more; a class of the caller's that
+implements `ConstraintInterface` is what remains, and the search treats it
+as it treated them.
+
 The usage guide states what a caller can rely on
 ([Role Assignment](../USAGE.md#role-assignment)). This note records why the
 design is what it is and why the limits hold.

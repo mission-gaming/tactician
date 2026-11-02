@@ -293,7 +293,7 @@ describe('a decider on a tie that its results already decide', function (): void
         $event = new Event([$p1, $p2], new MissionGaming\Tactician\DTO\Round(1));
         $results = [new Result($event, $p1, [], [], null, new Decider(['p2']))];
         $outcome = new StageOutcome(
-            (new StandingsCalculator())->calculate([$p1, $p2], $results),
+            new StandingsCalculator()->calculate([$p1, $p2], $results),
             $results,
             [],
             new RoundPairing(1, 'final', [$event])
@@ -740,7 +740,7 @@ describe('a decider where nothing reads one', function (): void {
                 $entry->getScoreFor(),
                 $entry->getScoreAgainst(),
             ],
-            array_values((new StandingsCalculator())->calculate($field, $results)->getEntries())
+            array_values(new StandingsCalculator()->calculate($field, $results)->getEntries())
         );
 
         $plain = [new Result($first, null, ['p1' => 1, 'p2' => 1]), new Result($second, $p3, ['p2' => 0, 'p3' => 2])];

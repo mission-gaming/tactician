@@ -36,7 +36,7 @@ use Override;
  *
  * @experimental
  */
-readonly class BuchholzTiebreaker implements TiebreakerWithByeTreatment
+final readonly class BuchholzTiebreaker implements TiebreakerWithByeTreatment
 {
     /**
      * @param ByeTreatment $byes How a bye counts (see the class docblock)

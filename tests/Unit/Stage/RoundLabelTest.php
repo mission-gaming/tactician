@@ -266,12 +266,12 @@ describe('RoundLabel', function (): void {
 
     it('reads no label from a round without one, or from a Swiss round', function (): void {
         $field = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
-        $pairing = (new SwissPairingEngine())->pairNextRound(StageState::start($field));
+        $pairing = new SwissPairingEngine()->pairNextRound(StageState::start($field));
 
         expect($pairing->getLabel())->toBeNull()
             ->and($pairing->getRoundLabel())->toBeNull()
             ->and(RoundLabel::ofRound(new Round(1)))->toBeNull()
             ->and(RoundLabel::ofRound(new Round(1, [FormatMetadataKey::ROUND_LABEL => 3])))->toBeNull()
-            ->and((new RoundPairing(1, 'Matchday 1', []))->getRoundLabel())->toBeNull();
+            ->and(new RoundPairing(1, 'Matchday 1', [])->getRoundLabel())->toBeNull();
     });
 });

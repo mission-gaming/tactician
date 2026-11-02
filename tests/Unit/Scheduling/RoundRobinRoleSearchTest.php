@@ -198,11 +198,11 @@ describe('what a leg strategy says about its roles', function (): void {
     it('is a rule unless the strategy says otherwise, and only the shuffled strategy says otherwise', function (): void {
         $none = ConstraintSet::create()->build();
 
-        expect((new LegPlanContribution(false, false))->rolesArePreferences)->toBeFalse()
-            ->and((new MirroredLegStrategy())->planLegs([], 2, $none)->rolesArePreferences)->toBeFalse()
-            ->and((new RepeatedLegStrategy())->planLegs([], 2, $none)->rolesArePreferences)->toBeFalse()
-            ->and((new ShuffledLegStrategy(seed: 1))->planLegs([], 2, $none)->rolesArePreferences)->toBeTrue()
-            ->and((new ShuffledLegStrategy(new Randomizer(new Mt19937(1))))->planLegs([], 2, $none)->rolesArePreferences)->toBeTrue();
+        expect(new LegPlanContribution(false, false)->rolesArePreferences)->toBeFalse()
+            ->and(new MirroredLegStrategy()->planLegs([], 2, $none)->rolesArePreferences)->toBeFalse()
+            ->and(new RepeatedLegStrategy()->planLegs([], 2, $none)->rolesArePreferences)->toBeFalse()
+            ->and(new ShuffledLegStrategy(seed: 1)->planLegs([], 2, $none)->rolesArePreferences)->toBeTrue()
+            ->and(new ShuffledLegStrategy(new Randomizer(new Mt19937(1)))->planLegs([], 2, $none)->rolesArePreferences)->toBeTrue();
     });
 
     // Two legs of a strategy that keeps the roles of the first leg, and a
@@ -213,13 +213,8 @@ describe('what a leg strategy says about its roles', function (): void {
     $otherWayRound = static fn(): ConstraintSet => ConstraintSet::create()->custom(
         static function (Event $event, SchedulingContext $context): bool {
             [$first, $second] = $event->getParticipants();
-            foreach ($context->getEventsBetween($first, $second) as $earlier) {
-                if ($earlier->getParticipants()[0]->getId() === $first->getId()) {
-                    return false;
-                }
-            }
 
-            return true;
+            return array_all($context->getEventsBetween($first, $second), fn($earlier) => !($earlier->getParticipants()[0]->getId() === $first->getId()));
         },
         'The other way round'
     )->build();
@@ -262,10 +257,10 @@ describe('what a leg strategy says about its roles', function (): void {
 
     it('reverses the events the constraints reject when the strategy states a preference', function () use ($otherWayRound): void {
         $field = roleSearchSchedulerField(4);
-        $schedule = (new RoundRobinScheduler($otherWayRound()))->schedule($field, new RoundRobinOptions(2, new KeepingLegStrategy(true)));
+        $schedule = new RoundRobinScheduler($otherWayRound())->schedule($field, new RoundRobinOptions(2, new KeepingLegStrategy(true)));
 
         // Every event of the second leg reversed is the mirrored schedule
-        $mirrored = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(2, new MirroredLegStrategy()));
+        $mirrored = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(2, new MirroredLegStrategy()));
 
         expect($schedule->toJson())->toBe($mirrored->toJson());
     });
@@ -282,20 +277,14 @@ describe('what a leg strategy says about its roles', function (): void {
     it('finds roles that depend on an event of other participants when the set holds a constraint of the caller', function (): void {
         $field = roleSearchSchedulerField(6);
         $options = static fn(): RoundRobinOptions => new RoundRobinOptions(2, new KeepingLegStrategy(true));
-        $kept = (new RoundRobinScheduler())->schedule($field, $options())->getEvents();
+        $kept = new RoundRobinScheduler()->schedule($field, $options())->getEvents();
 
         // Rounds 6 and 7 open the second leg, three events each
         $deciding = $kept[17];
-        $dependent = null;
-        foreach ([$kept[18], $kept[19], $kept[20]] as $candidate) {
-            if (array_intersect(
-                array_map(static fn(Participant $participant): string => $participant->getId(), $candidate->getParticipants()),
-                array_map(static fn(Participant $participant): string => $participant->getId(), $deciding->getParticipants())
-            ) === []) {
-                $dependent = $candidate;
-                break;
-            }
-        }
+        $dependent = array_find([$kept[18], $kept[19], $kept[20]], fn($candidate) => array_intersect(
+            array_map(static fn(Participant $participant): string => $participant->getId(), $candidate->getParticipants()),
+            array_map(static fn(Participant $participant): string => $participant->getId(), $deciding->getParticipants())
+        ) === []);
 
         expect($deciding->getRound()?->getNumber())->toBe(6)
             ->and($dependent)->toBeInstanceOf(Event::class)
@@ -321,7 +310,7 @@ describe('what a leg strategy says about its roles', function (): void {
             'Depends on another pairing'
         )->build();
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options())->getEvents();
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field, $options())->getEvents();
 
         // One event changed, and it is not the one the constraint rejected
         $changed = [];
@@ -356,11 +345,11 @@ describe('where no constraint rejects a role', function (): void {
                         'randomizer' => static fn(): ShuffledLegStrategy => new ShuffledLegStrategy(new Randomizer(new Mt19937($seed))),
                     ];
                     foreach ($sources as $source => $strategy) {
-                        $plain = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions($legs, $strategy()))->toJson();
+                        $plain = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions($legs, $strategy()))->toJson();
 
                         foreach ($accepting as $name => $constraints) {
                             foreach ([false, true] as $backtracking) {
-                                $schedule = (new RoundRobinScheduler($constraints))
+                                $schedule = new RoundRobinScheduler($constraints)
                                     ->schedule($field, new RoundRobinOptions($legs, $strategy(), $backtracking));
 
                                 expect($schedule->toJson())->toBe($plain, "{$size} participants, {$legs} legs, {$source} {$seed}, {$name}");
@@ -440,8 +429,8 @@ describe('what the scheduler says when it finds no roles', function (): void {
         $field = roleSearchSchedulerField(12);
         $constraints = ConstraintSet::create()->add(RoleBalanceConstraint::homeAway(3))->build();
 
-        $circle = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(3, new RepeatedLegStrategy()));
-        $balanced = (new RoundRobinScheduler($constraints))
+        $circle = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(3, new RepeatedLegStrategy()));
+        $balanced = new RoundRobinScheduler($constraints)
             ->schedule($field, new RoundRobinOptions(3, new RepeatedLegStrategy(), false, new BalancedRoleAssignment()));
 
         expect(RoleCounts::structure($balanced))->toBe(RoleCounts::structure($circle))
@@ -498,7 +487,7 @@ describe('a first leg whose roles the backtracking search changes', function ():
     it('is returned when the role assignment keeps it', function (): void {
         $field = roleSearchSchedulerField(4);
         // The same rule with a role assignment that agrees with it
-        $schedule = (new RoundRobinScheduler(roleSearchPinned('p2', 'p1', 4)))->schedule(
+        $schedule = new RoundRobinScheduler(roleSearchPinned('p2', 'p1', 4))->schedule(
             $field,
             new RoundRobinOptions(2, new RepeatedLegStrategy(), true, new PinningRoleAssignment('p2', 'p1'))
         );
@@ -557,8 +546,8 @@ describe('a first leg whose roles the scheduler searches within the rule of the 
         expect(roleSearchFailure(new RoundRobinScheduler($pins($pinned)), $field, new RoundRobinOptions(roleAssignment: $withoutARule)))
             ->toBeInstanceOf(IncompleteScheduleException::class);
 
-        $schedule = (new RoundRobinScheduler($pins($pinned)))->schedule($field, new RoundRobinOptions(roleAssignment: $hosting));
-        $unconstrained = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(roleAssignment: $hosting));
+        $schedule = new RoundRobinScheduler($pins($pinned))->schedule($field, new RoundRobinOptions(roleAssignment: $hosting));
+        $unconstrained = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(roleAssignment: $hosting));
 
         expect(RoleCounts::structure($schedule))->toBe(RoleCounts::structure($unconstrained))
             ->and($schedule->getMetadata())->toBe($unconstrained->getMetadata())
@@ -616,7 +605,7 @@ describe('a first leg whose roles the scheduler searches within the rule of the 
             new RoundRobinOptions(roleAssignment: new HostingRoleAssignment('p2', statesARule: false))
         ))->toBeInstanceOf(IncompleteScheduleException::class);
 
-        $schedule = (new RoundRobinScheduler($looser))->schedule($field, new RoundRobinOptions(roleAssignment: $hosting));
+        $schedule = new RoundRobinScheduler($looser)->schedule($field, new RoundRobinOptions(roleAssignment: $hosting));
 
         // Every pair once, three events in each of five rounds, the host hosting
         $pairs = [];
@@ -846,7 +835,7 @@ describe('what the scheduler says when it finds no roles for the first leg withi
 
         // Two in a row over two mirrored legs: the roles as given break it in
         // every one of the twelve rotated orders, and the search finds others
-        $schedule = (new RoundRobinScheduler($limit(2)))->schedule($field, new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment()));
+        $schedule = new RoundRobinScheduler($limit(2))->schedule($field, new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment()));
         $found = $extractions;
 
         expect(RoleCounts::worstStreak($schedule))->toBe(2);

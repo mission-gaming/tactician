@@ -48,7 +48,7 @@ describe('RepackOptions', function (): void {
 
 describe('RepackOptions objectives', function (): void {
     it('names no objective by default', function (): void {
-        expect((new RepackOptions())->objectives)->toBe([])
+        expect(new RepackOptions()->objectives)->toBe([])
             ->and(RepackOptions::fromArray([])->objectives)->toBe([])
             ->and(RepackOptions::fromArray(['objectives' => null])->objectives)->toBe([]);
     });
@@ -56,7 +56,7 @@ describe('RepackOptions objectives', function (): void {
     it('keeps the objectives in the order given', function (): void {
         $objectives = [RepackObjective::FewestIdleSessions, RepackObjective::LeastChurn];
 
-        expect((new RepackOptions(objectives: $objectives))->objectives)->toBe($objectives);
+        expect(new RepackOptions(objectives: $objectives)->objectives)->toBe($objectives);
     });
 
     it('reads them from plain data by their identifiers, and writes them back', function (): void {
@@ -79,7 +79,7 @@ describe('RepackOptions objectives', function (): void {
     });
 
     it('writes options that name no objective as they were written before objectives existed', function (): void {
-        expect((new RepackOptions())->toArray())->toBe([
+        expect(new RepackOptions()->toArray())->toBe([
             'format_version' => 1,
             'consolidation_weight' => 3,
             'early_fill_weight' => 1,
@@ -97,7 +97,7 @@ describe('RepackOptions objectives', function (): void {
         try {
             // Through reflection, because the declared type of the argument
             // is the very thing these values break
-            (new ReflectionClass(RepackOptions::class))->newInstance(3, 1, 200_000, false, $objectives);
+            new ReflectionClass(RepackOptions::class)->newInstance(3, 1, 200_000, false, $objectives);
             $thrown = null;
         } catch (InvalidConfigurationException $exception) {
             $thrown = $exception->getReason();

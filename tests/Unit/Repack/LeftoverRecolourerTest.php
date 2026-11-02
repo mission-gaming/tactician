@@ -40,7 +40,7 @@ describe('LeftoverRecolourer', function (): void {
         $budget = new StepBudget(0);
         $positions = [0 => [0, 0]];
 
-        $left = (new LeftoverRecolourer($budget))->place([[0, 1], [2, 3]], $positions, [1], [], [], [0 => 2], 1);
+        $left = new LeftoverRecolourer($budget)->place([[0, 1], [2, 3]], $positions, [1], [], [], [0 => 2], 1);
 
         expect($left)->toBe([])
             ->and($positions)->toBe([0 => [0, 0], 1 => [0, 1]])
@@ -54,7 +54,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 1]];
         $budget = new StepBudget(10);
 
-        $left = (new LeftoverRecolourer($budget))->place(
+        $left = new LeftoverRecolourer($budget)->place(
             [[0, 2], [1, 3], [0, 1]],
             $positions,
             [2],
@@ -75,7 +75,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 1]];
         $budget = new StepBudget(1);
 
-        $left = (new LeftoverRecolourer($budget))->place(
+        $left = new LeftoverRecolourer($budget)->place(
             [[0, 2], [1, 3], [0, 1]],
             $positions,
             [2],
@@ -96,7 +96,7 @@ describe('LeftoverRecolourer', function (): void {
         // are both in its way there, and each has a slot of its own to go to
         $positions = [0 => [0, 0], 1 => [0, 0]];
 
-        $left = (new LeftoverRecolourer(new StepBudget(10)))->place(
+        $left = new LeftoverRecolourer(new StepBudget(10))->place(
             [[0, 2], [1, 3], [0, 1]],
             $positions,
             [2],
@@ -116,7 +116,7 @@ describe('LeftoverRecolourer', function (): void {
         // pinned at slot 2. Event 0 moves to slot 1 and event 3 takes its place
         $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 1]];
 
-        $left = (new LeftoverRecolourer(new StepBudget(10)))->place(
+        $left = new LeftoverRecolourer(new StepBudget(10))->place(
             [[0, 1], [4, 5], [2, 6], [2, 3]],
             $positions,
             [3],
@@ -137,7 +137,7 @@ describe('LeftoverRecolourer', function (): void {
         // three events placed where there were two
         $positions = [0 => [0, 0], 1 => [1, 0]];
 
-        $left = (new LeftoverRecolourer(new StepBudget(100)))->place(
+        $left = new LeftoverRecolourer(new StepBudget(100))->place(
             [[3, 1], [2, 3], [3, 0], [2, 1]],
             $positions,
             [2, 3],
@@ -164,7 +164,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 1], 1 => [0, 2], 2 => [0, 0], 5 => [0, 2]];
         $pinSlots = [0 => [3 => [1], 4 => [1], 2 => [0], 5 => [0]], 1 => [2 => [0], 5 => [0], 1 => [0], 0 => [0]]];
 
-        $left = (new LeftoverRecolourer(new StepBudget(1_000)))->place(
+        $left = new LeftoverRecolourer(new StepBudget(1_000))->place(
             $edges,
             $positions,
             [3, 4],
@@ -193,7 +193,7 @@ describe('LeftoverRecolourer', function (): void {
         $pinSlots = [0 => [0 => [1], 1 => [1]], 1 => [0 => [0], 2 => [0]]];
         $budget = new StepBudget(1_000);
 
-        $left = (new LeftoverRecolourer($budget))->place(
+        $left = new LeftoverRecolourer($budget)->place(
             $edges,
             $positions,
             [3, 4],
@@ -218,7 +218,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 0]];
         $budget = new StepBudget(1_000);
 
-        $left = (new LeftoverRecolourer($budget))->place($edges, $positions, [3, 4, 5, 6], [], [], [0 => 1], 4);
+        $left = new LeftoverRecolourer($budget)->place($edges, $positions, [3, 4, 5, 6], [], [], [0 => 1], 4);
 
         expect($left)->toBe([0, 1, 2])
             ->and($positions)->toBe([3 => [0, 0], 4 => [0, 0], 5 => [0, 0], 6 => [0, 0]])
@@ -230,7 +230,7 @@ describe('LeftoverRecolourer', function (): void {
         // nothing changes
         $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 0]];
 
-        $left = (new LeftoverRecolourer(new StepBudget(1_000)))->place(
+        $left = new LeftoverRecolourer(new StepBudget(1_000))->place(
             [[2, 3], [4, 5], [6, 7], [0, 2], [3, 4], [5, 6], [7, 1]],
             $positions,
             [3, 4, 5, 6],
@@ -250,7 +250,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 0]];
         $budget = new StepBudget(0);
 
-        $left = (new LeftoverRecolourer($budget))->place(
+        $left = new LeftoverRecolourer($budget)->place(
             [[2, 3], [4, 5], [6, 7], [0, 2], [3, 4], [5, 6], [7, 1]],
             $positions,
             [3, 4, 5, 6],
@@ -287,7 +287,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 1]];
         $budget = new StepBudget(1_000);
 
-        $left = (new LeftoverRecolourer($budget))->place([[0, 1], [1, 2], [0, 2]], $positions, [2], [], [], [0 => 2], 9);
+        $left = new LeftoverRecolourer($budget)->place([[0, 1], [1, 2], [0, 2]], $positions, [2], [], [], [0 => 2], 9);
 
         expect($left)->toBe([2])
             ->and($positions)->toBe([0 => [0, 0], 1 => [0, 1]])
@@ -299,7 +299,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0]];
         $budget = new StepBudget(0);
 
-        $left = (new LeftoverRecolourer($budget))->place([[0, 1], [0, 2]], $positions, [1], [], [], [0 => 1], 2);
+        $left = new LeftoverRecolourer($budget)->place([[0, 1], [0, 2]], $positions, [1], [], [], [0 => 1], 2);
 
         expect($left)->toBe([1])
             ->and($positions)->toBe([0 => [0, 0]])
@@ -314,7 +314,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 1]];
         $budget = new StepBudget(0);
 
-        $left = (new LeftoverRecolourer($budget))->place(
+        $left = new LeftoverRecolourer($budget)->place(
             [[0, 1], [0, 2], [0, 3], [0, 4]],
             $positions,
             [2, 3],
@@ -340,7 +340,7 @@ describe('LeftoverRecolourer', function (): void {
             $positions = [0 => [0, 0], 1 => [0, 1]];
             $budget = new StepBudget(1_000);
 
-            $left = (new LeftoverRecolourer($budget, $limit))->place(
+            $left = new LeftoverRecolourer($budget, $limit)->place(
                 [[0, 2], [1, 3], [0, 1]],
                 $positions,
                 [2],
@@ -367,7 +367,7 @@ describe('LeftoverRecolourer', function (): void {
         // records a search it stopped
         $place = static function (StepBudget $budget): array {
             $positions = [0 => [0, 0], 1 => [1, 0]];
-            $left = (new LeftoverRecolourer($budget))->place(
+            $left = new LeftoverRecolourer($budget)->place(
                 [[3, 1], [2, 3], [3, 0], [2, 1]],
                 $positions,
                 [2, 3],
@@ -403,7 +403,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 1]];
         $budget = new StepBudget(PHP_INT_MAX, 1);
 
-        $left = (new LeftoverRecolourer($budget))->place(
+        $left = new LeftoverRecolourer($budget)->place(
             [[0, 2], [1, 3], [0, 1]],
             $positions,
             [2],
@@ -434,7 +434,7 @@ describe('LeftoverRecolourer', function (): void {
         $positions = [0 => [0, 0], 1 => [0, 1]];
         $budget = new StepBudget(PHP_INT_MAX, 1);
 
-        $left = (new LeftoverRecolourer($budget, 2))->place(
+        $left = new LeftoverRecolourer($budget, 2)->place(
             [[0, 1], [0, 2], [0, 3], [0, 4]],
             $positions,
             [2, 3],
@@ -455,7 +455,7 @@ describe('LeftoverRecolourer', function (): void {
         // default limit; its direct and path rounds alone pass a limit of 10
         $positions = [0 => [0, 0], 1 => [1, 0]];
 
-        $left = (new LeftoverRecolourer(new StepBudget(100), 10))->place(
+        $left = new LeftoverRecolourer(new StepBudget(100), 10)->place(
             [[3, 1], [2, 3], [3, 0], [2, 1]],
             $positions,
             [2, 3],
@@ -490,7 +490,7 @@ describe('LeftoverRecolourer', function (): void {
         // cannot go there, and event 0 is in its way at slot 0
         $positions = [0 => [0, 0]];
 
-        $left = (new LeftoverRecolourer(new StepBudget(100)))->place(
+        $left = new LeftoverRecolourer(new StepBudget(100))->place(
             [[0, 1], [1, 2]],
             $positions,
             [1],
@@ -517,7 +517,7 @@ describe('LoadPlanner', function (): void {
         }
         $edges = [[0, 2], [0, 5], [1, 3], [1, 4], [0, 1], [0, 5], [0, 2], [0, 5], [3, 5], [0, 3]];
 
-        $plan = (new LoadPlanner(new RepackOptions(), new StepBudget(1_000)))->plan(
+        $plan = new LoadPlanner(new RepackOptions(), new StepBudget(1_000))->plan(
             $edges,
             [1 => [3 => [0], 4 => [0]]],
             [1 => [0 => 1]],
@@ -545,7 +545,7 @@ describe('LoadPlanner', function (): void {
         }
         $plan = static fn(StepBudget $budget): array => array_map(
             static fn(UnplacedEvent $event): string => $event->getEventId(),
-            (new LoadPlanner(new RepackOptions(), $budget))->plan(
+            new LoadPlanner(new RepackOptions(), $budget)->plan(
                 [[0, 1], [0, 2], [0, 2], [1, 2]],
                 [0 => [1 => [0], 3 => [0], 2 => [1], 4 => [1]]],
                 [0 => [0 => 1, 1 => 1]],

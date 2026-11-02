@@ -222,7 +222,7 @@ describe('RoundRobinScheduler', function (): void {
             new Participant('p5', 'Eve'),
         ];
 
-        $schedule = (new RoundRobinScheduler())->schedule($participants, new RoundRobinOptions(legs: 2));
+        $schedule = new RoundRobinScheduler()->schedule($participants, new RoundRobinOptions(legs: 2));
         /** @var array<int, string> $byes */
         $byes = $schedule->getMetadataValue('byes');
 
@@ -265,7 +265,7 @@ describe('RoundRobinScheduler', function (): void {
     });
 
     it('records no byes for even participant counts', function (): void {
-        $schedule = (new RoundRobinScheduler())->schedule($this->participants);
+        $schedule = new RoundRobinScheduler()->schedule($this->participants);
 
         expect($schedule->getMetadataValue('byes'))->toBe([]);
     });
@@ -332,7 +332,7 @@ describe('RoundRobinScheduler', function (): void {
     it('schedules a two-participant multi-leg tournament', function (): void {
         $pair = [new Participant('p1', 'Alice'), new Participant('p2', 'Bob')];
 
-        $schedule = (new RoundRobinScheduler())->schedule($pair, new RoundRobinOptions(legs: 2));
+        $schedule = new RoundRobinScheduler()->schedule($pair, new RoundRobinOptions(legs: 2));
 
         expect($schedule->count())->toBe(2);
         // Mirrored roles across the legs

@@ -44,7 +44,7 @@ foreach ($clubRows as $clubRow) {
 }
 $participants = array_values($participantsByClubId);
 
-$schedule = (new RoundRobinScheduler())->schedule($participants);
+$schedule = new RoundRobinScheduler()->schedule($participants);
 
 // Out: one fixture row per event, with the round and both roles kept. The
 // application gives each row an id of its own and is the source of truth from

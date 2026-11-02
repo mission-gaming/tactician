@@ -152,7 +152,7 @@ describe('MinimumRestRule', function (): void {
     })->with([
         'hours from a relative date string' => [DateInterval::createFromDateString('48 hours'), 'PT48H'],
         'a day from a relative date string' => [DateInterval::createFromDateString('1 day'), 'P1D'],
-        'hours from diff()' => [(new DateTimeImmutable('2026-01-01 00:00'))->diff(new DateTimeImmutable('2026-01-03 06:00')), 'P2DT6H'],
+        'hours from diff()' => [new DateTimeImmutable('2026-01-01 00:00')->diff(new DateTimeImmutable('2026-01-03 06:00')), 'P2DT6H'],
     ]);
 });
 
@@ -263,7 +263,7 @@ describe('BlackoutRule', function (): void {
             ];
         }
 
-        expect(array_column((new BlackoutRule($windows))->toArray()['windows'], 'label'))->toBe($labels);
+        expect(array_column(new BlackoutRule($windows)->toArray()['windows'], 'label'))->toBe($labels);
     })->with([
         'a list' => [[0, 1], ['blackout 1', 'blackout 2']],
         'string keys' => [['break', 'closure'], ['blackout 1', 'blackout 2']],
@@ -320,7 +320,7 @@ describe('TimelineAssigner with rules', function (): void {
         for ($i = 1; $i <= 4; ++$i) {
             $participants[] = new Participant("t{$i}", "Team {$i}", $i);
         }
-        $schedule = (new RoundRobinScheduler())->schedule($participants);
+        $schedule = new RoundRobinScheduler()->schedule($participants);
 
         // Daily rounds but a 48h rest demand: unsatisfiable by definition
         $timeline = new TimelineDefinition(
@@ -347,7 +347,7 @@ describe('TimelineAssigner with rules', function (): void {
         for ($i = 1; $i <= 4; ++$i) {
             $participants[] = new Participant("t{$i}", "Team {$i}", $i);
         }
-        $schedule = (new RoundRobinScheduler())->schedule($participants);
+        $schedule = new RoundRobinScheduler()->schedule($participants);
 
         $timeline = new TimelineDefinition(
             utc('2026-08-01 18:00'),
@@ -425,7 +425,7 @@ describe('TimelineAssigner with rules', function (): void {
             }
         };
 
-        expect(fn() => (new TimelineAssigner([$noLunchKickoffs]))->assign($schedule, $timeline))
+        expect(fn() => new TimelineAssigner([$noLunchKickoffs])->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'No Lunchtime Kickoffs');
     });
 

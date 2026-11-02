@@ -61,7 +61,7 @@ use Random\Randomizer;
  *
  * @experimental
  */
-class SwissScheduler implements SchedulerInterface
+final class SwissScheduler implements SchedulerInterface
 {
     use ValidatesScheduleCompleteness;
 

@@ -124,7 +124,7 @@ describe('TimelineDefinition', function (): void {
         expect($timeline->getSlotsPerRound())->toBe(3);
         expect($timeline->getSlotInterval())->toBe($slotInterval);
 
-        expect((new TimelineDefinition($start, $roundInterval))->getSlotInterval())->toBeNull();
+        expect(new TimelineDefinition($start, $roundInterval)->getSlotInterval())->toBeNull();
     });
 
     it('serializes every duration component canonically', function (): void {

@@ -188,7 +188,7 @@ describe('position decides where results do not', function (): void {
     it('pairs a pre-drawn Swiss schedule the same whatever the labels and seed attributes are', function (int $size, ?int $seed): void {
         $schedule = fn(int $dressing): array => array_map(
             fn(Event $event): string => $event->getRound()?->getNumber() . ':' . implode('-', positionIds($event->getParticipants())),
-            (new SwissScheduler())->schedule(positionField($size, $dressing), new SwissOptions(min(4, $size - 1), $seed))->getEvents()
+            new SwissScheduler()->schedule(positionField($size, $dressing), new SwissOptions(min(4, $size - 1), $seed))->getEvents()
         );
 
         expect($schedule(2))->toBe($schedule(1))
@@ -204,7 +204,7 @@ describe('position decides where results do not', function (): void {
                 // Every event of the pool is drawn: nothing in it is decided
                 $results = array_map(
                     fn(Event $event): Result => new Result($event),
-                    (new RoundRobinScheduler())->schedule($pool)->getEvents()
+                    new RoundRobinScheduler()->schedule($pool)->getEvents()
                 );
                 $outcomes[$label] = new StageOutcome($calculator->calculate($pool, $results), $results, [], null, [], $pool);
             }
@@ -309,7 +309,7 @@ describe('Swiss pairing order', function (): void {
             new Participant('e', 'Abe', 1),
         ];
 
-        $pairing = (new SwissPairingEngine())->pairNextRound(StageState::start($field));
+        $pairing = new SwissPairingEngine()->pairNextRound(StageState::start($field));
 
         expect(positionIds($pairing->getByes()))->toBe(['e'])
             ->and(array_map(fn(Event $event): array => positionIds($event->getParticipants()), $pairing->getEvents()))
@@ -428,13 +428,13 @@ describe('a bye in a Swiss stage', function (): void {
         $state = StageState::start($field);
 
         for ($round = 1; $round <= 3; ++$round) {
-            $pairing = (new SwissPairingEngine())->pairNextRound($state);
+            $pairing = new SwissPairingEngine()->pairNextRound($state);
             $state = $state->withRoundPlayed($pairing, array_map(
                 fn(Event $event): Result => new Result($event, [...$event->getParticipants(), null][$randomizer->getInt(0, 2)]),
                 $pairing->getEvents()
             ));
 
-            $outcome = (new SwissPairingEngine(plannedRounds: $round))->getOutcome($state);
+            $outcome = new SwissPairingEngine(plannedRounds: $round)->getOutcome($state);
             assert($outcome !== null);
             $table = positionIds(array_map(
                 fn(StandingEntry $entry): Participant => $entry->getParticipant(),
@@ -442,7 +442,7 @@ describe('a bye in a Swiss stage', function (): void {
             ));
 
             try {
-                $next = (new SwissPairingEngine())->pairNextRound($state);
+                $next = new SwissPairingEngine()->pairNextRound($state);
             } catch (NoValidPairingException) {
                 continue;
             }

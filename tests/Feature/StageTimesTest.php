@@ -198,9 +198,9 @@ describe('a re-seeded bracket with a withdrawal and adjustments made after a rou
             array_reverse($adjusted->getResults()),
             [new Withdrawal(timesField(16)[0], 1)],
             [
-                (new Adjustment('p7', 1.0))->madeAfterRound(2),
-                (new Adjustment('p8', -4.0))->madeAfterRound(2),
-                (new Adjustment('p4', -4.0))->madeAfterRound(2),
+                new Adjustment('p7', 1.0)->madeAfterRound(2),
+                new Adjustment('p8', -4.0)->madeAfterRound(2),
+                new Adjustment('p4', -4.0)->madeAfterRound(2),
             ]
         );
 
@@ -300,9 +300,9 @@ describe('an adjustment that does not say after which round it was made', functi
             $played->getResults(),
             [new Withdrawal($field[0], 1)],
             [
-                (new Adjustment('p7', 1.0))->madeAfterRound(2),
-                (new Adjustment('p8', -4.0))->madeAfterRound(2),
-                (new Adjustment('p4', -4.0))->madeAfterRound(2),
+                new Adjustment('p7', 1.0)->madeAfterRound(2),
+                new Adjustment('p8', -4.0)->madeAfterRound(2),
+                new Adjustment('p4', -4.0)->madeAfterRound(2),
             ]
         );
 

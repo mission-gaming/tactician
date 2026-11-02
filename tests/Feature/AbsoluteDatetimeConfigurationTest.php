@@ -478,7 +478,7 @@ describe('the current time', function (): void {
         $different = [];
         foreach ([...DatetimeCorpus::absolute(), ...DatetimeCorpus::offsetFromAStatedDate()] as ['value' => $value]) {
             $library = ZonedTime::parse($value, 'Europe/London', 'start')->format('Y-m-d\TH:i:s.uP e');
-            if ($library !== (new DateTimeImmutable($value, $timezone))->format('Y-m-d\TH:i:s.uP e')) {
+            if ($library !== new DateTimeImmutable($value, $timezone)->format('Y-m-d\TH:i:s.uP e')) {
                 $different[] = $value;
             }
         }

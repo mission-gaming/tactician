@@ -116,7 +116,7 @@ function bracketQualifiersFirstRound(array $entrants): array
 {
     $ties = [];
     $poolMates = [];
-    foreach ((new SingleEliminationEngine())->pairNextRound(StageState::start(array_values($entrants)))->getEvents() as $event) {
+    foreach (new SingleEliminationEngine()->pairNextRound(StageState::start(array_values($entrants)))->getEvents() as $event) {
         [$first, $second] = $event->getParticipants();
         $ties[] = $tie = "{$first->getId()} v {$second->getId()}";
         if ($first->getId()[0] === $second->getId()[0]) {
@@ -174,7 +174,7 @@ describe('The top two of three pools and the two best third-placed, into a knock
     it('is accepted by composition validation, which counts it', function (): void {
         $selector = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 2));
 
-        expect((new CompositionValidator())->validateChain(12, [
+        expect(new CompositionValidator()->validateChain(12, [
             new StageTransition('quarterfinals', 8, $selector, sourcePools: 3),
             new StageTransition('semifinals', 4, null),
         ]))->toBe([]);
@@ -240,14 +240,14 @@ describe('Qualifiers of one pool', function (): void {
     it('are reported by composition validation before any pool is played', function (): void {
         $selector = BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(2), BestOfRankSelector::ofRank(3, 1));
 
-        expect((new CompositionValidator())->validateChain(4, [new StageTransition('knockout', 3, $selector, sourcePools: 1)]))
+        expect(new CompositionValidator()->validateChain(4, [new StageTransition('knockout', 3, $selector, sourcePools: 1)]))
             ->toBe(["Stage 'knockout' declares 1 pool for the previous stage; its selection is made from at least 2."]);
     });
 
     it('are not placed from an outcome without pools', function (): void {
         $members = [new Participant('a', 'A'), new Participant('b', 'B')];
         $result = new Result(new Event($members), $members[0]);
-        $outcome = new StageOutcome((new StandingsCalculator())->calculate($members, [$result]), [$result]);
+        $outcome = new StageOutcome(new StandingsCalculator()->calculate($members, [$result]), [$result]);
 
         expect(fn() => BracketQualifiersSelector::of(RankRangeSelector::topPerGroup(1), BestOfRankSelector::ofRank(2, 1))->select($outcome))
             ->toThrow(InvalidConfigurationException::class, 'Qualifiers placed for a bracket require a pooled outcome');
@@ -283,7 +283,7 @@ describe('Qualifiers placed for a bracket, over generated pool stages', function
             );
             $entrants = array_sum($sizes);
             $expected = $ranks * $pools + $count;
-            $violations = (new CompositionValidator())->validateChain($entrants, [
+            $violations = new CompositionValidator()->validateChain($entrants, [
                 new StageTransition('knockout', max(2, $expected), $selector, sourcePools: $pools),
             ]);
             $shape = "seed {$seed}, stage {$stage}: {$pools} pools of " . implode(', ', $sizes) . ", top {$ranks}, best {$count}";

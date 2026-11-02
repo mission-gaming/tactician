@@ -39,7 +39,7 @@ use Override;
  *
  * @experimental
  */
-readonly class SonnebornBergerTiebreaker implements TiebreakerWithByeTreatment
+final readonly class SonnebornBergerTiebreaker implements TiebreakerWithByeTreatment
 {
     /**
      * @param ByeTreatment $byes How a bye counts (see the class docblock)

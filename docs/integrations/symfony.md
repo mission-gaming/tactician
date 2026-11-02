@@ -443,7 +443,7 @@ another fingerprint refuses the state on every call:
 //    Two-legged ties are another bracket, and this state was not paired as one.
 $wrongEngine = null;
 try {
-    (new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)))->isComplete($state);
+    new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2))->isComplete($state);
 } catch (InvalidConfigurationException $exception) {
     $wrongEngine = $exception;
 }
@@ -977,7 +977,7 @@ Every exception the library throws on purpose implements
 //    InvalidInputException, which is not a scheduling failure and does not
 //    extend SchedulingException; the marker interface covers both.
 $attempts = [
-    'A schedule the constraints rule out' => static fn() => (new RoundRobinScheduler($rejectEverything))->schedule($participants),
+    'A schedule the constraints rule out' => static fn() => new RoundRobinScheduler($rejectEverything)->schedule($participants),
     'A round numbered zero' => static fn() => new Round(0),
 ];
 

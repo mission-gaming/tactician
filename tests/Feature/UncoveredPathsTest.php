@@ -208,7 +208,7 @@ describe('repacking where no other test went', function (): void {
         }
         $pinned = $pin ? [new PinnedEvent('x1', $participants[0], new Participant('o1', 'O1'), 0, 2)] : [];
 
-        $outcome = (new ScheduleRepacker())->repack(
+        $outcome = new ScheduleRepacker()->repack(
             new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 22, [], $capacityPerSlot))
         );
 
@@ -286,7 +286,7 @@ describe('repacking where no other test went', function (): void {
         ];
         $pinned = [new PinnedEvent('x1', $p4, $p1, 0, 1)];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 3, [], 2)));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 3, [], 2)));
 
         expect(uncoveredPathsRepackFaults($outcome, $movable, $pinned, 2))->toBe([])
             ->and($outcome->getAssignments())->toHaveCount(5)
@@ -317,7 +317,7 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler())->schedule($participants, new RoundRobinOptions(legs: 2, strategy: $strategy));
+            new RoundRobinScheduler()->schedule($participants, new RoundRobinOptions(legs: 2, strategy: $strategy));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
@@ -338,7 +338,7 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler())->schedule(
+            new RoundRobinScheduler()->schedule(
                 $participants,
                 new RoundRobinOptions(legs: 2, strategy: uncoveredPathsSilentLegStrategy(['a']), backtracking: $backtracking)
             );
@@ -378,7 +378,7 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler())->schedule(
+            new RoundRobinScheduler()->schedule(
                 $participants,
                 new RoundRobinOptions(legs: 2, strategy: uncoveredPathsSilentLegStrategy(['a']), backtracking: $backtracking)
             );
@@ -406,7 +406,7 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2));
+            new RoundRobinScheduler($constraints)->schedule($participants, new RoundRobinOptions(legs: 2));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
@@ -429,7 +429,7 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule(
+            new RoundRobinScheduler($constraints)->schedule(
                 $participants,
                 new RoundRobinOptions(legs: 2, strategy: uncoveredPathsSilentLegStrategy(['a']))
             );
@@ -452,7 +452,7 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2, roleAssignment: $roleAssignment));
+            new RoundRobinScheduler($constraints)->schedule($participants, new RoundRobinOptions(legs: 2, roleAssignment: $roleAssignment));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }

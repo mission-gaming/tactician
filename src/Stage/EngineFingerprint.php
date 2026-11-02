@@ -120,8 +120,7 @@ final readonly class EngineFingerprint
 
     /**
      * State the rules a table is ordered by, for an engine that pairs from
-     * the table: the ranking scale and the tiebreakers in order, or that
-     * the calculator is a class of the application's.
+     * the table: the ranking scale and the tiebreakers in order.
      *
      * A WinDrawLossRanking is described by its three values, and the 3/1/0
      * of a calculator built without arguments is the default. Any other
@@ -150,20 +149,9 @@ final readonly class EngineFingerprint
      * which is not its default, so every calculator built before the policy
      * existed has the fingerprint it had. They change the table an awarded
      * result gives, and so the rounds paired from it.
-     *
-     * A subclass of StandingsCalculator may order the table by rules of
-     * its own, so it is stated as `custom` and nothing is read from it: it
-     * need not use the ranking strategy and the tiebreakers it was built
-     * with, and one with a constructor of its own need not have any. It is
-     * told apart from the library's calculator and not from another
-     * subclass.
      */
     public function withStandingsRules(StandingsCalculator $calculator): self
     {
-        if ($calculator::class !== StandingsCalculator::class) {
-            return $this->with('standings', 'custom', 'library');
-        }
-
         $ranking = $calculator->getRankingStrategy();
         $awardedResults = $calculator->getAwardedResultPolicy();
 

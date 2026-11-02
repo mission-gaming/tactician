@@ -54,13 +54,13 @@ $constraints = ConstraintSet::create()
 $homeAndAway = new RoundRobinOptions(legs: 2);
 
 // For comparison: the same season with no rules
-$unconstrained = (new RoundRobinScheduler())->schedule($entrants, $homeAndAway);
+$unconstrained = new RoundRobinScheduler()->schedule($entrants, $homeAndAway);
 
 // The first participant order breaks both rules, so the scheduler retries
 // with rotated orders and returns the first complete schedule that satisfies
 // every constraint. Had none done so it would have thrown
 // IncompleteScheduleException: see examples 11 and 16.
-$schedule = (new RoundRobinScheduler($constraints))->schedule($entrants, $homeAndAway);
+$schedule = new RoundRobinScheduler($constraints)->schedule($entrants, $homeAndAway);
 
 // Check the organiser's rules against a schedule
 $check = static function (Schedule $schedule) use ($isMismatch): array {

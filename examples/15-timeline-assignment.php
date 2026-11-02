@@ -29,7 +29,7 @@ $teams = [
     new Participant('cla', 'Clapton Community FC', 6),
 ];
 
-$schedule = (new RoundRobinScheduler())->schedule($teams, new RoundRobinOptions(legs: 2));
+$schedule = new RoundRobinScheduler()->schedule($teams, new RoundRobinOptions(legs: 2));
 
 // The application translates its competition config into the declarative
 // slot model - Tactician owns the mechanism, never the policy

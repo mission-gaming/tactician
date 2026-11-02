@@ -52,7 +52,7 @@ describe('PotDrawOptions', function (): void {
         // read may leave that out
         $written = ['format_version' => 1, ...$data];
 
-        expect((new PotDrawOptions(4, 2, -7))->toArray())->toBe($written)
+        expect(new PotDrawOptions(4, 2, -7)->toArray())->toBe($written)
             ->and(PotDrawOptions::fromArray($data)->toArray())->toBe($written)
             ->and(PotDrawOptions::fromArray($written)->toArray())->toBe($written);
     });
@@ -106,6 +106,6 @@ describe('PotDrawOptions', function (): void {
     ]);
 
     it('accepts any integer as a seed', function (int $seed): void {
-        expect((new PotDrawOptions(seed: $seed))->seed)->toBe($seed);
+        expect(new PotDrawOptions(seed: $seed)->seed)->toBe($seed);
     })->with([0, -1, PHP_INT_MAX, PHP_INT_MIN]);
 });

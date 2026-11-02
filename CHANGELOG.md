@@ -2268,6 +2268,72 @@ entry on the engine fingerprint.
 
 ### Changed
 
+- **Breaking: PHP 8.4 or later is required
+  ([#54](https://github.com/mission-gaming/tactician/issues/54)).**
+  `composer.json` requires `^8.4`, and CI runs the suite on PHP 8.4 and
+  8.5. **What to check (migration).** An application on PHP 8.3 stays on
+  0.2.x until it moves to PHP 8.4; Composer will not install 0.3.0 there.
+  Nothing else in the library's API changes with the floor.
+- **Breaking: every concrete class is final
+  ([#54](https://github.com/mission-gaming/tactician/issues/54), ADR 0022,
+  `docs/adr/0022-classes-are-final-and-the-interfaces-are-the-extension-points.md`).**
+  The extension points were always the interfaces; the classes were open
+  all the same, so a subclass could skip a constructor, and a with-er
+  called on a subclass returned an object of the parent class. Now every
+  concrete class in `src/` is `final`, `Schedule` included, and a with-er
+  returns exactly the class it is called on. The one class left open is
+  `Exceptions\InvalidConfigurationException`, which three of the library's
+  own exceptions extend; catch it as before. What a subclass got that the
+  final class did not is gone with it: the engine fingerprint of a
+  subclass of `SwissPairingEngine` (`subclass=yes`) and of a subclass of
+  `StandingsCalculator` (`standings=custom`), and the refusal
+  (`IncompatibleOptions`) of tiers, and of a bracket, for a subclass of the
+  calculator with a tiebreaker between the tied participants. No
+  fingerprint the library's own classes write changes. **What to check
+  (migration).** A class of yours that extends a class of the library no
+  longer loads (PHP: "Class ... cannot extend final class ..."). Implement
+  the interface the class implements instead, and hand the calls you do
+  not change to an object of the library's class held in a property
+  (composition), or wrap the class in one of your own:
+  - a constraint: `Constraints\ConstraintInterface`, in place of a
+    subclass of `NoRepeatPairings`, `ConsecutiveRoleConstraint` or another
+    constraint, or of `ConstraintSet` (build a `ConstraintSet` of your
+    constraints instead);
+  - a leg strategy: `LegStrategies\LegStrategyInterface`;
+  - a role assignment: `RoleAssignment\RoleAssignmentInterface`;
+  - a ranking or a tiebreaker: `Standings\RankingStrategy` (or
+    `RankingStrategyWithByeValue`) and `Standings\TiebreakerInterface` (or
+    `TiedParticipantsTiebreaker`, `TiebreakerWithByeTreatment`), given to a
+    `StandingsCalculator`, in place of a subclass of the calculator or of
+    a tiebreaker;
+  - an engine: `Stage\StageEngineInterface`, with `FingerprintedEngine`,
+    `HistoryReadingEngine` and `BracketViewEngine` where they apply, in
+    place of a subclass of an engine; a scheduler:
+    `Scheduling\SchedulerInterface`;
+  - a quality metric: `Quality\QualityMetric`; a timeline rule:
+    `Timeline\TimelineRule`; a progression selector:
+    `Stage\ProgressionSelector`.
+
+  A stage state stamped by a subclass of `SwissPairingEngine`, or by an
+  engine given a subclass of `StandingsCalculator`, carries a fingerprint
+  no engine of the library writes any more; stamp it again with the engine
+  that replaces it (`$state->withEngineFingerprint($engine->getFingerprint())`).
+- **Breaking: `Schedule` is a final readonly `IteratorAggregate`, and loops
+  over one schedule nest
+  ([#54](https://github.com/mission-gaming/tactician/issues/54)).**
+  A schedule was its own `Iterator` with one cursor, so a `foreach` over a
+  schedule inside a `foreach` over the same schedule moved the cursor and
+  ended the outer loop after its first event. `Schedule::getIterator()`
+  now returns a new iterator on every call, keyed from 0 in schedule order,
+  and each loop visits every event. `current()`, `key()`, `next()`,
+  `rewind()` and `valid()` are removed; `count()`, `getEvents()` and the
+  rest are unchanged, and so are `toArray()`, `toJson()` and their forms.
+  **What to check (migration).** Code that called the five removed methods
+  on a schedule uses `foreach ($schedule as $index => $event)`, or
+  `$iterator = $schedule->getIterator()` and the same methods on that
+  iterator. Code that typed a schedule as `\Iterator` types it as
+  `\IteratorAggregate` or `\Traversable`. A schedule can no longer be
+  subclassed (see the entry above).
 - **Breaking: the roles of a round robin are balanced where possible by
   default ([#51](https://github.com/mission-gaming/tactician/issues/51)).**
   `RoundRobinOptions` without a role assignment now means

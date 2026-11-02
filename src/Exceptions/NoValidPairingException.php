@@ -14,7 +14,7 @@ use MissionGaming\Tactician\DTO\Participant;
  *
  * @api
  */
-class NoValidPairingException extends SchedulingException
+final class NoValidPairingException extends SchedulingException
 {
     /**
      * @param int $roundNumber The 1-based round that could not be paired

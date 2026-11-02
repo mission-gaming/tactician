@@ -63,7 +63,7 @@ describe('the entrants of a generated schedule', function (): void {
     it('are the participants the Swiss scheduler was given, in their order', function (int $size): void {
         $field = entrantField($size);
 
-        $schedule = (new SwissScheduler())->schedule($field, new SwissOptions(rounds: 2));
+        $schedule = new SwissScheduler()->schedule($field, new SwissOptions(rounds: 2));
 
         expect($schedule->getEntrants())->toBe($field);
     })->with([4, 5, 8, 9]);
@@ -71,7 +71,7 @@ describe('the entrants of a generated schedule', function (): void {
     it('are the participants the pot draw scheduler was given, in their order', function (): void {
         $field = entrantField(8);
 
-        $schedule = (new PotDrawScheduler())->schedule($field, new PotDrawOptions(pots: 2, opponentsPerPot: 2, seed: 11));
+        $schedule = new PotDrawScheduler()->schedule($field, new PotDrawOptions(pots: 2, opponentsPerPot: 2, seed: 11));
 
         expect($schedule->getEntrants())->toBe($field);
     });
@@ -80,7 +80,7 @@ describe('the entrants of a generated schedule', function (): void {
     // another order than the one the schedule was generated from
     it('come back in their order from JSON, which is not the order the events name them in', function (): void {
         $field = entrantField(5);
-        $schedule = (new RoundRobinScheduler())->schedule($field);
+        $schedule = new RoundRobinScheduler()->schedule($field);
 
         $firstAppearance = [];
         foreach ($schedule->getEvents() as $event) {
@@ -104,7 +104,7 @@ describe('the entrants of a generated schedule', function (): void {
 
         for ($i = 0; $i < 20; ++$i) {
             $order = $random->shuffleArray($field);
-            $schedule = (new RoundRobinScheduler())->schedule($order);
+            $schedule = new RoundRobinScheduler()->schedule($order);
 
             $restored = Schedule::fromArray($schedule->toArray());
             $stored = Schedule::fromJson($schedule->toJson());
@@ -116,7 +116,7 @@ describe('the entrants of a generated schedule', function (): void {
     })->with(AwkwardIds::dataset());
 
     it('share their objects with the events of a restored schedule', function (): void {
-        $restored = Schedule::fromJson((new RoundRobinScheduler())->schedule(entrantField(4))->toJson());
+        $restored = Schedule::fromJson(new RoundRobinScheduler()->schedule(entrantField(4))->toJson());
         $byId = [];
         foreach ($restored->getEntrants() as $entrant) {
             $byId[$entrant->getId()] = $entrant;
@@ -145,7 +145,7 @@ describe('the entrants of a schedule built by hand', function (): void {
         ]);
 
         expect($schedule->getEntrants())->toBe([$this->carol, $this->alice, $this->bob])
-            ->and((new Schedule())->getEntrants())->toBe([]);
+            ->and(new Schedule()->getEntrants())->toBe([]);
     });
 
     it('are the list given, in its order, with an entrant who has no event', function (): void {
@@ -201,7 +201,7 @@ describe('the entrants of a schedule built by hand', function (): void {
             ->and($more->getEntrants())->toBe([$this->alice, $this->bob, $this->carol, $this->dan])
             ->and($more->getMetadata())->toBe(['k' => 'v'])
             ->and($schedule->getEntrants())->toBe([$this->alice, $this->bob, $this->carol])
-            ->and((new Schedule())->addEvent(new Event([$this->dan, $this->alice]))->getEntrants())->toBe([$this->dan, $this->alice]);
+            ->and(new Schedule()->addEvent(new Event([$this->dan, $this->alice]))->getEntrants())->toBe([$this->dan, $this->alice]);
     });
 });
 

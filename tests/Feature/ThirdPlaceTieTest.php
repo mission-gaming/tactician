@@ -285,7 +285,7 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $outcome = $this->engine->getOutcome($state);
         assert($outcome !== null);
 
-        $violations = (new CompositionValidator())->validateChain(8, [
+        $violations = new CompositionValidator()->validateChain(8, [
             new StageTransition('next', 2, MatchOutcomeSelector::winners(), afterWholeBracket: true),
         ]);
 
@@ -707,7 +707,7 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $field = thirdPlaceField(4);
 
         expect($this->engine->getFingerprint())->not->toBe($without->getFingerprint())
-            ->and((new SingleEliminationEngine(new EliminationOptions(thirdPlace: false)))->getFingerprint())
+            ->and(new SingleEliminationEngine(new EliminationOptions(thirdPlace: false))->getFingerprint())
             ->toBe($without->getFingerprint());
 
         foreach ([[$this->engine, $without], [$without, $this->engine]] as [$stamping, $reading]) {

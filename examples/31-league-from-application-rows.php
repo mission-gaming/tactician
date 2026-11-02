@@ -182,7 +182,7 @@ if ($outcome === null) {
 }
 
 // Every round is the round the scheduler publishes for the same players
-$published = (new RoundRobinScheduler())->schedule($state->getEntrants());
+$published = new RoundRobinScheduler()->schedule($state->getEntrants());
 $asPublished = true;
 foreach ($state->getRoundsPlayed() as $round) {
     $asPublished = $asPublished && $round->getEvents() == $published->getEventsByRound()[$round->getRoundNumber()];

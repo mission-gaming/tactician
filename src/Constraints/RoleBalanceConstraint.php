@@ -52,7 +52,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * @experimental
  */
-readonly class RoleBalanceConstraint implements ConstraintInterface
+final readonly class RoleBalanceConstraint implements ConstraintInterface
 {
     /**
      * @param int $maxImbalance The largest difference allowed between a participant's number of

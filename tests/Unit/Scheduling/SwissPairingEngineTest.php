@@ -68,7 +68,7 @@ describe('SwissPairingEngine', function (): void {
     });
 
     it('pairs round 1 adjacently in standings order', function (): void {
-        $pairing = (new SwissPairingEngine())->pairNextRound(StageState::start($this->participants));
+        $pairing = new SwissPairingEngine()->pairNextRound(StageState::start($this->participants));
 
         expect($pairing->getRoundNumber())->toBe(1);
         expect($pairing->getLabel())->toBeNull();
@@ -90,7 +90,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
         ]);
 
-        $pairing = (new SwissPairingEngine())->pairNextRound($state);
+        $pairing = new SwissPairingEngine()->pairNextRound($state);
 
         expect($pairing->getRoundNumber())->toBe(2);
 
@@ -109,7 +109,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->bob, $this->dave], new Round(2)), $this->bob),
         ]);
 
-        $pairing = (new SwissPairingEngine())->pairNextRound($state);
+        $pairing = new SwissPairingEngine()->pairNextRound($state);
 
         expect($pairing->getRoundNumber())->toBe(3);
 
@@ -128,7 +128,7 @@ describe('SwissPairingEngine', function (): void {
         $state = StageState::start($this->participants)
             ->withRoundPlayed(new RoundPairing(1, null, $roundOneEvents), []);
 
-        $pairing = (new SwissPairingEngine(resultsFree: true))->pairNextRound($state);
+        $pairing = new SwissPairingEngine(resultsFree: true)->pairNextRound($state);
 
         expect($pairing->getRoundNumber())->toBe(2);
         expect(swissPairKeys($pairing->getEvents()))->not->toContain('p1-p2');
@@ -141,7 +141,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
         ]);
 
-        $pairing = (new SwissPairingEngine())->pairNextRound($state);
+        $pairing = new SwissPairingEngine()->pairNextRound($state);
 
         foreach ($pairing->getEvents() as $event) {
             $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
@@ -159,7 +159,7 @@ describe('SwissPairingEngine', function (): void {
     it('gives the bye to the lowest-placed participant without one', function (): void {
         $participants = [...$this->participants, $this->eve];
 
-        $round1 = (new SwissPairingEngine())->pairNextRound(StageState::start($participants));
+        $round1 = new SwissPairingEngine()->pairNextRound(StageState::start($participants));
         expect($round1->hasByes())->toBeTrue();
         // All tied on zero points, label order: Eve is lowest placed
         expect($round1->getByes()[0]->getId())->toBe('p5');
@@ -169,7 +169,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
             new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
         ], [$this->eve]);
-        $round2 = (new SwissPairingEngine())->pairNextRound($state);
+        $round2 = new SwissPairingEngine()->pairNextRound($state);
 
         expect($round2->hasByes())->toBeTrue();
         expect($round2->getByes()[0]->getId())->not->toBe('p5');
@@ -307,7 +307,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->eve, $frank], new Round(1)), $this->eve),
         ], [$grace]);
 
-        $round2 = (new SwissPairingEngine())->pairNextRound($state);
+        $round2 = new SwissPairingEngine()->pairNextRound($state);
 
         // Grace's bye counts as a win, so she pairs among the winners
         // (against Eve, the third-placed winner), and the losers pair off.
@@ -323,7 +323,7 @@ describe('SwissPairingEngine', function (): void {
         ]);
         $state = $state->withoutParticipant($this->dave);
 
-        $pairing = (new SwissPairingEngine())->pairNextRound($state);
+        $pairing = new SwissPairingEngine()->pairNextRound($state);
 
         expect($pairing->getRoundNumber())->toBe(2);
         expect($pairing->getEvents())->toHaveCount(1);
@@ -383,7 +383,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->carol, $this->bob], new Round(3)), $this->bob),
         ]);
 
-        expect(fn() => (new SwissPairingEngine())->pairNextRound($state))
+        expect(fn() => new SwissPairingEngine()->pairNextRound($state))
             ->toThrow(NoValidPairingException::class);
     });
 
@@ -401,7 +401,7 @@ describe('SwissPairingEngine', function (): void {
             )
             ->build();
 
-        $pairing = (new SwissPairingEngine($constraints))->pairNextRound(StageState::start($this->participants));
+        $pairing = new SwissPairingEngine($constraints)->pairNextRound(StageState::start($this->participants));
 
         expect(swissPairKeys($pairing->getEvents()))->not->toContain('p1-p2');
     });
@@ -415,7 +415,7 @@ describe('SwissPairingEngine', function (): void {
             ]), []);
         }
 
-        $pairing = (new SwissPairingEngine(resultsFree: true))->pairNextRound($state);
+        $pairing = new SwissPairingEngine(resultsFree: true)->pairNextRound($state);
 
         expect($pairing->getRoundNumber())->toBe(3);
         foreach ($pairing->getEvents() as $event) {
@@ -441,7 +441,7 @@ describe('SwissPairingEngine', function (): void {
 
         // Deterministic under the seed, and different from the unshuffled
         // adjacent pairing p1-p2, p3-p4, p5-p6, p7-p8
-        $deterministicRepeat = (new SwissPairingEngine(randomizer: new Randomizer(new Mt19937(4242))))
+        $deterministicRepeat = new SwissPairingEngine(randomizer: new Randomizer(new Mt19937(4242)))
             ->pairNextRound(StageState::start($participants));
 
         expect(swissPairKeys($pairing->getEvents()))->toBe(swissPairKeys($deterministicRepeat->getEvents()));
@@ -625,7 +625,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->bob, $this->carol], new Round(3)), $this->bob),
         ], [$this->alice]);
 
-        expect(fn() => (new SwissPairingEngine())->pairNextRound($state))
+        expect(fn() => new SwissPairingEngine()->pairNextRound($state))
             ->toThrow(NoValidPairingException::class);
     });
 
@@ -656,6 +656,6 @@ describe('SwissPairingEngine', function (): void {
         $state = $state->withRoundPlayed($planned->pairNextRound($state), []);
 
         expect($planned->pairNextRound($state)->getRoundNumber())->toBe(2)
-            ->and((new SwissPairingEngine(resultsFree: true))->pairNextRound($state)->getRoundNumber())->toBe(2);
+            ->and(new SwissPairingEngine(resultsFree: true)->pairNextRound($state)->getRoundNumber())->toBe(2);
     });
 });

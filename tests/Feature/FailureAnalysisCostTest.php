@@ -11,66 +11,29 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
+use MissionGaming\Tactician\Scheduling\ConstraintPurity;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
-/**
- * Counts how often the labels of a field's participants were read.
- */
-final class LabelReadCounter
-{
-    public int $reads = 0;
-}
-
-/**
- * A participant that counts the reads of its label.
- *
- * Generating a round robin never reads a label. A failure analysis reads
- * four for every pairing it reports missing (two to list it and two to
- * attribute it), and the completeness check of a schedule that succeeded
- * reads each participant's once. So the number of label reads says how many
- * analyses were built. That counts them without touching the constraints, which
- * matters: the scheduler skips the analysis of a discarded ordering only
- * for constraints it knows, and a constraint or a constraint set that
- * counted its own calls would not be one of them.
- */
-final readonly class LabelCountingParticipant extends Participant
-{
-    public function __construct(string $id, string $label, int $seed, private LabelReadCounter $counter)
-    {
-        parent::__construct($id, $label, $seed);
-    }
-
-    #[Override]
-    public function getLabel(): string
-    {
-        ++$this->counter->reads;
-
-        return parent::getLabel();
-    }
-}
-
-/**
- * A constraint set that is not ConstraintSet itself, and changes nothing.
- */
-final readonly class UnknownConstraintSet extends ConstraintSet {}
-
-/**
- * A constraint that is not NoRepeatPairings itself, and changes nothing.
- */
-final readonly class UnknownNoRepeatPairings extends NoRepeatPairings {}
+// Gap left knowingly: how many failure analyses a run builds is not counted
+// here. Until 0.3.0 these tests counted them through a subclass of
+// Participant whose getLabel() counted its calls (an analysis reads four
+// labels for every pairing it reports missing, and generation reads none).
+// Participant is final from 0.3.0, and under the constraints the scheduler
+// knows no code of the caller's runs during an analysis, so nothing the
+// test could hand the scheduler sees one being built. What is pinned is
+// what the analyses produce, and the decision that lets the scheduler skip
+// them (ConstraintPurity::isKnown(), tests/Unit/Scheduling/ConstraintPurityTest.php).
 
 /**
  * @return list<Participant>
  */
-function analysisCostField(int $count, ?LabelReadCounter $counter = null): array
+function analysisCostField(int $count): array
 {
     $participants = [];
     for ($i = 1; $i <= $count; ++$i) {
-        $participants[] = $counter === null
-            ? new Participant(sprintf('p%02d', $i), "Participant {$i}", $i)
-            : new LabelCountingParticipant(sprintf('p%02d', $i), "Participant {$i}", $i, $counter);
+        $participants[] = new Participant(sprintf('p%02d', $i), "Participant {$i}", $i);
     }
 
     return $participants;
@@ -79,41 +42,35 @@ function analysisCostField(int $count, ?LabelReadCounter $counter = null): array
 describe('The cost of a round robin that fails or retries', function (): void {
     // Acceptance: an unsatisfiable 24-participant, 2-leg round robin fails
     // promptly. What made it slow was one full failure analysis per rotated
-    // ordering (24 of them here), all but the last thrown away. The test
-    // counts work, not seconds, so that it holds on a slow or busy machine.
+    // ordering (24 of them here), all but the last thrown away. The number
+    // of analyses is not counted (see the note at the top of the file).
     it('analyses an unsatisfiable round robin once, for the attempt it reports', function (): void {
-        $counter = new LabelReadCounter();
         // Forbidding every repeat makes a second leg impossible by design.
         $constraints = new ConstraintSet([new NoRepeatPairings(acrossLegs: true)]);
+        expect(ConstraintPurity::isKnown($constraints))->toBeTrue();
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule(analysisCostField(24, $counter), new RoundRobinOptions(legs: 2));
+            new RoundRobinScheduler($constraints)->schedule(analysisCostField(24), new RoundRobinOptions(legs: 2));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
 
         expect($failure)->toBeInstanceOf(IncompleteScheduleException::class);
         expect($failure?->getAnalysis())->not->toBeNull();
-        // The 276 pairings of leg 2 are all missing, at four label reads
-        // each: one analysis reads 1,104. Twenty-four analyses read 26,496.
+        // The 276 pairings of leg 2 are all missing
         expect($failure?->getAnalysis()?->getMissingPairings())->toHaveCount(276);
-        expect($counter->reads)->toBe(1104);
     });
 
     it('analyses nothing when a later ordering succeeds', function (): void {
-        $counter = new LabelReadCounter();
         // The input order pairs the top two seeds inside the protected
         // window; the third rotation does not.
         $constraints = new ConstraintSet([new SeedProtectionConstraint(2, 0.25)]);
+        expect(ConstraintPurity::isKnown($constraints))->toBeTrue();
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule(analysisCostField(32, $counter), new RoundRobinOptions(legs: 2));
+        $schedule = new RoundRobinScheduler($constraints)->schedule(analysisCostField(32), new RoundRobinOptions(legs: 2));
 
         expect(count($schedule))->toBe(992);
-        // The completeness check of the finished schedule reads the 32
-        // labels once. An analysis of each of the two orderings that failed
-        // read 3,972 more.
-        expect($counter->reads)->toBe(32);
     });
 
     it('reports the analysis of the last ordering tried', function (): void {
@@ -133,7 +90,7 @@ describe('The cost of a round robin that fails or retries', function (): void {
         // attempt is the analysis of an empty schedule for that ordering,
         // which lists the missing pairings in its order.
         $lastOrdering = [$participants[5], ...array_slice($participants, 0, 5)];
-        $expected = (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        $expected = new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $lastOrdering,
             $constraints,
             [],
@@ -152,26 +109,23 @@ describe('A round robin under constraints that could tell how often they are ask
     // it was asked before the next ordering decides what that ordering
     // gets. For such constraints every ordering is analysed, as before.
     it('still analyses every ordering', function (ConstraintSet $constraints): void {
-        $counter = new LabelReadCounter();
+        expect(ConstraintPurity::isKnown($constraints))->toBeFalse();
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule(analysisCostField(6, $counter), new RoundRobinOptions(legs: 2));
+            new RoundRobinScheduler($constraints)->schedule(analysisCostField(6), new RoundRobinOptions(legs: 2));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
 
+        // The analysis reported is of the last of the six orderings, missing
+        // the 15 pairings of leg 2
         expect($failure?->getAnalysis()?->getMissingPairings())->toHaveCount(15);
-        // Six orderings, each missing the 15 pairings of leg 2 at four
-        // label reads a pairing: 6 x 60.
-        expect($counter->reads)->toBe(360);
     })->with([
         'a callable' => [fn(): ConstraintSet => new ConstraintSet([new CallableConstraint(
-            static fn(Event $event, SchedulingContext $context): bool => (new NoRepeatPairings(acrossLegs: true))->isSatisfied($event, $context),
+            static fn(Event $event, SchedulingContext $context): bool => new NoRepeatPairings(acrossLegs: true)->isSatisfied($event, $context),
             'No repeats, by a callable'
         )])],
-        'a subclass of the constraint set' => [fn(): ConstraintSet => new UnknownConstraintSet([new NoRepeatPairings(acrossLegs: true)])],
-        'a subclass of a built-in constraint' => [fn(): ConstraintSet => new ConstraintSet([new UnknownNoRepeatPairings(acrossLegs: true)])],
         'a built-in constraint beside a callable' => [fn(): ConstraintSet => new ConstraintSet([
             new NoRepeatPairings(acrossLegs: true),
             new CallableConstraint(static fn(): bool => true, 'Accept Everything'),
@@ -179,15 +133,17 @@ describe('A round robin under constraints that could tell how often they are ask
     ]);
 
     it('analyses the same six-participant failure once for the built-in constraint itself', function (): void {
-        $counter = new LabelReadCounter();
+        $constraints = new ConstraintSet([new NoRepeatPairings(acrossLegs: true)]);
+        expect(ConstraintPurity::isKnown($constraints))->toBeTrue();
 
+        $failure = null;
         try {
-            (new RoundRobinScheduler(new ConstraintSet([new NoRepeatPairings(acrossLegs: true)])))
-                ->schedule(analysisCostField(6, $counter), new RoundRobinOptions(legs: 2));
-        } catch (IncompleteScheduleException) {
+            new RoundRobinScheduler($constraints)->schedule(analysisCostField(6), new RoundRobinOptions(legs: 2));
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
         }
 
-        expect($counter->reads)->toBe(60);
+        expect($failure?->getAnalysis()?->getMissingPairings())->toHaveCount(15);
     });
 
     it('gives a constraint that keeps state the schedule it got when every ordering was analysed', function (): void {
@@ -216,7 +172,7 @@ describe('A round robin under constraints that could tell how often they are ask
             'Apart for 150 questions'
         )]);
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule(
+        $schedule = new RoundRobinScheduler($constraints)->schedule(
             analysisCostField(6),
             new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
         );
@@ -225,6 +181,6 @@ describe('A round robin under constraints that could tell how often they are ask
         expect($asked)->toBe(185);
 
         $asked = 0;
-        expect(count((new RoundRobinScheduler($constraints))->schedule(analysisCostField(6))))->toBe(15);
+        expect(count(new RoundRobinScheduler($constraints)->schedule(analysisCostField(6))))->toBe(15);
     });
 });

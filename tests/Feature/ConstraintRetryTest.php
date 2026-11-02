@@ -33,7 +33,7 @@ it('satisfies seed protection by retrying alternative participant orderings', fu
         ->build();
 
     // 6 teams, 2 legs => 10 rounds; 25% protection covers rounds 1-2.
-    $schedule = (new RoundRobinScheduler($constraints))->schedule(retryParticipants(6), new RoundRobinOptions(legs: 2));
+    $schedule = new RoundRobinScheduler($constraints)->schedule(retryParticipants(6), new RoundRobinOptions(legs: 2));
 
     expect(count($schedule))->toBe(30);
 
@@ -74,7 +74,7 @@ it('produces identical unconstrained schedules with retries available', function
     // support must not change previously generated schedules. The roles
     // are those of the round-parity role assignment, which was the default
     // when this was pinned.
-    $schedule = (new RoundRobinScheduler())->schedule(
+    $schedule = new RoundRobinScheduler()->schedule(
         retryParticipants(4),
         new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
     );

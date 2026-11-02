@@ -15,6 +15,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
@@ -45,26 +46,36 @@ use Random\Randomizer;
 // streak allows.
 
 /**
- * A constraint set of the caller's: not ConstraintSet itself, and it
- * changes nothing. The scheduler cannot know that, so it reasons about no
- * constraint in it, the library's own included, and asks the set as a
- * whole.
+ * A leg strategy of the caller's that hands every call to a shuffled leg
+ * strategy, and so changes nothing. The scheduler cannot know that a clone
+ * of it would draw from the seed again, so it clones only the library's
+ * class. (Until 0.3.0 this was a subclass of ShuffledLegStrategy, which is
+ * final now.).
  */
-final readonly class RoleSweepConstraintSetOfTheCallers extends ConstraintSet {}
+final readonly class RoleSweepShuffledLegsOfTheCallers implements LegStrategyInterface
+{
+    private ShuffledLegStrategy $shuffled;
 
-/**
- * A subclass of one of the library's role limits that changes nothing. The
- * scheduler cannot know that either, and reasons about the limit only where
- * the object is of the library's class itself.
- */
-final readonly class RoleSweepLimitSubclassOfTheCallers extends ConsecutiveRoleConstraint {}
+    /**
+     * @throws InvalidConfigurationException Never: a seed is given
+     */
+    public function __construct(int $seed)
+    {
+        $this->shuffled = new ShuffledLegStrategy(seed: $seed);
+    }
 
-/**
- * A subclass of the shuffled leg strategy that changes nothing. The
- * scheduler cannot know that its clone draws from the seed again, so it
- * clones only the library's class.
- */
-final readonly class RoleSweepShuffledLegsOfTheCallers extends ShuffledLegStrategy {}
+    #[Override]
+    public function planLegs(array $participants, int $legs, ConstraintSet $constraints): LegPlanContribution
+    {
+        return $this->shuffled->planLegs($participants, $legs, $constraints);
+    }
+
+    #[Override]
+    public function generateEventForLeg(array $participants, int $leg, int $round, SchedulingContext $context): ?Event
+    {
+        return $this->shuffled->generateEventForLeg($participants, $leg, $round, $context);
+    }
+}
 
 /**
  * A constraint class of the caller's that answers as the limit it is given
@@ -110,13 +121,7 @@ function roleSweepIsUnderCoverage(): bool
         return false;
     }
 
-    foreach ($arguments as $argument) {
-        if (is_string($argument) && str_starts_with($argument, '--coverage')) {
-            return true;
-        }
-    }
-
-    return false;
+    return array_any($arguments, fn($argument) => is_string($argument) && str_starts_with($argument, '--coverage'));
 }
 
 const ROLE_SWEEP_NOT_UNDER_COVERAGE = 'Not run under a coverage driver: it covers no line of its own there and takes about a minute. roleSweepIsUnderCoverage() has the measurements.';
@@ -385,7 +390,7 @@ describe('roles over several legs, without backtracking', function (): void {
             for ($rotation = 0; $rotation < $size; ++$rotation) {
                 $rotated = [...array_slice($field, $rotation), ...array_slice($field, 0, $rotation)];
                 $firstLegs[] = RoleScheduleOracle::read(
-                    (new RoundRobinScheduler())->schedule($rotated, new RoundRobinOptions(roleAssignment: $roleAssignment))
+                    new RoundRobinScheduler()->schedule($rotated, new RoundRobinOptions(roleAssignment: $roleAssignment))
                 );
             }
 
@@ -404,18 +409,11 @@ describe('roles over several legs, without backtracking', function (): void {
                         $whole = $firstLegIsSearched
                             ? RoleScheduleOracle::every($breaks, RoleScheduleOracle::balancedFirstLegRule($size, $roundsPerLeg))
                             : $breaks;
-
-                        $exists = false;
-                        foreach ($firstLegs as $firstLeg) {
-                            if (RoleScheduleOracle::rolesExist($firstLeg, $roundsPerLeg, $legs, $strategy, $firstLegIsSearched, $whole)) {
-                                $exists = true;
-                                break;
-                            }
-                        }
+                        $exists = array_any($firstLegs, fn($firstLeg) => RoleScheduleOracle::rolesExist($firstLeg, $roundsPerLeg, $legs, $strategy, $firstLegIsSearched, $whole));
 
                         $options = new RoundRobinOptions($legs, $makeStrategy(), false, $roleAssignment);
                         try {
-                            $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options);
+                            $schedule = new RoundRobinScheduler($constraints)->schedule($field, $options);
                         } catch (IncompleteScheduleException $failure) {
                             ++$refused;
                             if ($exists) {
@@ -460,23 +458,16 @@ describe('roles over several legs, without backtracking', function (): void {
         $firstLegs = [];
         for ($rotation = 0; $rotation < $size; ++$rotation) {
             $rotated = [...array_slice($field, $rotation), ...array_slice($field, 0, $rotation)];
-            $firstLegs[] = RoleScheduleOracle::read((new RoundRobinScheduler())->schedule($rotated));
+            $firstLegs[] = RoleScheduleOracle::read(new RoundRobinScheduler()->schedule($rotated));
         }
 
         foreach (roleSweepRules($roundsPerLeg, 2) as $ruleName => [$constraints, $breaks]) {
             $case = "{$size} participants, {$ruleName}";
             $whole = RoleScheduleOracle::every($breaks, $balanced);
-
-            $exists = false;
-            foreach ($firstLegs as $firstLeg) {
-                if (RoleScheduleOracle::rolesExist($firstLeg, $roundsPerLeg, 1, 'mirrored', true, $whole)) {
-                    $exists = true;
-                    break;
-                }
-            }
+            $exists = array_any($firstLegs, fn($firstLeg) => RoleScheduleOracle::rolesExist($firstLeg, $roundsPerLeg, 1, 'mirrored', true, $whole));
 
             try {
-                $schedule = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment()));
+                $schedule = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment()));
             } catch (IncompleteScheduleException $failure) {
                 ++$refused;
                 if ($exists) {
@@ -554,7 +545,7 @@ describe('roles over several legs, with backtracking', function (): void {
 
                     $options = new RoundRobinOptions($legs, $makeStrategy(), true, $roleAssignment);
                     try {
-                        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options);
+                        $schedule = new RoundRobinScheduler($constraints)->schedule($field, $options);
                     } catch (IncompleteScheduleException $failure) {
                         $message = $failure->getMessage();
                         if (str_contains($message, 'unsatisfiable')) {
@@ -610,7 +601,7 @@ describe('roles over several legs, with backtracking', function (): void {
                         $schedules = [];
                         foreach ([false, true, true] as $backtracking) {
                             try {
-                                $schedules[] = (new RoundRobinScheduler($constraints))
+                                $schedules[] = new RoundRobinScheduler($constraints)
                                     ->schedule($field, new RoundRobinOptions($legs, new ShuffledLegStrategy(seed: $seed), $backtracking, $roleAssignment))
                                     ->toJson();
                             } catch (IncompleteScheduleException) {
@@ -673,12 +664,12 @@ describe('roles over several legs of a larger field', function (): void {
         // The round-parity roles, played twice, break the limit, and the
         // scheduler says so: without backtracking it does not search the
         // roles of the first leg
-        $twice = (new RoundRobinScheduler())->schedule($field, $options(false));
+        $twice = new RoundRobinScheduler()->schedule($field, $options(false));
         expect(RoleCounts::worstStreak($twice))->toBeGreaterThan(2)
-            ->and(fn() => (new RoundRobinScheduler($constraints))->schedule($field, $options(false)))
+            ->and(fn() => new RoundRobinScheduler($constraints)->schedule($field, $options(false)))
             ->toThrow(IncompleteScheduleException::class);
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options(true));
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field, $options(true));
 
         expect(roleSweepFaults($schedule, $field, 2, 'repeated', RoleScheduleOracle::streakRule(2)))->toBe([])
             // The pairings and their rounds are those of the circle method
@@ -706,10 +697,10 @@ describe('roles over several legs of a larger field', function (): void {
         $constraints = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway($limit))->build();
         $options = new RoundRobinOptions($legs);
 
-        $unconstrained = (new RoundRobinScheduler())->schedule($field, $options);
+        $unconstrained = new RoundRobinScheduler()->schedule($field, $options);
         expect(RoleCounts::worstStreak($unconstrained))->toBeGreaterThan($limit);
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options);
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field, $options);
 
         expect(roleSweepFaults($schedule, $field, $legs, 'mirrored', RoleScheduleOracle::streakRule($limit)))->toBe([])
             ->and(RoleCounts::structure($schedule))->toBe(RoleCounts::structure($unconstrained))
@@ -732,9 +723,9 @@ describe('roles over several legs of a larger field', function (): void {
     it('shuffles the later legs of a league within a limit of two in a row', function (int $size, int $legs): void {
         $field = roleSweepField($size);
         $constraints = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build();
-        $unconstrained = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions($legs, new ShuffledLegStrategy(seed: 7)));
+        $unconstrained = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions($legs, new ShuffledLegStrategy(seed: 7)));
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions($legs, new ShuffledLegStrategy(seed: 7)));
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions($legs, new ShuffledLegStrategy(seed: 7)));
 
         expect(roleSweepFaults($schedule, $field, $legs, 'shuffled', RoleScheduleOracle::streakRule(2)))->toBe([])
             ->and(RoleCounts::structure($schedule))->toBe(RoleCounts::structure($unconstrained))
@@ -778,7 +769,7 @@ function roleSweepOutcome(
     ?int $seed = null
 ): Schedule|string {
     try {
-        return (new RoundRobinScheduler($constraints, $seed === null ? null : new Randomizer(new Mt19937($seed))))
+        return new RoundRobinScheduler($constraints, $seed === null ? null : new Randomizer(new Mt19937($seed)))
             ->schedule($field, new RoundRobinOptions($legs, $strategy, $backtracking, $roleAssignment));
     } catch (IncompleteScheduleException $failure) {
         return $failure->getMessage();
@@ -838,7 +829,7 @@ function roleSweepAroundRoundParity(array $underTheDefault, array $underRoundPar
  */
 function roleSweepPairingOfTheFirstLayout(array $field, int $legs, LegStrategyInterface $strategy, int $round, string $participant, ?int $seed): array
 {
-    $schedule = (new RoundRobinScheduler(null, $seed === null ? null : new Randomizer(new Mt19937($seed))))
+    $schedule = new RoundRobinScheduler(null, $seed === null ? null : new Randomizer(new Mt19937($seed)))
         ->schedule($field, new RoundRobinOptions($legs, $strategy, false, new RoundParityRoleAssignment()));
     foreach (RoleScheduleOracle::read($schedule->getEvents()) as [$eventRound, $first, $second]) {
         if ($eventRound === $round && in_array($participant, [$first, $second], true)) {
@@ -871,7 +862,7 @@ function roleSweepPairingOfTheFirstLayout(array $field, int $legs, LegStrategyIn
  */
 function roleSweepRuleThatUnbalances(array $field, int $roundsPerLeg): ?array
 {
-    $proposed = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()));
+    $proposed = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()));
     $differences = RoleCounts::differences($proposed);
     $furthest = RoleCounts::largest($differences);
     if ($furthest < 2) {
@@ -999,7 +990,7 @@ describe('the default, balanced where possible', function (): void {
         for ($rotation = 0; $rotation < $size; ++$rotation) {
             $rotated = [...array_slice($field, $rotation), ...array_slice($field, 0, $rotation)];
             $proposed[] = RoleScheduleOracle::read(
-                (new RoundRobinScheduler())->schedule($rotated, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))
+                new RoundRobinScheduler()->schedule($rotated, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))
             );
         }
 
@@ -1275,11 +1266,11 @@ describe('the default, balanced where possible', function (): void {
             'Two in a row, as a closure'
         )->build();
 
-        $underRoundParity = (new RoundRobinScheduler($asAClosure))->schedule($field, new RoundRobinOptions(2, null, false, new RoundParityRoleAssignment()));
+        $underRoundParity = new RoundRobinScheduler($asAClosure)->schedule($field, new RoundRobinOptions(2, null, false, new RoundParityRoleAssignment()));
         $askedUnderRoundParity = $asked;
 
         $asked = 0;
-        $schedule = (new RoundRobinScheduler($asAClosure))->schedule($field, new RoundRobinOptions(2));
+        $schedule = new RoundRobinScheduler($asAClosure)->schedule($field, new RoundRobinOptions(2));
 
         expect(RoleFallback::of($schedule))->toBe(RoleFallback::BalancedRolesRejected)
             ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray())
@@ -1297,7 +1288,7 @@ describe('the default, balanced where possible', function (): void {
 
         // The same limit as the library's own constraint, which the search
         // reasons about exactly: balanced roles are found, as they were
-        $own = (new RoundRobinScheduler(ConstraintSet::create()->add($limit)->build()))->schedule($field, new RoundRobinOptions(2));
+        $own = new RoundRobinScheduler(ConstraintSet::create()->add($limit)->build())->schedule($field, new RoundRobinOptions(2));
         $roundsPerLeg = $size - 1;
 
         expect(RoleFallback::of($own))->toBeNull()
@@ -1321,9 +1312,7 @@ describe('the default, balanced where possible', function (): void {
     // it: a scheduler that asked and caught what was thrown, as the
     // default did while it put a rejected event to the constraint against
     // an empty context, completes the league too.
-    //
-    // The same inside a constraint set of the caller's.
-    it('asks a constraint about an event of a later leg only with the first leg before it', function (int $size, ?RoleFallback $reason, bool $inASetOfTheCallers): void {
+    it('asks a constraint about an event of a later leg only with the first leg before it', function (int $size, ?RoleFallback $reason): void {
         $field = roleSweepField($size);
         $limit = ConsecutiveRoleConstraint::homeAway(2);
         $askedWithoutTheFirstMeeting = 0;
@@ -1348,19 +1337,16 @@ describe('the default, balanced where possible', function (): void {
             },
             'Two in a row, and the return meeting the other way round'
         )->build();
-        if ($inASetOfTheCallers) {
-            $constraints = new RoleSweepConstraintSetOfTheCallers($constraints->getConstraints());
-        }
 
-        $underRoundParity = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(2, null, false, new RoundParityRoleAssignment()));
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(2));
+        $underRoundParity = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions(2, null, false, new RoundParityRoleAssignment()));
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions(2));
 
         expect(RoleFallback::of($schedule))->toBe($reason)
             ->and($askedWithoutTheFirstMeeting)->toBe(0)
             ->and(roleSweepFaults($schedule, $field, 2, 'mirrored', RoleScheduleOracle::streakRule(2)))->toBe([]);
 
         if ($reason === null) {
-            $underBalanced = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(2, null, false, new BalancedRoleAssignment()));
+            $underBalanced = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions(2, null, false, new BalancedRoleAssignment()));
 
             expect($schedule->toArray())->toBe($underBalanced->toArray())
                 ->and(RoleCounts::worstEndImbalance(RoleCounts::leg($schedule, 1, $size - 1)))->toBe(1);
@@ -1372,18 +1358,15 @@ describe('the default, balanced where possible', function (): void {
     })->with([
         'eight participants: balanced' => [8, null],
         'twelve participants: the bound is reached' => [12, RoleFallback::BalancedRolesRejected],
-    ])->with([
-        'in a ConstraintSet' => [false],
-        'in a constraint set of the caller\'s' => [true],
     ]);
 
     // A limit of two in a row over two mirrored legs that the search of
     // roles cannot see into, in each of the forms a caller can give it: a
-    // closure, a class of the caller's, a subclass of the library's limit,
-    // and the library's limit itself inside a constraint set of the
-    // caller's. The roles of round parity keep it, so that schedule is in
-    // hand when balanced roles are looked for, and the search goes back
-    // one event at a time.
+    // closure and a class of the caller's. (Until 0.3.0 a subclass of the
+    // library's limit and a subclass of ConstraintSet were two more; both
+    // classes are final now.) The roles of round parity keep it, so that
+    // schedule is in hand when balanced roles are looked for, and the
+    // search goes back one event at a time.
     //
     // Eight participants: the search finds balanced roles that keep the
     // limit inside the 4,000 events it has with a schedule in hand, and
@@ -1410,7 +1393,7 @@ describe('the default, balanced where possible', function (): void {
         $field = roleSweepField($size);
         $constraints = $makeConstraints();
         assert($constraints instanceof ConstraintSet);
-        $outcome = static fn(?RoleAssignmentInterface $roleAssignment): Schedule => (new RoundRobinScheduler($constraints))
+        $outcome = static fn(?RoleAssignmentInterface $roleAssignment): Schedule => new RoundRobinScheduler($constraints)
             ->schedule($field, new RoundRobinOptions(2, null, false, $roleAssignment));
 
         $schedule = $outcome(null);
@@ -1438,16 +1421,6 @@ describe('the default, balanced where possible', function (): void {
         'a class of the caller\'s' => [static fn(): ConstraintSet => ConstraintSet::create()
             ->add(new RoleSweepLimitOfTheCallers(ConsecutiveRoleConstraint::homeAway(2)))
             ->build()],
-        'a subclass of the library\'s limit' => [static fn(): ConstraintSet => ConstraintSet::create()
-            ->add(new RoleSweepLimitSubclassOfTheCallers(
-                2,
-                static fn(Event $event, Participant $participant): string => $event->getParticipants()[0]->getId() === $participant->getId() ? 'home' : 'away',
-                'Two in a row'
-            ))
-            ->build()],
-        'the library\'s limit in a constraint set of the caller\'s' => [static fn(): ConstraintSet => new RoleSweepConstraintSetOfTheCallers([
-            ConsecutiveRoleConstraint::homeAway(2),
-        ])],
     ])->with([
         'eight participants: balanced' => [8, null],
         'ten participants: the bound is reached' => [10, RoleFallback::BalancedRolesRejected],
@@ -1473,7 +1446,7 @@ describe('the default, balanced where possible', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(2))
             ->add(MetadataConstraint::requireDifferentValues('club'))
             ->build();
-        $outcome = static fn(?RoleAssignmentInterface $roleAssignment): Schedule => (new RoundRobinScheduler($constraints))
+        $outcome = static fn(?RoleAssignmentInterface $roleAssignment): Schedule => new RoundRobinScheduler($constraints)
             ->schedule($field, new RoundRobinOptions(2, null, false, $roleAssignment));
 
         $schedule = $outcome(null);
@@ -1522,7 +1495,7 @@ describe('the default, balanced where possible', function (): void {
             'p3 is second-named'
         )->build();
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field);
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field);
 
         expect(RoleScheduleOracle::read($schedule->getEvents()))->toBe([
             [1, 'p1', 'p4'], [1, 'p2', 'p3'],
@@ -1563,7 +1536,7 @@ describe('the default, balanced where possible', function (): void {
         $field = roleSweepField($size);
         $roundParity = new RoundRobinOptions(1, null, false, new RoundParityRoleAssignment());
         $pinned = [];
-        foreach (RoleScheduleOracle::read((new RoundRobinScheduler())->schedule($field, $roundParity)->getEvents()) as [, $first, $second]) {
+        foreach (RoleScheduleOracle::read(new RoundRobinScheduler()->schedule($field, $roundParity)->getEvents()) as [, $first, $second]) {
             if ((int) substr($first, 1) <= $pinnedParticipants || (int) substr($second, 1) <= $pinnedParticipants) {
                 $pinned[$first . ' v ' . $second] = true;
             }
@@ -1580,10 +1553,10 @@ describe('the default, balanced where possible', function (): void {
             'Pairings the way round that round parity has them'
         )->build();
 
-        $underRoundParity = (new RoundRobinScheduler($constraints))->schedule($field, $roundParity);
+        $underRoundParity = new RoundRobinScheduler($constraints)->schedule($field, $roundParity);
         $askedUnderRoundParity = $asked;
         $asked = 0;
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field);
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field);
         $askedUnderTheDefault = $asked;
         $strict = roleSweepOutcome($constraints, $field, 1, new MirroredLegStrategy(), false, new BalancedRoleAssignment());
 
@@ -1636,15 +1609,16 @@ describe('the default, balanced where possible', function (): void {
     // about once more, for the record, are counted alike: two for the event
     // each of the two layouts ends on.
     //
-    // Under a subclass of the strategy, which the scheduler does not clone,
+    // Under a strategy of the caller's that shuffles the same way, which the
+    // scheduler does not clone,
     // the first layout is laid out again after round parity, and its later
     // legs are searched within the 4,000 events and not to their own bound.
-    it('holds the search of shuffled later legs to the bound of events once a schedule is in hand', function (bool $theFirstLayoutFailsAtOnce, bool $aSubclassOfTheCallers = false): void {
+    it('holds the search of shuffled later legs to the bound of events once a schedule is in hand', function (bool $theFirstLayoutFailsAtOnce, bool $aStrategyOfTheCallers = false): void {
         $size = 10;
         $legs = 2;
         $roundsPerLeg = $size - 1;
         $field = roleSweepField($size);
-        $strategy = static fn(): ShuffledLegStrategy => $aSubclassOfTheCallers
+        $strategy = static fn(): LegStrategyInterface => $aStrategyOfTheCallers
             ? new RoleSweepShuffledLegsOfTheCallers(seed: 1)
             : new ShuffledLegStrategy(seed: 1);
         $keptOut = $theFirstLayoutFailsAtOnce
@@ -1691,7 +1665,7 @@ describe('the default, balanced where possible', function (): void {
         expect(RoleFallback::of($schedule))->toBe(RoleFallback::BalancedRolesRejected)
             ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray());
 
-        if ($aSubclassOfTheCallers) {
+        if ($aStrategyOfTheCallers) {
             expect(count($before))->toBeGreaterThan(4_000)
                 // The first layout again, from its first question
                 ->and(array_slice($after, 0, 100))->toBe(array_slice($before, 0, 100))
@@ -1719,7 +1693,7 @@ describe('the default, balanced where possible', function (): void {
     })->with([
         'the first layout spends the bound' => [false],
         'the first layout fails at once' => [true],
-        'the first layout spends the bound, under a subclass of the strategy' => [false, true],
+        'the first layout spends the bound, under a strategy of the caller\'s' => [false, true],
     ]);
 
     // The first rotated order of the search for balanced roles with round
@@ -1882,7 +1856,7 @@ describe('the default, balanced where possible', function (): void {
         string $whatTheStrictRoleAssignmentSays
     ): void {
         $field = roleSweepField($size);
-        $underRoundParity = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()));
+        $underRoundParity = new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()));
         $differences = RoleCounts::differences($underRoundParity);
         $chosen = (string) array_search(3, array_map(abs(...), $differences), true);
         /** @var array<string, bool> $chosenIsFirstAgainst */
@@ -1916,7 +1890,7 @@ describe('the default, balanced where possible', function (): void {
 
         expect(count($chosenIsFirstAgainst))->toBe($size - 1);
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(backtracking: $backtracking));
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field, new RoundRobinOptions(backtracking: $backtracking));
 
         expect(RoleFallback::of($schedule))->toBe($reason)
             ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray())
@@ -1947,7 +1921,7 @@ describe('the default, balanced where possible', function (): void {
         $roundParity = new RoundParityRoleAssignment();
         /** @var array<string, bool> $chosenIsFirstAgainst */
         $chosenIsFirstAgainst = [];
-        foreach (RoleScheduleOracle::read((new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(1, null, false, $roundParity))->getEvents()) as [, $first, $second]) {
+        foreach (RoleScheduleOracle::read(new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(1, null, false, $roundParity))->getEvents()) as [, $first, $second]) {
             if ($first === $chosen) {
                 $chosenIsFirstAgainst[$second] = true;
             } elseif ($second === $chosen) {
@@ -1980,8 +1954,8 @@ describe('the default, balanced where possible', function (): void {
             $roleAssignment
         );
 
-        $underRoundParity = (new RoundRobinScheduler($constraints))->schedule($field, $options($roundParity));
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options(null));
+        $underRoundParity = new RoundRobinScheduler($constraints)->schedule($field, $options($roundParity));
+        $schedule = new RoundRobinScheduler($constraints)->schedule($field, $options(null));
 
         expect($chosenIsFirstAgainst)->toHaveCount(4)
             ->and(array_filter($chosenIsFirstAgainst))->toHaveCount(1)
@@ -2006,10 +1980,10 @@ describe('the default, balanced where possible', function (): void {
         $field = roleSweepField(8);
         $failure = static function (?RoleAssignmentInterface $roleAssignment) use ($field, $seed): IncompleteScheduleException {
             try {
-                (new RoundRobinScheduler(
+                new RoundRobinScheduler(
                     ConstraintSet::create()->add(new NoRepeatPairings(acrossLegs: true))->build(),
                     $seed === null ? null : new Randomizer(new Mt19937($seed))
-                ))->schedule($field, new RoundRobinOptions(2, null, false, $roleAssignment));
+                )->schedule($field, new RoundRobinOptions(2, null, false, $roleAssignment));
             } catch (IncompleteScheduleException $exception) {
                 return $exception;
             }
@@ -2059,10 +2033,10 @@ describe('the default, balanced where possible', function (): void {
                 $field = roleSweepField($size);
                 $failure = static function (?RoleAssignmentInterface $roleAssignment) use ($field, $size, $seed, $strategySeed): IncompleteScheduleException {
                     try {
-                        (new RoundRobinScheduler(
+                        new RoundRobinScheduler(
                             ConstraintSet::create()->add(new MinimumRestPeriodsConstraint($size + 1))->build(),
                             $seed === null ? null : new Randomizer(new Mt19937($seed))
-                        ))->schedule($field, new RoundRobinOptions(2, new ShuffledLegStrategy(seed: $strategySeed), false, $roleAssignment));
+                        )->schedule($field, new RoundRobinOptions(2, new ShuffledLegStrategy(seed: $strategySeed), false, $roleAssignment));
                     } catch (IncompleteScheduleException $exception) {
                         return $exception;
                     }

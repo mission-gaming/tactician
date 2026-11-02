@@ -12,7 +12,7 @@ use Override;
  *
  * @experimental
  */
-readonly class WinsTiebreaker implements TiebreakerInterface
+final readonly class WinsTiebreaker implements TiebreakerInterface
 {
     /**
      * Always 'wins': the key of this tiebreaker's value in

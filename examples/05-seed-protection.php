@@ -25,7 +25,7 @@ $participants = [
 ];
 
 // Without protection the top two seeds meet in round 2
-$unprotected = (new RoundRobinScheduler())->schedule($participants);
+$unprotected = new RoundRobinScheduler()->schedule($participants);
 
 // SeedProtectionConstraint(2, 0.25): the top 2 seeds may not meet during the
 // first quarter of the rounds. The window is the whole number of rounds in
@@ -34,14 +34,14 @@ $unprotected = (new RoundRobinScheduler())->schedule($participants);
 $quarter = ConstraintSet::create()
     ->add(new SeedProtectionConstraint(2, 0.25))
     ->build();
-$protectedForAQuarter = (new RoundRobinScheduler($quarter))->schedule($participants);
+$protectedForAQuarter = new RoundRobinScheduler($quarter)->schedule($participants);
 
 // Half of 7 rounds is rounds 1 to 3. The first ordering breaks that, so the
 // scheduler retries with rotated participant orders until one satisfies it.
 $half = ConstraintSet::create()
     ->add(new SeedProtectionConstraint(2, 0.5))
     ->build();
-$protectedForHalf = (new RoundRobinScheduler($half))->schedule($participants);
+$protectedForHalf = new RoundRobinScheduler($half)->schedule($participants);
 
 // The round in which seeds 1 and 2 meet
 $topSeedsMeet = static function (Schedule $schedule): ?int {

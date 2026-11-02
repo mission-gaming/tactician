@@ -125,7 +125,7 @@ use Random\Randomizer;
  *
  * @api
  */
-class RoundRobinScheduler implements SchedulerInterface
+final class RoundRobinScheduler implements SchedulerInterface
 {
     use ValidatesScheduleCompleteness;
 
@@ -571,10 +571,9 @@ class RoundRobinScheduler implements SchedulerInterface
      *    RoundParityRoleAssignment.
      *
      * Any other constraints (a closure, a metadata rule, a class of the
-     * caller's, a subclass, a ConstraintSet subclass). The search goes back
-     * one event at a time for these, and can spend its whole allowance
-     * without a result, so the roles the generator proposes are tried
-     * before it:
+     * caller's). The search goes back one event at a time for these, and
+     * can spend its whole allowance without a result, so the roles the
+     * generator proposes are tried before it:
      *
      * 1. The balanced roles as given, in the first layout only. A schedule
      *    is returned.
@@ -674,10 +673,9 @@ class RoundRobinScheduler implements SchedulerInterface
         // kept for step 3 while step 2 draws from the start: a strategy
         // that draws nothing, or a ShuffledLegStrategy built from a seed,
         // whose clone draws from the seed again (one that holds a
-        // randomizer shares it with its clone, and a class of the caller's
-        // is not cloned)
+        // randomizer shares it with its clone)
         $firstLayoutCanBeKept = !$contribution->requiresRandomization
-            || ($strategy instanceof ShuffledLegStrategy && $strategy::class === ShuffledLegStrategy::class && $strategy->seed !== null);
+            || ($strategy instanceof ShuffledLegStrategy && $strategy->seed !== null);
         $firstLayout = null;
         $this->failureIsNeverShown = true;
         $this->attemptsSpent = 0;
@@ -1446,7 +1444,7 @@ class RoundRobinScheduler implements SchedulerInterface
      */
     private function aConstraintOnOwnEventsRejects(array $rejections): bool
     {
-        if (!$this->constraints instanceof ConstraintSet || $this->constraints::class !== ConstraintSet::class) {
+        if (!$this->constraints instanceof ConstraintSet) {
             return false;
         }
 
@@ -1474,7 +1472,7 @@ class RoundRobinScheduler implements SchedulerInterface
      */
     private function aConstraintThatIgnoresRolesRejects(array $rejections): bool
     {
-        if (!$this->constraints instanceof ConstraintSet || $this->constraints::class !== ConstraintSet::class) {
+        if (!$this->constraints instanceof ConstraintSet) {
             return false;
         }
 
@@ -2142,7 +2140,7 @@ class RoundRobinScheduler implements SchedulerInterface
             return null;
         }
 
-        return (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+        return new SchedulingDiagnostics()->analyzeSchedulingFailure(
             $participants,
             $this->constraints,
             $partialEvents,
@@ -2164,7 +2162,7 @@ class RoundRobinScheduler implements SchedulerInterface
         [$participants, $plan, $partialEvents] = $this->unanalysedFailure;
         $this->unanalysedFailure = null;
 
-        return (new SchedulingDiagnostics())->analyzeSchedulingFailure($participants, $this->constraints, $partialEvents, $plan);
+        return new SchedulingDiagnostics()->analyzeSchedulingFailure($participants, $this->constraints, $partialEvents, $plan);
     }
 
     /**

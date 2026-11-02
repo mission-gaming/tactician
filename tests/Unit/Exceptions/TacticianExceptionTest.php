@@ -213,7 +213,7 @@ describe('TacticianException', function (): void {
             'Planned rounds must be at least 1',
         ],
         'StandingsCalculator: a result for a participant outside the table' => [
-            fn(Participant $alice, Participant $bob, Participant $carol) => (new StandingsCalculator())->calculate(
+            fn(Participant $alice, Participant $bob, Participant $carol) => new StandingsCalculator()->calculate(
                 [$alice, $bob],
                 [new Result(new Event([$alice, $carol]), $alice)],
             ),
@@ -223,7 +223,7 @@ describe('TacticianException', function (): void {
             function (Participant $alice, Participant $bob) {
                 $event = new Event([$alice, $bob]);
 
-                return (new StandingsCalculator())->calculate(
+                return new StandingsCalculator()->calculate(
                     [$alice, $bob],
                     [new Result($event, $alice), new Result($event, $bob)],
                 );
@@ -287,18 +287,18 @@ describe('TacticianException', function (): void {
     })->with([
         // "\xB1" is not valid UTF-8, so the metadata has no JSON form.
         'Schedule::toJson' => [
-            fn(Participant $alice, Participant $bob) => (new Schedule([new Event([$alice, $bob])], ['note' => "\xB1"]))->toJson(),
+            fn(Participant $alice, Participant $bob) => new Schedule([new Event([$alice, $bob])], ['note' => "\xB1"])->toJson(),
         ],
         'StageState::toJson' => [
             fn(Participant $alice) => StageState::start([$alice, new Participant('bad', 'Bad', null, ['note' => "\xB1"])])->toJson(),
         ],
         'ScheduledSchedule::toJson' => [
-            fn(Participant $alice) => (new ScheduledSchedule([
+            fn(Participant $alice) => new ScheduledSchedule([
                 new ScheduledEvent(
                     new Event([$alice, new Participant('bad', 'Bad', null, ['note' => "\xB1"])]),
                     new DateTimeImmutable('2026-01-01T12:00:00Z'),
                 ),
-            ]))->toJson(),
+            ])->toJson(),
         ],
     ]);
 
@@ -318,7 +318,7 @@ describe('TacticianException', function (): void {
         ],
         'fromJson: an empty string' => [fn() => StageState::fromJson(''), 'Syntax error', JSON_ERROR_SYNTAX],
         'toJson: a number JSON has no form for' => [
-            fn(Participant $alice, Participant $bob) => (new Schedule([new Event([$alice, $bob])], ['ratio' => INF]))->toJson(),
+            fn(Participant $alice, Participant $bob) => new Schedule([new Event([$alice, $bob])], ['ratio' => INF])->toJson(),
             'Inf and NaN cannot be JSON encoded',
             JSON_ERROR_INF_OR_NAN,
         ],
@@ -440,7 +440,7 @@ describe('TacticianException', function (): void {
         $failing = ConstraintSet::create()
             ->custom(fn(Event $event): bool => throw new DomainException('predicate failed'), 'Failing')
             ->build();
-        $fromPredicate = tacticianOutcome(fn() => (new RoundRobinScheduler($failing))->schedule([$alice, $bob, $carol]));
+        $fromPredicate = tacticianOutcome(fn() => new RoundRobinScheduler($failing)->schedule([$alice, $bob, $carol]));
 
         expect($fromPredicate['thrown'])->toBeInstanceOf(DomainException::class);
         expect($fromPredicate['thrown']?->getMessage())->toBe('predicate failed');
@@ -458,7 +458,7 @@ describe('TacticianException', function (): void {
                 throw new UnexpectedValueException('not serializable');
             }
         };
-        $fromMetadata = tacticianOutcome(fn() => (new Schedule([new Event([$alice, $bob])], ['object' => $unserializable]))->toJson());
+        $fromMetadata = tacticianOutcome(fn() => new Schedule([new Event([$alice, $bob])], ['object' => $unserializable])->toJson());
 
         expect($fromMetadata['thrown'])->toBeInstanceOf(UnexpectedValueException::class);
         expect($fromMetadata['thrown']?->getMessage())->toBe('not serializable');
@@ -468,7 +468,7 @@ describe('TacticianException', function (): void {
     it('catches the scheduling failures, which are still SchedulingExceptions', function (): void {
         [$alice, $bob, $carol] = $this->field;
 
-        $tooFew = tacticianOutcome(fn() => (new RoundRobinScheduler())->schedule([$alice]));
+        $tooFew = tacticianOutcome(fn() => new RoundRobinScheduler()->schedule([$alice]));
 
         expect($tooFew['thrown'])->toBeInstanceOf(InvalidConfigurationException::class);
         expect($tooFew['caughtBy'])->toBe([TacticianException::class, SchedulingException::class]);
@@ -477,7 +477,7 @@ describe('TacticianException', function (): void {
         $forbidden = ConstraintSet::create()
             ->custom(fn(Event $event): bool => !($event->hasParticipant($alice) && $event->hasParticipant($bob)), 'Ban')
             ->build();
-        $incomplete = tacticianOutcome(fn() => (new RoundRobinScheduler($forbidden))->schedule([$alice, $bob, $carol]));
+        $incomplete = tacticianOutcome(fn() => new RoundRobinScheduler($forbidden)->schedule([$alice, $bob, $carol]));
 
         expect($incomplete['thrown'])->toBeInstanceOf(IncompleteScheduleException::class);
         expect($incomplete['caughtBy'])->toBe([TacticianException::class, SchedulingException::class]);
@@ -492,11 +492,11 @@ describe('TacticianException', function (): void {
         // LogicException as well, and so unchecked: a caller's mistake, which
         // the object's own has...() method would have prevented.
         expect(get_parent_class(UnavailableValueException::class))->toBe(LogicException::class);
-        expect((new ReflectionClass(UnavailableValueException::class))->isFinal())->toBeTrue();
+        expect(new ReflectionClass(UnavailableValueException::class)->isFinal())->toBeTrue();
     });
 
     it('is caught as a TacticianException and as a LogicException when an object is asked for a value it does not hold', function (): void {
-        $outcome = tacticianOutcome(fn() => (new SlotAssignment('e1', 0, 0, null))->getKickoff());
+        $outcome = tacticianOutcome(fn() => new SlotAssignment('e1', 0, 0, null)->getKickoff());
 
         expect($outcome['thrown'])->toBeInstanceOf(UnavailableValueException::class);
         expect($outcome['caughtBy'])->toBe([TacticianException::class, LogicException::class]);
@@ -526,7 +526,7 @@ describe('TacticianException', function (): void {
     });
 
     it('adds no method to the exceptions that implement it', function (): void {
-        expect((new ReflectionClass(TacticianException::class))->getMethods())
-            ->toHaveCount(count((new ReflectionClass(Throwable::class))->getMethods()));
+        expect(new ReflectionClass(TacticianException::class)->getMethods())
+            ->toHaveCount(count(new ReflectionClass(Throwable::class)->getMethods()));
     });
 });

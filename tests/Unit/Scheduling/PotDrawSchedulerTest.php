@@ -65,7 +65,7 @@ describe('PotDrawScheduler', function (): void {
     // format states, counted in the events by PotDrawAudit.
     it('draws 6 entrants in 3 pots of 2 with one opponent per pot', function (int $seed): void {
         $entrants = potDrawEntrants(6);
-        $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 3, opponentsPerPot: 1, seed: $seed));
+        $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(pots: 3, opponentsPerPot: 1, seed: $seed));
         $audit = PotDrawAudit::of($schedule, $entrants, 3);
 
         expect($audit->malformed)->toBe([])
@@ -90,7 +90,7 @@ describe('PotDrawScheduler', function (): void {
 
     it('draws 20 entrants in 5 pots of 4 with one opponent per pot', function (int $seed): void {
         $entrants = potDrawEntrants(20);
-        $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 5, opponentsPerPot: 1, seed: $seed));
+        $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(pots: 5, opponentsPerPot: 1, seed: $seed));
         $audit = PotDrawAudit::of($schedule, $entrants, 5);
 
         expect($schedule->count())->toBe(50)
@@ -121,7 +121,7 @@ describe('PotDrawScheduler', function (): void {
 
     it('draws 36 entrants in 4 pots of 9 with two opponents per pot', function (int $seed): void {
         $entrants = potDrawEntrants(36);
-        $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 4, opponentsPerPot: 2, seed: $seed));
+        $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(pots: 4, opponentsPerPot: 2, seed: $seed));
         $audit = PotDrawAudit::of($schedule, $entrants, 4);
 
         expect($schedule->count())->toBe(144)
@@ -159,7 +159,7 @@ describe('PotDrawScheduler', function (): void {
     // pairing.
     it('draws 8 entrants in 2 pots of 4 with two opponents per pot', function (int $seed): void {
         $entrants = potDrawEntrants(8);
-        $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 2, opponentsPerPot: 2, seed: $seed));
+        $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(pots: 2, opponentsPerPot: 2, seed: $seed));
         $audit = PotDrawAudit::of($schedule, $entrants, 2);
 
         // 2 pots × 2 opponents = 4 rounds of 4 events
@@ -205,7 +205,7 @@ describe('PotDrawScheduler', function (): void {
 
     it('draws 8 entrants in 2 pots of 4 with three opponents per pot', function (int $seed): void {
         $entrants = potDrawEntrants(8);
-        $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 2, opponentsPerPot: 3, seed: $seed));
+        $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(pots: 2, opponentsPerPot: 3, seed: $seed));
         $audit = PotDrawAudit::of($schedule, $entrants, 2);
 
         // 2 pots × 3 opponents = 6 rounds of 4 events
@@ -259,7 +259,7 @@ describe('PotDrawScheduler', function (): void {
         $scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, seed: 7));
         $second = potDrawEventList($scheduler->schedule($entrants, $options));
         // A new instance, and options rebuilt from plain data
-        $third = potDrawEventList((new PotDrawScheduler())->schedule($entrants, PotDrawOptions::fromArray($options->toArray())));
+        $third = potDrawEventList(new PotDrawScheduler()->schedule($entrants, PotDrawOptions::fromArray($options->toArray())));
 
         expect($second)->toBe($first)
             ->and($third)->toBe($first);
@@ -295,7 +295,7 @@ describe('PotDrawScheduler', function (): void {
 
         $draws = [];
         for ($seed = 0; $seed < 25; ++$seed) {
-            $draws[] = implode(' ', potDrawEventList((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(3, 1, $seed))));
+            $draws[] = implode(' ', potDrawEventList(new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(3, 1, $seed))));
         }
 
         expect(count(array_unique($draws)))->toBeGreaterThan(5);
@@ -627,7 +627,7 @@ describe('PotDrawScheduler', function (): void {
         for ($seed = 0; $seed < $draws; ++$seed) {
             $next = [];
             $firstAgainst = [];
-            foreach ((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, 2, $seed))->getEvents() as $event) {
+            foreach (new PotDrawScheduler()->schedule($entrants, new PotDrawOptions($pots, 2, $seed))->getEvents() as $event) {
                 $first = $index[$event->getParticipants()[0]->getId()];
                 $second = $index[$event->getParticipants()[1]->getId()];
                 if (intdiv($first, $potSize) === intdiv($second, $potSize)) {
@@ -669,7 +669,7 @@ describe('PotDrawScheduler', function (): void {
         $opposite = 0;
         $potsWithNoPair = 0;
         for ($seed = 0; $seed < 20; ++$seed) {
-            $audit = PotDrawAudit::of((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
+            $audit = PotDrawAudit::of(new PotDrawScheduler()->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
 
             // Entrant => pot => events first less events second against it
             $lean = [];
@@ -795,7 +795,7 @@ describe('PotDrawScheduler', function (): void {
             $entrants = potDrawEntrants($count);
 
             for ($seed = 0; $seed < 30; ++$seed) {
-                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
+                $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
                 $regularity = PotDrawRegularity::of($schedule, $entrants, $pots);
 
                 expect(PotDrawAudit::of($schedule, $entrants, $pots)->violations($entrants, $pots, $opponentsPerPot))->toBe([], "seed {$seed}")
@@ -816,7 +816,7 @@ describe('PotDrawScheduler', function (): void {
 
             $draws = [];
             for ($seed = 0; $seed < 30; ++$seed) {
-                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, 1, $seed));
+                $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions($pots, 1, $seed));
                 $draws[implode(' ', potDrawEventList($schedule))] = true;
 
                 expect($schedule->count())->toBe($events)
@@ -843,7 +843,7 @@ describe('PotDrawScheduler', function (): void {
             $potTriples = 0;
             $inRotation = 0;
             for ($seed = 0; $seed < 120; ++$seed) {
-                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(4, 2, $seed));
+                $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(4, 2, $seed));
                 $audit = PotDrawAudit::of($schedule, $entrants, 4);
                 $regularity = PotDrawRegularity::of($schedule, $entrants, 4);
                 $potTriples += $regularity->potTriples;
@@ -884,7 +884,7 @@ describe('PotDrawScheduler', function (): void {
             $entrants = potDrawEntrants($count);
 
             for ($seed = 0; $seed < 10; ++$seed) {
-                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(1, $count - 1, $seed));
+                $schedule = new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(1, $count - 1, $seed));
                 $regularity = PotDrawRegularity::of($schedule, $entrants, 1);
 
                 expect(PotDrawAudit::of($schedule, $entrants, 1)->violations($entrants, 1, $count - 1))->toBe([], "seed {$seed}")
@@ -899,7 +899,7 @@ describe('PotDrawScheduler', function (): void {
             $roundPairs = 0;
             $inOneCycle = 0;
             for ($seed = 0; $seed < 10; ++$seed) {
-                $regularity = PotDrawRegularity::of((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(1, $count - 1, $seed)), $entrants, 1);
+                $regularity = PotDrawRegularity::of(new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(1, $count - 1, $seed)), $entrants, 1);
                 $roundPairs += $regularity->roundPairs;
                 $inOneCycle += $regularity->roundPairsInOneCycle;
             }
@@ -917,11 +917,11 @@ describe('PotDrawScheduler', function (): void {
         }
         $options = new PotDrawOptions(pots: 2, opponentsPerPot: 1, seed: 5);
 
-        $schedule = (new PotDrawScheduler())->schedule($entrants, $options);
+        $schedule = new PotDrawScheduler()->schedule($entrants, $options);
 
         // Counted with pots cut from list order: e1..e4 are pot 1
         expect(PotDrawAudit::of($schedule, $entrants, 2)->violations($entrants, 2, 1))->toBe([])
-            ->and(potDrawEventList($schedule))->toBe(potDrawEventList((new PotDrawScheduler())->schedule(potDrawEntrants(8), $options)));
+            ->and(potDrawEventList($schedule))->toBe(potDrawEventList(new PotDrawScheduler()->schedule(potDrawEntrants(8), $options)));
     });
 
     // The keys of the list are not read: an entrant is its place in the list
@@ -934,10 +934,10 @@ describe('PotDrawScheduler', function (): void {
         }
         $options = new PotDrawOptions(pots: 3, opponentsPerPot: 3, seed: 9);
 
-        $schedule = (new PotDrawScheduler())->schedule($keyed, $options);
+        $schedule = new PotDrawScheduler()->schedule($keyed, $options);
 
         expect(PotDrawAudit::of($schedule, $entrants, 3)->violations($entrants, 3, 3))->toBe([])
-            ->and(potDrawEventList($schedule))->toBe(potDrawEventList((new PotDrawScheduler())->schedule($entrants, $options)));
+            ->and(potDrawEventList($schedule))->toBe(potDrawEventList(new PotDrawScheduler()->schedule($entrants, $options)));
     });
 
     it('draws a different field when the list order changes', function (): void {
@@ -945,7 +945,7 @@ describe('PotDrawScheduler', function (): void {
         $reordered = [$entrants[4], ...array_slice($entrants, 1, 3), $entrants[0], ...array_slice($entrants, 5)];
         $options = new PotDrawOptions(pots: 2, opponentsPerPot: 2, seed: 5);
 
-        $schedule = (new PotDrawScheduler())->schedule($reordered, $options);
+        $schedule = new PotDrawScheduler()->schedule($reordered, $options);
 
         // e5 is now in pot 1 and e1 in pot 2: the rules hold for that cut
         // and not for the original one
@@ -954,7 +954,7 @@ describe('PotDrawScheduler', function (): void {
     });
 
     it('records the configuration in the schedule metadata', function (): void {
-        $schedule = (new PotDrawScheduler())->schedule(potDrawEntrants(36), new PotDrawOptions(4, 2, 2026));
+        $schedule = new PotDrawScheduler()->schedule(potDrawEntrants(36), new PotDrawOptions(4, 2, 2026));
 
         expect($schedule->getMetadata())->toBe([
             'algorithm' => 'pot-draw',
@@ -969,7 +969,7 @@ describe('PotDrawScheduler', function (): void {
     });
 
     it('numbers the rounds from 1 and emits them in order', function (): void {
-        $schedule = (new PotDrawScheduler())->schedule(potDrawEntrants(36), new PotDrawOptions(4, 2, 3));
+        $schedule = new PotDrawScheduler()->schedule(potDrawEntrants(36), new PotDrawOptions(4, 2, 3));
 
         $rounds = [];
         foreach ($schedule->getEvents() as $event) {
@@ -984,7 +984,7 @@ describe('PotDrawScheduler', function (): void {
 
     it('with no options pairs the whole field once as one pot', function (): void {
         $entrants = potDrawEntrants(8);
-        $schedule = (new PotDrawScheduler())->schedule($entrants);
+        $schedule = new PotDrawScheduler()->schedule($entrants);
 
         expect($schedule->count())->toBe(4)
             ->and($schedule->getMetadataValue('seed'))->toBe(0)
@@ -992,7 +992,7 @@ describe('PotDrawScheduler', function (): void {
     });
 
     it('reports the plan before anything is drawn', function (): void {
-        $plan = (new PotDrawScheduler())->getPlan(potDrawEntrants(36), new PotDrawOptions(4, 2));
+        $plan = new PotDrawScheduler()->getPlan(potDrawEntrants(36), new PotDrawOptions(4, 2));
 
         expect($plan)->toBeInstanceOf(PotDrawPlan::class)
             ->and($plan->getAlgorithm())->toBe('pot-draw')
@@ -1033,8 +1033,8 @@ describe('PotDrawScheduler', function (): void {
             $entrants = potDrawEntrants($count);
             $options = new PotDrawOptions($pots, $opponentsPerPot, 1);
 
-            $fromSchedule = potDrawRefusal(fn() => (new PotDrawScheduler())->schedule($entrants, $options));
-            $fromPlan = potDrawRefusal(fn() => (new PotDrawScheduler())->getPlan($entrants, $options));
+            $fromSchedule = potDrawRefusal(fn() => new PotDrawScheduler()->schedule($entrants, $options));
+            $fromPlan = potDrawRefusal(fn() => new PotDrawScheduler()->getPlan($entrants, $options));
 
             expect($fromSchedule->getReason())->toBe($reason)
                 ->and($fromSchedule->getContext())->toBe($context)
@@ -1094,8 +1094,8 @@ describe('PotDrawScheduler', function (): void {
                 'supported_opponents_per_pot_for_odd_pot_size' => [2],
             ];
 
-            $fromSchedule = potDrawRefusal(fn() => (new PotDrawScheduler())->schedule($entrants, $options));
-            $fromPlan = potDrawRefusal(fn() => (new PotDrawScheduler())->getPlan($entrants, $options));
+            $fromSchedule = potDrawRefusal(fn() => new PotDrawScheduler()->schedule($entrants, $options));
+            $fromPlan = potDrawRefusal(fn() => new PotDrawScheduler()->getPlan($entrants, $options));
 
             expect($fromSchedule->getReason())->toBe(InvalidConfigurationReason::ConfigurationNotYetSupported)
                 ->and($fromSchedule->getContext())->toBe($context)
@@ -1103,7 +1103,7 @@ describe('PotDrawScheduler', function (): void {
                 ->and($fromPlan->getContext())->toBe($context);
 
             // Feasible: the plan itself describes it
-            expect((new PotDrawPlan($entrants, $pots, $opponentsPerPot))->getTotalRounds())->toBe($pots * $opponentsPerPot);
+            expect(new PotDrawPlan($entrants, $pots, $opponentsPerPot)->getTotalRounds())->toBe($pots * $opponentsPerPot);
         })->with([
             '36 entrants in 4 pots of 9 with four opponents per pot' => [36, 4, 4, 9],
             '10 entrants in 2 pots of 5 with four opponents per pot' => [10, 2, 4, 5],
@@ -1111,28 +1111,28 @@ describe('PotDrawScheduler', function (): void {
         ]);
 
         it('an odd field without issuing a bye', function (): void {
-            $refusal = potDrawRefusal(fn() => (new PotDrawScheduler())->schedule(potDrawEntrants(19), new PotDrawOptions(1, 2)));
+            $refusal = potDrawRefusal(fn() => new PotDrawScheduler()->schedule(potDrawEntrants(19), new PotDrawOptions(1, 2)));
 
             expect($refusal->getReason())->toBe(InvalidConfigurationReason::OddParticipantCount)
                 ->and($refusal->getMessage())->toContain('issues no bye');
         });
 
         it('fewer than two participants', function (): void {
-            expect(potDrawRefusal(fn() => (new PotDrawScheduler())->schedule(potDrawEntrants(1)))->getReason())
+            expect(potDrawRefusal(fn() => new PotDrawScheduler()->schedule(potDrawEntrants(1)))->getReason())
                 ->toBe(InvalidConfigurationReason::TooFewParticipants)
-                ->and(potDrawRefusal(fn() => (new PotDrawScheduler())->schedule([]))->getReason())
+                ->and(potDrawRefusal(fn() => new PotDrawScheduler()->schedule([]))->getReason())
                 ->toBe(InvalidConfigurationReason::TooFewParticipants);
         });
 
         it('two participants with one ID', function (): void {
             $entrants = [...potDrawEntrants(3), new Participant('e1', 'Again')];
 
-            expect(potDrawRefusal(fn() => (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(2, 1)))->getReason())
+            expect(potDrawRefusal(fn() => new PotDrawScheduler()->schedule($entrants, new PotDrawOptions(2, 1)))->getReason())
                 ->toBe(InvalidConfigurationReason::DuplicateParticipantIds);
         });
 
         it('the options of another format', function (): void {
-            $refusal = potDrawRefusal(fn() => (new PotDrawScheduler())->schedule(potDrawEntrants(4), new SwissOptions(rounds: 1)));
+            $refusal = potDrawRefusal(fn() => new PotDrawScheduler()->schedule(potDrawEntrants(4), new SwissOptions(rounds: 1)));
 
             expect($refusal->getReason())->toBe(InvalidConfigurationReason::UnsupportedOptions)
                 ->and($refusal->getContext())->toBe(['options' => SwissOptions::class]);

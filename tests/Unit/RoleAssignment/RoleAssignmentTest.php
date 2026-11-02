@@ -129,7 +129,7 @@ describe('RoundParityRoleAssignment', function (): void {
             [['a', 'c'], ['d', 'b']],
         ]);
 
-        expect((new RoundParityRoleAssignment())->assignRoles($rounds, new RoleAssignmentContext()))->toBe($rounds);
+        expect(new RoundParityRoleAssignment()->assignRoles($rounds, new RoleAssignmentContext()))->toBe($rounds);
     });
 });
 
@@ -149,7 +149,7 @@ describe('BalancedRoleAssignment', function (): void {
         ];
         expect(seatedDifferences($proposed)['c'])->toBe(-3);
 
-        $assigned = seatedIds((new BalancedRoleAssignment())->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
+        $assigned = seatedIds(new BalancedRoleAssignment()->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
 
         expect($assigned)->toBe([
             [['d', 'a'], ['b', 'c']],
@@ -174,7 +174,7 @@ describe('BalancedRoleAssignment', function (): void {
         // What the circle method proposes leaves b and e two apart
         expect(seatedDifferences($proposed))->toBe(['b' => 2, 'e' => -2, 'c' => 0, 'd' => 0, 'a' => 0]);
 
-        $assigned = seatedIds((new BalancedRoleAssignment())->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
+        $assigned = seatedIds(new BalancedRoleAssignment()->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
 
         $differences = seatedDifferences($assigned);
         ksort($differences);
@@ -194,7 +194,7 @@ describe('BalancedRoleAssignment', function (): void {
 
     it('does not change a leg that is already balanced', function (): void {
         $twoParticipants = seatedRounds([[['a', 'b']]]);
-        expect((new BalancedRoleAssignment())->assignRoles($twoParticipants, new RoleAssignmentContext()))->toBe($twoParticipants);
+        expect(new BalancedRoleAssignment()->assignRoles($twoParticipants, new RoleAssignmentContext()))->toBe($twoParticipants);
 
         // Balanced, and not what the circle rule would produce
         $balanced = seatedRounds([
@@ -202,7 +202,7 @@ describe('BalancedRoleAssignment', function (): void {
             [['c', 'a'], ['d', 'b']],
             [['a', 'd'], ['b', 'c']],
         ]);
-        expect((new BalancedRoleAssignment())->assignRoles($balanced, new RoleAssignmentContext()))->toBe($balanced);
+        expect(new BalancedRoleAssignment()->assignRoles($balanced, new RoleAssignmentContext()))->toBe($balanced);
     });
 
     // The guarantee does not depend on the layout: a leg that is not a
@@ -213,7 +213,7 @@ describe('BalancedRoleAssignment', function (): void {
         // Participant 1 is first-named in every one of its events
         expect(array_values(seatedDifferences($proposed))[0] ?? null)->toBe($size - 1);
 
-        $assigned = seatedIds((new BalancedRoleAssignment())->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
+        $assigned = seatedIds(new BalancedRoleAssignment()->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
 
         expect(count($assigned))->toBe(count($proposed));
         foreach ($proposed as $round => $seatings) {
@@ -239,7 +239,7 @@ describe('BalancedRoleAssignment', function (): void {
             [['b', 'c']],
         ];
 
-        $assigned = seatedIds((new BalancedRoleAssignment())->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
+        $assigned = seatedIds(new BalancedRoleAssignment()->assignRoles(seatedRounds($proposed), new RoleAssignmentContext()));
         $differences = seatedDifferences($assigned);
 
         // a plays 4 and b and c play 2: even. d and e play 1: one apart.
@@ -320,8 +320,8 @@ describe('BalancedRoleAssignment', function (): void {
     it('gives the same answer for the same rounds', function (): void {
         $rounds = seatedRounds(lopsidedLeg(9));
 
-        expect((new BalancedRoleAssignment())->assignRoles($rounds, new RoleAssignmentContext()))
-            ->toBe((new BalancedRoleAssignment())->assignRoles($rounds, new RoleAssignmentContext()));
+        expect(new BalancedRoleAssignment()->assignRoles($rounds, new RoleAssignmentContext()))
+            ->toBe(new BalancedRoleAssignment()->assignRoles($rounds, new RoleAssignmentContext()));
     });
 
     // Every leg is decided by the same rule: the leg number is told, and
@@ -362,7 +362,7 @@ describe('RoleAssignmentContext', function (): void {
             ->and($context->isFixed(0, 4))->toBeFalse()
             ->and($context->isFixed(0, 0))->toBeFalse()
             // "1:10" and "11:0" are two seatings
-            ->and((new RoleAssignmentContext(1, 1, [[1, 10]]))->isFixed(11, 0))->toBeFalse();
+            ->and(new RoleAssignmentContext(1, 1, [[1, 10]])->isFixed(11, 0))->toBeFalse();
     });
 });
 
@@ -388,7 +388,7 @@ describe('BalancedRoleAssignment with fixed seatings', function (): void {
 
         // Balanced as it stands: nothing to do
         $context = new RoleAssignmentContext(1, 1, [[0, 0]]);
-        expect(seatedIds((new BalancedRoleAssignment())->assignRoles(seatedRounds($given), $context)))->toBe($given);
+        expect(seatedIds(new BalancedRoleAssignment()->assignRoles(seatedRounds($given), $context)))->toBe($given);
 
         // Out of balance: a first-named three times, d second-named three times
         $lopsided = [
@@ -398,7 +398,7 @@ describe('BalancedRoleAssignment with fixed seatings', function (): void {
         ];
         expect(seatedDifferences($lopsided))->toBe(['a' => 3, 'd' => -3, 'b' => 1, 'c' => -1]);
 
-        $assigned = seatedIds((new BalancedRoleAssignment())->assignRoles(seatedRounds($lopsided), $context));
+        $assigned = seatedIds(new BalancedRoleAssignment()->assignRoles(seatedRounds($lopsided), $context));
 
         expect($assigned[0][0])->toBe(['a', 'd']);
         foreach (seatedDifferences($assigned) as $difference) {
@@ -416,8 +416,8 @@ describe('BalancedRoleAssignment with fixed seatings', function (): void {
             [['a', 'c'], ['d', 'b']],
         ]);
 
-        $free = seatedIds((new BalancedRoleAssignment())->assignRoles($proposed, new RoleAssignmentContext()));
-        $fixed = seatedIds((new BalancedRoleAssignment())->assignRoles($proposed, new RoleAssignmentContext(1, 1, [[0, 0]])));
+        $free = seatedIds(new BalancedRoleAssignment()->assignRoles($proposed, new RoleAssignmentContext()));
+        $fixed = seatedIds(new BalancedRoleAssignment()->assignRoles($proposed, new RoleAssignmentContext(1, 1, [[0, 0]])));
 
         expect($free[0][0])->toBe(['d', 'a'])
             ->and($fixed[0][0])->toBe(['a', 'd']);
@@ -438,7 +438,7 @@ describe('BalancedRoleAssignment with fixed seatings', function (): void {
         ];
         $context = new RoleAssignmentContext(1, 1, [[0, 0], [1, 0], [2, 0]]);
 
-        $assigned = seatedIds((new BalancedRoleAssignment())->assignRoles(seatedRounds($given), $context));
+        $assigned = seatedIds(new BalancedRoleAssignment()->assignRoles(seatedRounds($given), $context));
 
         expect($assigned[0][0])->toBe(['a', 'd'])
             ->and($assigned[1][0])->toBe(['a', 'b'])
@@ -529,7 +529,7 @@ describe('BalancedRoleAssignment with fixed seatings', function (): void {
 
 describe('the rule of a role assignment', function (): void {
     it('is none for round parity, which keeps every leg', function (): void {
-        expect((new RoundParityRoleAssignment())->rule())->toBeNull();
+        expect(new RoundParityRoleAssignment()->rule())->toBeNull();
     });
 
     /**
@@ -603,7 +603,7 @@ describe('the rule of a role assignment', function (): void {
         $b = new Participant('b', 'B');
         $c = new Participant('c', 'C');
         $plan = new RoundRobinPlan([$a, $b, $c], 2);
-        $rule = (new BalancedRoleAssignment())->rule();
+        $rule = new BalancedRoleAssignment()->rule();
 
         $firstLeg = [new Event([$a, $b], new Round(1))];
         $context = new SchedulingContext([$a, $b, $c], $plan, $firstLeg, 1);

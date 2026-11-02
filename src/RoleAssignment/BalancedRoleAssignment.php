@@ -135,13 +135,7 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
      */
     private function isBalanced(array $rounds): bool
     {
-        foreach ($this->differences($rounds) as $difference) {
-            if (abs($difference) > 1) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($this->differences($rounds), fn($difference) => !(abs($difference) > 1));
     }
 
     /**

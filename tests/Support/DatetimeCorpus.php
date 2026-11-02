@@ -119,7 +119,7 @@ final class DatetimeCorpus
 
         $corpus = [];
         foreach ([[2026, 8, 1, 20, 0, 0], [2024, 2, 28, 9, 5, 0], [2026, 12, 31, 23, 59, 59], [2031, 1, 31, 0, 0, 0]] as [$year, $month, $day, $hour, $minute, $second]) {
-            $base = (new DateTimeImmutable('@0'))->setTimezone($utc)->setDate($year, $month, $day)->setTime($hour, $minute, $second);
+            $base = new DateTimeImmutable('@0')->setTimezone($utc)->setDate($year, $month, $day)->setTime($hour, $minute, $second);
             foreach ($offsets as $offset) {
                 $fields = $base->modify($offset)->format('Y-m-d H:i:s');
                 $corpus[] = ['value' => "{$base->format('Y-m-d H:i:s')} {$offset}", 'layout' => $offset, 'fields' => $fields];

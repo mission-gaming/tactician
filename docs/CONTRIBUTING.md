@@ -8,7 +8,7 @@ To report a security vulnerability, follow the
 
 ## Development setup
 
-Tactician needs PHP 8.3 or later and Composer.
+Tactician needs PHP 8.4 or later and Composer.
 
 ```bash
 # Clone the repository
@@ -22,8 +22,8 @@ composer install
 ## The gate
 
 `composer ci` is the gate: it must exit 0 before every commit. It needs no
-network. CI runs it on every pull request, a draft one included, on PHP 8.3,
-8.4, and 8.5.
+network. CI runs it on every pull request, a draft one included, on PHP 8.4
+and 8.5.
 
 ```bash
 # Run every check
@@ -374,8 +374,11 @@ both, even when the answer is no.
 
 - Every PHP file declares `strict_types=1`.
 - Value objects are immutable: a change returns a new instance. The DTOs
-  are `readonly` classes, except `Schedule`, which keeps an iteration cursor
-  and whose events are readonly.
+  are `readonly` classes.
+- Every concrete class in `src/` is `final`; the extension points are the
+  interfaces. The one exception is a class the library extends itself
+  (`InvalidConfigurationException`); `tests/Feature/FinalClassesTest.php`
+  enforces it.
 - Every class, interface, trait and enum in `src/` carries exactly one
   stability annotation in its docblock: `@api`, `@experimental` or
   `@internal`. The README's
@@ -400,11 +403,11 @@ both, even when the answer is no.
   baseline files beside it list what the strict rules found in code that
   existed when they were enabled. Fix a finding in new code; do not add it to a baseline or
   to `ignoreErrors`.
-- Rector (`rector.php`) applies the PHP sets up to 8.3, the dead code set and
+- Rector (`rector.php`) applies the PHP sets up to 8.4, the dead code set and
   the early return set. A rule is skipped there only where it would change a
   public or protected signature, or remove something written on purpose; the
   reason is next to each entry.
-- Code style is PER Coding Style (`@PER-CS`) and the PHP 8.3 migration set,
+- Code style is PER Coding Style (`@PER-CS`) and the PHP 8.4 migration set,
   with the additions in `.php-cs-fixer.dist.php`; `composer cs-fixer-fix`
   applies it.
 - A new file or directory at the repository root needs an `export-ignore` rule

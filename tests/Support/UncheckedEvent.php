@@ -8,41 +8,37 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
-use Override;
+use ReflectionClass;
+use ReflectionProperty;
 
 /**
- * An event that answers with whatever participants it was given, one of
+ * Builds an event that holds whatever participants it was given, one of
  * them listed twice included.
  *
- * `Event` refuses a participant paired with itself when it is constructed.
- * The plans, the event index and a constraint still guard against such an
- * event, because `Event` is not final and an event of another class can
- * answer `getParticipants()` with anything. This class is that other class:
- * the tests of those guards use it where they used `new Event([$a, $a])`
- * before the constructor checked.
- *
- * The parent is constructed with two placeholders, which it requires, and
- * every reader of the participants is overridden to return the list given
- * here. The round and the metadata are the parent's.
+ * `Event` refuses a participant paired with itself when it is constructed,
+ * and it is final, so no event of the library's API holds one. The plans,
+ * the event index and a constraint still guard against such an event, and
+ * their tests need one to show the guard. This class makes it the only way
+ * left: an Event created without its constructor, whose properties are set
+ * through reflection. Before Event was final, the same tests used a
+ * subclass that overrode the readers of the participants.
  */
-readonly class UncheckedEvent extends Event
+final class UncheckedEvent
 {
     /**
-     * @param array<Participant> $listed What getParticipants() returns, unchecked
-     * @param array<string, mixed> $metadata
+     * An Event that holds the given participants, unchecked.
      *
-     * @throws InvalidInputException Never: the placeholders differ
+     * @param array<Participant> $listed What getParticipants() returns
+     * @param array<string, mixed> $metadata
      */
-    public function __construct(
-        private array $listed,
-        ?Round $round = null,
-        array $metadata = []
-    ) {
-        parent::__construct(
-            [new Participant('unchecked-event-first', 'First'), new Participant('unchecked-event-second', 'Second')],
-            $round,
-            $metadata
-        );
+    public static function of(array $listed, ?Round $round = null, array $metadata = []): Event
+    {
+        $event = new ReflectionClass(Event::class)->newInstanceWithoutConstructor();
+        foreach (['participants' => $listed, 'round' => $round, 'metadata' => $metadata] as $property => $value) {
+            new ReflectionProperty(Event::class, $property)->setValue($event, $value);
+        }
+
+        return $event;
     }
 
     /**
@@ -60,33 +56,6 @@ readonly class UncheckedEvent extends Event
 
         return count($ids) === count(array_unique($ids))
             ? new Event($participants, $round)
-            : new self($participants, $round);
-    }
-
-    /**
-     * @return array<Participant>
-     */
-    #[Override]
-    public function getParticipants(): array
-    {
-        return $this->listed;
-    }
-
-    #[Override]
-    public function hasParticipant(Participant $participant): bool
-    {
-        foreach ($this->listed as $listed) {
-            if ($listed->getId() === $participant->getId()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    #[Override]
-    public function getParticipantCount(): int
-    {
-        return count($this->listed);
+            : self::of($participants, $round);
     }
 }

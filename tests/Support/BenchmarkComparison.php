@@ -191,13 +191,7 @@ final class BenchmarkComparison
      */
     public static function failed(array $rows): bool
     {
-        foreach ($rows as $row) {
-            if ($row['verdict'] === 'regression' || $row['verdict'] === 'not measured') {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($rows, fn($row) => $row['verdict'] === 'regression' || $row['verdict'] === 'not measured');
     }
 
     /**

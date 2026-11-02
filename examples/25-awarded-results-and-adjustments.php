@@ -24,7 +24,7 @@ $participants = [
     new Participant('drift', 'Drift'),
 ];
 
-$schedule = (new RoundRobinScheduler())->schedule($participants);
+$schedule = new RoundRobinScheduler()->schedule($participants);
 
 // The maps won in each series, by the ids of the two squads. Cinder v Drift
 // has none: Drift did not check in, and the series was never played.

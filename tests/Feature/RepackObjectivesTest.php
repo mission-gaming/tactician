@@ -422,7 +422,7 @@ describe('The figures of a repack outcome', function (): void {
 
         foreach (objectiveSettings() as $objectives) {
             $request = new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: $objectives));
-            $outcome = (new ScheduleRepacker())->repack($request);
+            $outcome = new ScheduleRepacker()->repack($request);
             $expected = RepackFigures::of($request, $outcome);
 
             expect($outcome->getUnplacedCount())->toBe($expected['unplaced'])
@@ -440,8 +440,8 @@ describe('The figures of a repack outcome', function (): void {
         // One request, repacked with and without an objective: the two
         // outcomes are compared on their own figures, most important first
         [$movable, $pinned, $grid] = seasonInProgress(4);
-        $plain = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
-        $keeping = (new ScheduleRepacker())->repack(new RepackRequest(
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+        $keeping = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             $pinned,
             $grid,
@@ -468,7 +468,7 @@ describe('The figures of a repack outcome', function (): void {
             [new PinnedEvent('x1', $a, $c, 0, 0)],
             $grid
         );
-        $outcome = (new ScheduleRepacker())->repack($request);
+        $outcome = new ScheduleRepacker()->repack($request);
 
         // Sessions 1 and 2 each hold one movable event; session 0 holds a
         // pin only and is no lone-event session
@@ -477,7 +477,7 @@ describe('The figures of a repack outcome', function (): void {
 
         // A session with two events is not one, although each of its four
         // participants has one event in it
-        $shared = (new ScheduleRepacker())->repack(new RepackRequest(
+        $shared = new ScheduleRepacker()->repack(new RepackRequest(
             [new MovableEvent('m1', $a, $b), new MovableEvent('m2', $c, $d)],
             [],
             SessionGrid::shapeOnly(1, 1, capacityPerSlot: 2)
@@ -503,7 +503,7 @@ describe('The figures of a repack outcome', function (): void {
             ],
             $grid
         );
-        $outcome = (new ScheduleRepacker())->repack($request);
+        $outcome = new ScheduleRepacker()->repack($request);
 
         // a: sessions 0, 2, 4, so 1 and 3 are idle. b: 1, 2, 3, none idle.
         // c has no movable event, so its idle session (2) is history
@@ -518,7 +518,7 @@ describe('The figures of a repack outcome', function (): void {
         $d = new Participant('d', 'D');
         // One session of two slots, one event to a slot
         $grid = SessionGrid::shapeOnly(1, 2);
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             [
                 // Off the grid: it cannot stay, so it has moved wherever it is
                 new MovableEvent('off', $a, $b, 3, 0),
@@ -547,7 +547,7 @@ describe('The figures of a repack outcome', function (): void {
         $a = new Participant('a', 'A');
         $b = new Participant('b', 'B');
         // The event says slot 1, and a pin of one of its participants is there
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             [new MovableEvent('m1', $a, $b, 0, 1)],
             [new PinnedEvent('x1', $a, new Participant('c', 'C'), 0, 1)],
             SessionGrid::shapeOnly(1, 2, capacityPerSlot: 2),
@@ -562,10 +562,10 @@ describe('The figures of a repack outcome', function (): void {
 describe('A repack with objectives', function (): void {
     it('never places fewer events than the repack without them, nor as many with more gap slots', function (int $seed): void {
         [$movable, $pinned, $grid] = $seed % 3 === 0 ? smallRequestWithCurrentPositions($seed) : seasonInProgress($seed);
-        $plain = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
 
         foreach (objectiveSettings() as $objectives) {
-            $outcome = (new ScheduleRepacker())->repack(
+            $outcome = new ScheduleRepacker()->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: $objectives))
             );
 
@@ -576,7 +576,7 @@ describe('A repack with objectives', function (): void {
 
     it('keeps that guarantee under a budget that runs out, in every order of the objectives', function (int $seed, int $budget): void {
         [$movable, $pinned, $grid] = $seed % 2 === 0 ? smallRequestWithCurrentPositions($seed) : seasonInProgress($seed);
-        $plain = (new ScheduleRepacker())->repack(
+        $plain = new ScheduleRepacker()->repack(
             new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
         );
 
@@ -600,7 +600,7 @@ describe('A repack with objectives', function (): void {
         expect($lists)->toHaveCount(15);
 
         foreach ($lists as $objectives) {
-            $outcome = (new ScheduleRepacker())->repack(
+            $outcome = new ScheduleRepacker()->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: $objectives))
             );
 
@@ -613,10 +613,10 @@ describe('A repack with objectives', function (): void {
         // On these requests, at these budgets, the schedule made around the
         // held events places fewer events or leaves more gap slots than the
         // schedule made with no objective, and so must not be the one returned
-        $plain = (new ScheduleRepacker())->repack(
+        $plain = new ScheduleRepacker()->repack(
             new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
         );
-        $outcome = (new ScheduleRepacker())->repack(
+        $outcome = new ScheduleRepacker()->repack(
             new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: [RepackObjective::LeastChurn]))
         );
 
@@ -660,7 +660,7 @@ describe('A repack with objectives', function (): void {
 
     it('is never worse on its first objective than the repack without one, where the two are level on events and gap slots', function (int $seed): void {
         [$movable, $pinned, $grid] = $seed % 3 === 0 ? smallRequestWithCurrentPositions($seed) : seasonInProgress($seed);
-        $plain = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
         $level = [$plain->getUnplacedCount(), $plain->getGapSlotCount()];
         $figure = [
             'churn' => static fn(RepackOutcome $outcome): int => $outcome->getMovedCount(),
@@ -669,7 +669,7 @@ describe('A repack with objectives', function (): void {
         ];
 
         foreach ($figure as $setting => $of) {
-            $outcome = (new ScheduleRepacker())->repack(
+            $outcome = new ScheduleRepacker()->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: objectiveSettings()[$setting]))
             );
             if ([$outcome->getUnplacedCount(), $outcome->getGapSlotCount()] === $level) {
@@ -682,8 +682,8 @@ describe('A repack with objectives', function (): void {
         [$movable, $pinned, $grid] = seasonInProgress($seed);
         [$bare] = seasonInProgress($seed, withCurrentPositions: false);
 
-        $stated = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
-        $unstated = (new ScheduleRepacker())->repack(new RepackRequest($bare, $pinned, $grid));
+        $stated = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+        $unstated = new ScheduleRepacker()->repack(new RepackRequest($bare, $pinned, $grid));
 
         // Where the events are, what is unplaced and what is reported are
         // the same; only the count of moved events can tell the two apart
@@ -698,8 +698,8 @@ describe('A repack with objectives', function (): void {
     it('does nothing for the fewest moved events when no event says where it is', function (int $seed): void {
         [$bare, $pinned, $grid] = seasonInProgress($seed, withCurrentPositions: false);
 
-        $plain = (new ScheduleRepacker())->repack(new RepackRequest($bare, $pinned, $grid));
-        $asked = (new ScheduleRepacker())->repack(
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($bare, $pinned, $grid));
+        $asked = new ScheduleRepacker()->repack(
             new RepackRequest($bare, $pinned, $grid, new RepackOptions(objectives: [RepackObjective::LeastChurn]))
         );
 
@@ -713,8 +713,8 @@ describe('A repack with objectives', function (): void {
 
         foreach (objectiveSettings() as $objectives) {
             $options = new RepackOptions(objectives: $objectives);
-            $first = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
-            $again = (new ScheduleRepacker())->repack(
+            $first = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
+            $again = new ScheduleRepacker()->repack(
                 new RepackRequest($random->shuffleArray($movable), $random->shuffleArray($pinned), $grid, $options)
             );
 
@@ -730,7 +730,7 @@ describe('A repack with objectives', function (): void {
 
         $outcomes = [];
         foreach ($budgets as $budget) {
-            $outcomes[$budget] = (new ScheduleRepacker())->repack(
+            $outcomes[$budget] = new ScheduleRepacker()->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: $objectives))
             );
         }
@@ -749,7 +749,7 @@ describe('A repack with objectives', function (): void {
         $capacity = $grid->getCapacityLimit() ?? PHP_INT_MAX;
 
         foreach (objectiveSettings() as $objectives) {
-            $outcome = (new ScheduleRepacker())->repack(
+            $outcome = new ScheduleRepacker()->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: $objectives))
             );
 
@@ -828,7 +828,7 @@ describe('The fewest moved events', function (): void {
         }
         $grid = SessionGrid::shapeOnly(intdiv($participants - 1 + $slots - 1, $slots), $slots, capacityPerSlot: intdiv($participants, 2));
 
-        $outcome = (new ScheduleRepacker())->repack(
+        $outcome = new ScheduleRepacker()->repack(
             new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [RepackObjective::LeastChurn]))
         );
 
@@ -874,7 +874,7 @@ describe('The fewest moved events', function (): void {
             array_splice($seats, 1, 0, [array_pop($seats)]);
         }
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             $pinned,
             SessionGrid::shapeOnly(10, 1, capacityPerSlot: 5),
@@ -898,7 +898,7 @@ describe('The fewest moved events', function (): void {
         $d = new Participant('d', 'D');
         $e = new Participant('e', 'E');
         $grid = SessionGrid::shapeOnly(2, 2, capacityPerSlot: 2);
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             [
                 // Both at session 0, slot 0, and a is in both: one stays
                 new MovableEvent('m1', $a, $b, 0, 0),
@@ -937,7 +937,7 @@ describe('The fewest moved events', function (): void {
         $worst = 0;
         for ($seed = 1; $seed <= 300; ++$seed) {
             [$movable, $pinned, $grid] = smallRequestWithCurrentPositions($seed);
-            $outcome = (new ScheduleRepacker())->repack(
+            $outcome = new ScheduleRepacker()->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [RepackObjective::LeastChurn]))
             );
             [$fewestGapSlots, $fewestMoved] = RepackBruteForce::fewestGapSlotsThenMoved($movable, $pinned, $grid);
@@ -973,7 +973,7 @@ describe('The fewest lone-event sessions and the fewest idle sessions', function
         ];
         $pinned = [new PinnedEvent('x1', $p['d'], $p['c'], 0, 1)];
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             $pinned,
             $grid,
@@ -994,7 +994,7 @@ describe('The fewest lone-event sessions and the fewest idle sessions', function
         // pinned in the last session; its two movable events fit the
         // middle session, next to it, and need not go to the first
         $grid = SessionGrid::shapeOnly(3, 2, [1 => 3, 2 => 1]);
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             [
                 new MovableEvent('m1', $p['a'], $p['c']),
                 new MovableEvent('m2', $p['d'], $p['a']),
@@ -1012,13 +1012,13 @@ describe('The fewest lone-event sessions and the fewest idle sessions', function
 
     it('rank in the order given: a later objective decides only between schedules level on every earlier one', function (int $seed): void {
         [$movable, $pinned, $grid] = smallRequestWithCurrentPositions($seed);
-        $first = (new ScheduleRepacker())->repack(new RepackRequest(
+        $first = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             $pinned,
             $grid,
             new RepackOptions(objectives: [RepackObjective::FewestIdleSessions])
         ));
-        $both = (new ScheduleRepacker())->repack(new RepackRequest(
+        $both = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             $pinned,
             $grid,
@@ -1041,10 +1041,10 @@ describe('The fewest moved events under other ids', function (): void {
 
         foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
             $options = new RepackOptions(objectives: $objectives);
-            $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+            $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
 
             foreach ([1, 2] as $renaming) {
-                $renamed = (new ScheduleRepacker())->repack(underOtherIds($movable, $pinned, $grid, $options, 1000 * $seed + $renaming));
+                $renamed = new ScheduleRepacker()->repack(underOtherIds($movable, $pinned, $grid, $options, 1000 * $seed + $renaming));
 
                 expect(idFreeFigures($renamed))->toBe(idFreeFigures($outcome));
             }
@@ -1061,10 +1061,10 @@ describe('The fewest moved events under other ids', function (): void {
 
         foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
             $options = new RepackOptions(objectives: $objectives);
-            $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+            $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
 
             foreach ([1, 2] as $renaming) {
-                $renamed = (new ScheduleRepacker())->repack(underOtherIds($movable, $pinned, $grid, $options, 1000 * $seed + $renaming));
+                $renamed = new ScheduleRepacker()->repack(underOtherIds($movable, $pinned, $grid, $options, 1000 * $seed + $renaming));
 
                 expect(idFreeFigures($renamed))->toBe(idFreeFigures($outcome));
             }
@@ -1080,7 +1080,7 @@ describe('The pairwise limit of a repack', function (): void {
         // (Repack\Internal\PlacementMetrics, tested with three)
         foreach ([MovableEvent::class, PinnedEvent::class] as $class) {
             $participants = [];
-            foreach ((new ReflectionMethod($class, '__construct'))->getParameters() as $parameter) {
+            foreach (new ReflectionMethod($class, '__construct')->getParameters() as $parameter) {
                 $type = $parameter->getType();
                 if ($type instanceof ReflectionNamedType && $type->getName() === Participant::class) {
                     $participants[] = $parameter->getName();

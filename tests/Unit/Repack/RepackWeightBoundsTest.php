@@ -52,7 +52,7 @@ describe('RepackOptions weight bounds', function (): void {
     });
 
     it('accepts any early-fill weight with no grid to measure it against', function (): void {
-        expect((new RepackOptions(earlyFillWeight: PHP_INT_MAX))->earlyFillWeight)->toBe(PHP_INT_MAX);
+        expect(new RepackOptions(earlyFillWeight: PHP_INT_MAX)->earlyFillWeight)->toBe(PHP_INT_MAX);
     });
 
     it('keeps the messages it always had for a negative weight and a budget below 1', function (): void {
@@ -109,7 +109,7 @@ describe('RepackRequest weight bounds', function (): void {
             $movable[] = new MovableEvent("e{$index}", $participants[$a], $participants[$b]);
         }
 
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest(
             $movable,
             [],
             SessionGrid::shapeOnly(3, 3, [], 2),

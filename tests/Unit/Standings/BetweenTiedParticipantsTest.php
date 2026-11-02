@@ -62,9 +62,9 @@ describe('the library\'s tiebreaker between the tied participants', function ():
         expect($tiebreaker->getName())->toBe('between-tied:score-difference')
             ->and($tiebreaker)->toBeInstanceOf(TiedParticipantsTiebreaker::class)
             ->and($tiebreaker->getMeasure())->toBeInstanceOf(ScoreDifferenceTiebreaker::class)
-            ->and((new BetweenTiedParticipants(new RankingValueTiebreaker()))->getName())->toBe('between-tied:ranking-value')
-            ->and((new BetweenTiedParticipants(new WinsTiebreaker()))->getName())->toBe('between-tied:wins')
-            ->and((new BetweenTiedParticipants(new ScoresForTiebreaker()))->getName())->toBe('between-tied:scores-for');
+            ->and(new BetweenTiedParticipants(new RankingValueTiebreaker())->getName())->toBe('between-tied:ranking-value')
+            ->and(new BetweenTiedParticipants(new WinsTiebreaker())->getName())->toBe('between-tied:wins')
+            ->and(new BetweenTiedParticipants(new ScoresForTiebreaker())->getName())->toBe('between-tied:scores-for');
     });
 
     it('refuses a measure that is itself computed between the tied participants', function (): void {
@@ -95,8 +95,8 @@ describe('two participants level on the ranking value', function (): void {
             tiedResult($this->b, $this->c, 1, 0),
         ];
 
-        $overall = (new StandingsCalculator())->calculate($this->field, $results);
-        $betweenFirst = (new StandingsCalculator(tiebreakers: [new BetweenTiedParticipants(new RankingValueTiebreaker())]))
+        $overall = new StandingsCalculator()->calculate($this->field, $results);
+        $betweenFirst = new StandingsCalculator(tiebreakers: [new BetweenTiedParticipants(new RankingValueTiebreaker())])
             ->calculate($this->field, $results);
 
         expect(array_keys(tiedValues($overall, 'none')))->toBe(['a', 'b', 'c'])
@@ -107,12 +107,12 @@ describe('two participants level on the ranking value', function (): void {
     it('stay level when they have not met: the measure has nothing to read', function (): void {
         $results = [tiedResult($this->a, $this->c, 2, 0), tiedResult($this->b, $this->c, 2, 0)];
 
-        $table = (new StandingsCalculator(tiebreakers: [
+        $table = new StandingsCalculator(tiebreakers: [
             new BetweenTiedParticipants(new RankingValueTiebreaker()),
             new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
             new BetweenTiedParticipants(new ScoresForTiebreaker()),
             new BetweenTiedParticipants(new WinsTiebreaker()),
-        ]))->calculate($this->field, $results);
+        ])->calculate($this->field, $results);
 
         expect($table->getEntryFor($this->a)?->getTiebreakers())->toBe([
             'between-tied:ranking-value' => 0.0,
@@ -210,11 +210,11 @@ describe('three participants level on the measure among themselves', function ()
             tiedResult($this->c, $this->d, 9, 0),
         ];
 
-        $table = (new StandingsCalculator(tiebreakers: [
+        $table = new StandingsCalculator(tiebreakers: [
             new BetweenTiedParticipants(new RankingValueTiebreaker()),
             new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
             new ScoreDifferenceTiebreaker(),
-        ]))->calculate([$this->d, $this->c, $this->b, $this->a], array_reverse($results));
+        ])->calculate([$this->d, $this->c, $this->b, $this->a], array_reverse($results));
 
         // Among the three: A +3 -1, B -3 +2, C -2 +1. Overall C has +8.
         expect(tiedValues($table, 'between-tied:score-difference'))->toBe(['a' => 2.0, 'c' => -1.0, 'b' => -1.0, 'd' => 0.0])
@@ -254,10 +254,10 @@ describe('a tied set that a measure splits into subsets', function (): void {
     // Two tiebreakers between the tied that follow one another are one
     // small table: the second is asked about the same four as the first.
     it('asks every tiebreaker of a run about the whole set, whatever the one before made of it', function (): void {
-        $table = (new StandingsCalculator(tiebreakers: [
+        $table = new StandingsCalculator(tiebreakers: [
             new BetweenTiedParticipants(new RankingValueTiebreaker()),
             new BetweenTiedParticipants(new WinsTiebreaker()),
-        ]))->calculate($this->field, $this->results);
+        ])->calculate($this->field, $this->results);
 
         $totals = [];
         foreach ($table->getEntries() as $entry) {
@@ -283,11 +283,11 @@ describe('a tied set that a measure splits into subsets', function (): void {
     // here A and B, whom the first measure and the wins of the table (3 and
     // 3) leave level, and who met once.
     it('starts a new run, with the set level then, after a tiebreaker of another kind', function (): void {
-        $table = (new StandingsCalculator(tiebreakers: [
+        $table = new StandingsCalculator(tiebreakers: [
             new BetweenTiedParticipants(new RankingValueTiebreaker()),
             new WinsTiebreaker(),
             new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
-        ]))->calculate($this->field, $this->results);
+        ])->calculate($this->field, $this->results);
 
         expect(tiedValues($table, 'between-tied:ranking-value'))->toBe(['a' => 6.0, 'b' => 6.0, 'c' => 3.0, 'd' => 0.0, 'e' => 0.0])
             ->and(tiedValues($table, 'wins'))->toBe(['a' => 2.0, 'b' => 2.0, 'c' => 2.0, 'd' => 2.0, 'e' => 0.0])
@@ -317,7 +317,7 @@ describe('a tied set that a measure splits into subsets', function (): void {
         // B keep the value they have over the four: the measure is not taken
         // again over the one event between the two, which A won. What
         // orders them is the next figure, the score difference of the table.
-        $table = (new StandingsCalculator(tiebreakers: [new BetweenTiedParticipants(new RankingValueTiebreaker())]))
+        $table = new StandingsCalculator(tiebreakers: [new BetweenTiedParticipants(new RankingValueTiebreaker())])
             ->calculate($this->field, $this->results);
 
         expect(tiedValues($table, 'between-tied:ranking-value'))->toBe(['a' => 6.0, 'b' => 6.0, 'c' => 3.0, 'd' => 0.0, 'e' => 0.0])
@@ -412,8 +412,8 @@ describe('a chain that names a tiebreaker between the tied participants twice', 
         $b = new Participant('b', 'B');
         $results = [tiedResult($a, $b)];
 
-        $once = (new StandingsCalculator(tiebreakers: [new WinsTiebreaker()]))->calculate([$a, $b], $results);
-        $twice = (new StandingsCalculator(tiebreakers: [new WinsTiebreaker(), new WinsTiebreaker()]))->calculate([$a, $b], $results);
+        $once = new StandingsCalculator(tiebreakers: [new WinsTiebreaker()])->calculate([$a, $b], $results);
+        $twice = new StandingsCalculator(tiebreakers: [new WinsTiebreaker(), new WinsTiebreaker()])->calculate([$a, $b], $results);
 
         expect($twice)->toEqual($once);
     });

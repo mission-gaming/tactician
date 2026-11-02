@@ -659,7 +659,7 @@ describe('the match outcome selector over a level single-leg round', function ()
 
     it('selects the named participant as the winner and the other as the loser', function (): void {
         $results = [levelResult($this->first, 'p4'), levelResult($this->second, 'p2')];
-        $standings = (new StandingsCalculator())->calculate([$this->p1, $this->p2, $this->p3, $this->p4, $this->p5], $results);
+        $standings = new StandingsCalculator()->calculate([$this->p1, $this->p2, $this->p3, $this->p4, $this->p5], $results);
         $outcome = new StageOutcome($standings, $results, ['p5' => 1], $this->round);
 
         $ids = fn(array $selected): array => array_map(fn(Participant $participant) => $participant->getId(), $selected);
@@ -673,7 +673,7 @@ describe('the match outcome selector over a level single-leg round', function ()
     ): void {
         $selector = MatchOutcomeSelector::fromArray(['mode' => $mode]);
         $results = [levelResult($this->first), levelResult($this->second, 'p2')];
-        $standings = (new StandingsCalculator())->calculate([$this->p1, $this->p2, $this->p3, $this->p4], $results);
+        $standings = new StandingsCalculator()->calculate([$this->p1, $this->p2, $this->p3, $this->p4], $results);
         $outcome = new StageOutcome($standings, $results, [], $this->round);
 
         expect(fn() => $selector->select($outcome))->toThrow(
@@ -689,7 +689,7 @@ describe('the match outcome selector over a level single-leg round', function ()
         // Only the metadata can say this: a result refuses a decider for
         // a participant who is not in its event
         $results = [levelResult($this->first, 'p2', true), levelResult($this->second, 'p2')];
-        $standings = (new StandingsCalculator())->calculate([$this->p1, $this->p2, $this->p3, $this->p4], $results);
+        $standings = new StandingsCalculator()->calculate([$this->p1, $this->p2, $this->p3, $this->p4], $results);
         $outcome = new StageOutcome($standings, $results, [], $this->round);
 
         expect(fn() => MatchOutcomeSelector::winners()->select($outcome))

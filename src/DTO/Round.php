@@ -16,7 +16,7 @@ use MissionGaming\Tactician\Serialization\PlainData;
  *
  * @api
  */
-readonly class Round implements \Stringable
+final readonly class Round implements \Stringable
 {
     /**
      * @param int $number The round number, 1 or higher

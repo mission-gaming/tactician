@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
+use ArrayIterator;
 use Countable;
-use Iterator;
+use IteratorAggregate;
 use JsonSerializable;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
@@ -16,35 +17,29 @@ use Override;
  * An ordered list of events with free-form metadata: what a whole-schedule
  * generator returns.
  *
- * The events and the metadata never change: addEvent() returns a new
- * schedule. The object is not readonly, though, because it is its own
- * iterator and keeps the position of the iteration. One schedule therefore
- * supports one `foreach` at a time: a second loop over the same object
- * inside the first (a quality metric measuring it, for instance) moves the
- * position and ends the outer loop early. Loop over getEvents() where
- * loops may nest.
+ * The schedule never changes: addEvent() returns a new one. It keeps no
+ * position of an iteration either: each `foreach` over it gets an iterator
+ * of its own (getIterator()), so a loop over a schedule inside another loop
+ * over the same schedule visits every event, and so does the outer loop.
  *
  * A schedule round-trips through toArray()/fromArray() and
  * toJson()/fromJson().
  *
- * @implements Iterator<int, Event>
+ * @implements IteratorAggregate<int, Event>
  *
  * @api
  */
-class Schedule implements Iterator, Countable, JsonSerializable
+final readonly class Schedule implements IteratorAggregate, Countable, JsonSerializable
 {
-    /** @var array<Event> The events contained in this schedule */
-    private readonly array $events;
-
-    /** @var int Current position for Iterator implementation */
-    private int $position;
+    /** @var list<Event> The events contained in this schedule */
+    private array $events;
 
     /**
      * The entrants, in their order.
      *
      * @var list<Participant>
      */
-    private readonly array $entrants;
+    private array $entrants;
 
     /**
      * The events are kept in the order given and re-indexed from 0. Nothing
@@ -70,7 +65,6 @@ class Schedule implements Iterator, Countable, JsonSerializable
     public function __construct(array $events = [], private array $metadata = [], ?array $entrants = null)
     {
         $this->events = array_values($events);
-        $this->position = 0;
         $this->entrants = self::entrantsOf($this->events, $entrants);
     }
 
@@ -108,10 +102,9 @@ class Schedule implements Iterator, Countable, JsonSerializable
 
     /**
      * A new schedule with the event appended after the existing ones and the
-     * same metadata. This schedule is not changed, and the new one starts
-     * its iteration at the first event. The entrants stay as they are, and
-     * a participant of the new event who is not among them is added after
-     * them.
+     * same metadata. This schedule is not changed. The entrants stay as
+     * they are, and a participant of the new event who is not among them is
+     * added after them.
      */
     public function addEvent(Event $event): self
     {
@@ -203,54 +196,18 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * The event at the current position of the iteration.
+     * A new iterator over the events, in schedule order, keyed from 0.
      *
-     * Call it only while valid() is true: past the last event, and on an
-     * empty schedule, there is no event to return and PHP raises a
-     * TypeError.
+     * Each call returns an iterator of its own, and `foreach` asks for one
+     * each time a loop starts, so loops over the same schedule may nest:
+     * each visits every event.
+     *
+     * @return ArrayIterator<int, Event>
      */
     #[Override]
-    public function current(): Event
+    public function getIterator(): ArrayIterator
     {
-        return $this->events[$this->position];
-    }
-
-    /**
-     * The 0-based position of the iteration.
-     */
-    #[Override]
-    public function key(): int
-    {
-        return $this->position;
-    }
-
-    /**
-     * Move the iteration to the next event.
-     */
-    #[Override]
-    public function next(): void
-    {
-        ++$this->position;
-    }
-
-    /**
-     * Move the iteration back to the first event. `foreach` calls this when
-     * it starts, which is why a nested loop over the same schedule disturbs
-     * the outer one.
-     */
-    #[Override]
-    public function rewind(): void
-    {
-        $this->position = 0;
-    }
-
-    /**
-     * Whether the iteration is at an event, and not past the last one.
-     */
-    #[Override]
-    public function valid(): bool
-    {
-        return isset($this->events[$this->position]);
+        return new ArrayIterator($this->events);
     }
 
     /**

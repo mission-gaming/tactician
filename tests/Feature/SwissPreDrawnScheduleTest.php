@@ -116,7 +116,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
 
         for ($size = 2; $size <= 24; ++$size) {
             for ($rounds = 1; $rounds <= $size - 1; ++$rounds) {
-                $schedule = (new SwissScheduler())->schedule(preDrawnField($size), new SwissOptions($rounds));
+                $schedule = new SwissScheduler()->schedule(preDrawnField($size), new SwissOptions($rounds));
                 foreach (preDrawnProblems($schedule, $size, $rounds) as $problem) {
                     $problems[] = "n={$size}, {$rounds} rounds: {$problem}";
                 }
@@ -136,7 +136,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
         $problems = [];
 
         for ($seed = 1; $seed <= 200; ++$seed) {
-            $schedule = (new SwissScheduler())->schedule(preDrawnField($size), new SwissOptions($rounds, $seed));
+            $schedule = new SwissScheduler()->schedule(preDrawnField($size), new SwissOptions($rounds, $seed));
             foreach (preDrawnProblems($schedule, $size, $rounds) as $problem) {
                 $problems[] = "seed {$seed}: {$problem}";
             }
@@ -164,7 +164,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
     // way the rounds were built.
     it('is generated where the one draw without a source reaches a round with no pairing', function (int $size, int $rounds): void {
         $field = preDrawnField($size);
-        $schedule = (new SwissScheduler())->schedule($field, new SwissOptions($rounds));
+        $schedule = new SwissScheduler()->schedule($field, new SwissOptions($rounds));
 
         expect(preDrawnProblems($schedule, $size, $rounds))->toBe([]);
 
@@ -181,7 +181,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
 
         // The round count before the first one that needs the rotation is
         // drawn through the engine, and starts with the same round
-        $drawn = (new SwissScheduler())->schedule($field, new SwissOptions(1));
+        $drawn = new SwissScheduler()->schedule($field, new SwissOptions(1));
         expect(array_slice(preDrawnLines($schedule), 0, intdiv($size, 2)))->toBe(preDrawnLines($drawn));
     })->with([[26, 24], [26, 25], [34, 32], [34, 33], [37, 36]]);
 
@@ -233,8 +233,8 @@ describe('a pre-drawn Swiss schedule', function (): void {
         // The same scheduler asked again, a new scheduler, and options
         // read back from plain data
         expect(preDrawnLines($scheduler->schedule(preDrawnField($size), $options)))->toBe($first)
-            ->and(preDrawnLines((new SwissScheduler())->schedule(preDrawnField($size), $options)))->toBe($first)
-            ->and(preDrawnLines((new SwissScheduler())->schedule(preDrawnField($size), SwissOptions::fromArray($options->toArray()))))->toBe($first)
+            ->and(preDrawnLines(new SwissScheduler()->schedule(preDrawnField($size), $options)))->toBe($first)
+            ->and(preDrawnLines(new SwissScheduler()->schedule(preDrawnField($size), SwissOptions::fromArray($options->toArray()))))->toBe($first)
             // Another seed, another schedule
             ->and(preDrawnLines($scheduler->schedule(preDrawnField($size), new SwissOptions($rounds, 2027))))->not->toBe($first);
     })->with([[8, 3], [8, 7], [9, 5], [16, 8], [12, 11]]);
@@ -246,8 +246,8 @@ describe('a pre-drawn Swiss schedule', function (): void {
     // come from other parts of the sequence, so the two schedules part
     // there (tests/Feature/SwissSeededRoundsTest.php pins the rest).
     it('draws the first round from a seed as a new randomizer on the Xoshiro256StarStar engine draws it', function (): void {
-        $seeded = (new SwissScheduler())->schedule(preDrawnField(10), new SwissOptions(4, 99));
-        $handed = (new SwissScheduler(null, new Randomizer(new Xoshiro256StarStar(99))))
+        $seeded = new SwissScheduler()->schedule(preDrawnField(10), new SwissOptions(4, 99));
+        $handed = new SwissScheduler(null, new Randomizer(new Xoshiro256StarStar(99)))
             ->schedule(preDrawnField(10), new SwissOptions(4));
 
         $firstRound = static fn(array $lines): array => array_values(array_filter(
@@ -282,7 +282,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
     });
 
     it('pairs the first round in list order when nothing is drawn', function (): void {
-        $schedule = (new SwissScheduler())->schedule(preDrawnField(6), new SwissOptions(1));
+        $schedule = new SwissScheduler()->schedule(preDrawnField(6), new SwissOptions(1));
 
         expect(preDrawnLines($schedule))->toBe(['1: p2 v p1', '1: p4 v p3', '1: p6 v p5']);
     });
@@ -301,9 +301,9 @@ describe('a pre-drawn Swiss schedule', function (): void {
 
 describe('SwissOptions', function (): void {
     it('has no seed unless one is given, and writes the key only then', function (): void {
-        expect((new SwissOptions(4))->seed)->toBeNull()
-            ->and((new SwissOptions(4))->toArray())->toBe(['format_version' => 1, 'rounds' => 4])
-            ->and((new SwissOptions(4, 0))->toArray())->toBe(['format_version' => 1, 'rounds' => 4, 'seed' => 0])
+        expect(new SwissOptions(4)->seed)->toBeNull()
+            ->and(new SwissOptions(4)->toArray())->toBe(['format_version' => 1, 'rounds' => 4])
+            ->and(new SwissOptions(4, 0)->toArray())->toBe(['format_version' => 1, 'rounds' => 4, 'seed' => 0])
             ->and(SwissOptions::fromArray(['rounds' => 4, 'seed' => -7])->seed)->toBe(-7)
             ->and(SwissOptions::fromArray(['rounds' => 4, 'seed' => null])->seed)->toBeNull()
             ->and(SwissOptions::fromArray(['rounds' => 4])->seed)->toBeNull();

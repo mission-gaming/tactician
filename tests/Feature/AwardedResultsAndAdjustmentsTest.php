@@ -830,7 +830,7 @@ describe('a Swiss stage with awarded results and adjustments', function (): void
             }
 
             // The table of the engine is the books of the test
-            $table = (new SwissPairingEngine(plannedRounds: max(1, count($state->getRoundsPlayed()))))->getOutcome($state)?->getStandings();
+            $table = new SwissPairingEngine(plannedRounds: max(1, count($state->getRoundsPlayed())))->getOutcome($state)?->getStandings();
             if ($table instanceof Standings) {
                 foreach (awardsLinesById($table) as $id => $line) {
                     expect([$line['earned'], $line['adjustment'], $line['total'], $line['awarded']])
@@ -1096,7 +1096,7 @@ describe('an elimination bracket with awarded results and adjustments', function
             $state = $state->withRoundPlayed($pairing, array_map(awardsWonByTheBetterPlaced(...), $pairing->getEvents()));
         }
 
-        $earlier = $state->withAdjustment((new Adjustment('e1', -1.0))->madeAfterRound(1));
+        $earlier = $state->withAdjustment(new Adjustment('e1', -1.0)->madeAfterRound(1));
         $rounds = $engine->getRecordedRounds($earlier);
         $derivation = $rounds[1]->getDerivation();
         assert($derivation !== null);

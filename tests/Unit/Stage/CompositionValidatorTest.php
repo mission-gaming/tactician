@@ -14,7 +14,7 @@ use MissionGaming\Tactician\Stage\StageTransition;
 
 describe('CompositionValidator', function (): void {
     it('accepts a knockout chain that telescopes correctly', function (): void {
-        $violations = (new CompositionValidator())->validateChain(16, [
+        $violations = new CompositionValidator()->validateChain(16, [
             new StageTransition('quarterfinals', 8, MatchOutcomeSelector::winners()),
             new StageTransition('semifinals', 4, MatchOutcomeSelector::winners()),
             new StageTransition('final', 2, MatchOutcomeSelector::winners()),
@@ -24,7 +24,7 @@ describe('CompositionValidator', function (): void {
     });
 
     it('reports a chain that does not telescope', function (): void {
-        $violations = (new CompositionValidator())->validateChain(16, [
+        $violations = new CompositionValidator()->validateChain(16, [
             new StageTransition('semifinals', 4, MatchOutcomeSelector::winners()),
         ]);
 
@@ -127,7 +127,7 @@ describe('CompositionValidator', function (): void {
         $transition = new StageTransition('quarterfinals', 8, MatchOutcomeSelector::winners());
 
         expect($transition->afterWholeBracket)->toBeFalse()
-            ->and((new CompositionValidator())->validateChain(16, [$transition]))->toBe([]);
+            ->and(new CompositionValidator()->validateChain(16, [$transition]))->toBe([]);
     });
 
     it('reads a whole bracket only for a match-outcome selection', function (): void {

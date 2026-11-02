@@ -19,7 +19,7 @@ $participants = [
     new Participant('stpauli', 'FC St. Pauli'),
 ];
 
-$schedule = (new RoundRobinScheduler())->schedule($participants);
+$schedule = new RoundRobinScheduler()->schedule($participants);
 
 // A schedule holds all of its events in memory, as an array. Every way of
 // reading it below returns the same event objects.

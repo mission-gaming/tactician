@@ -77,6 +77,6 @@ describe('MinimumRestPeriodsConstraint', function (): void {
     });
 
     it('exposes a descriptive name', function (): void {
-        expect((new MinimumRestPeriodsConstraint(2))->getName())->toBe('Minimum Rest Periods (2 rounds)');
+        expect(new MinimumRestPeriodsConstraint(2)->getName())->toBe('Minimum Rest Periods (2 rounds)');
     });
 });
