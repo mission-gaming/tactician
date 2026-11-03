@@ -249,7 +249,7 @@ final class PlainDataForms
                     }
 
                     return new StandingsCalculator(
-                        self::ranking($random, $field),
+                        self::ranking($random),
                         TiebreakerChain::fromIdentifiers($chain),
                         new AwardedResultPolicy($random->getInt(0, 1) === 1, $random->getInt(0, 1) === 1)
                     );
@@ -908,10 +908,8 @@ final class PlainDataForms
     /**
      * A win/draw/loss scale; half of them with a value for a bye, which
      * writes the key `bye`, and the rest with none.
-     *
-     * @param array<Participant> $field
      */
-    private static function ranking(Randomizer $random, array $field): WinDrawLossRanking
+    private static function ranking(Randomizer $random): WinDrawLossRanking
     {
         return new WinDrawLossRanking(
             $random->getInt(-4, 12) / 2,
