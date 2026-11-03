@@ -13,7 +13,7 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-11-02
+## [0.3.0] - 2026-11-03
 
 ### Output change (fix)
 
