@@ -74,4 +74,8 @@ The release checklist. The policy it enforces is in the README's
    ```
 
 7. **GitHub release.** Create the release for the tag and copy the version's
-   changelog section into its notes.
+   changelog section into its notes. GitHub refuses notes longer than
+   125,000 characters; when the section is longer, the notes summarise it
+   instead: what to check before upgrading (each breaking change in one
+   line), the main additions, the deprecations, and a link to the section in
+   `CHANGELOG.md` at the tag, where the migration notes are.
