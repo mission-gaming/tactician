@@ -97,15 +97,18 @@ final readonly class SessionGrid
 
     /**
      * The most positions a grid can have: the slot counts of its sessions
-     * added up, overrides applied. 100,000 are a slot every five minutes,
-     * day and night, for nearly a year. An instant-based grid keeps the
-     * instant of every position and checks each against the one before it,
-     * which at the limit takes some 40 MB and about a sixth of a second;
-     * a count ten times larger would not fit PHP's default memory limit.
-     * Every session has a slot, so this is also the most sessions a grid
-     * can have and the most slots one session can have.
+     * added up, overrides applied. 200,000 are a slot every five minutes,
+     * day and night, for a leap year (105,408 positions) with room to
+     * spare: nearly two years. An instant-based grid keeps the instant of
+     * every position and checks each against the one before it, which takes
+     * about 0.4 KB a position: some 80 MB and a quarter to half a second at
+     * the limit. A repack holds more for each position than the grid does,
+     * some 1.2 KB with instants and 0.8 KB without, so a repack of a grid of
+     * 100,000 positions or more needs a memory limit above PHP's default of
+     * 128 MB. Every session has a slot, so this is also the most sessions a
+     * grid can have and the most slots one session can have.
      */
-    public const int MAX_POSITIONS = 100_000;
+    public const int MAX_POSITIONS = 200_000;
 
     /**
      * The largest capacity per slot that is a number: a million million.

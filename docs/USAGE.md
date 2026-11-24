@@ -6271,7 +6271,7 @@ shape-only grid has no instants and is not
 checked. Every slot time is computed from its session's start, never from
 the slot before it.
 
-**A grid has at most 100,000 positions** (`SessionGrid::MAX_POSITIONS`):
+**A grid has at most 200,000 positions** (`SessionGrid::MAX_POSITIONS`):
 the slot counts of its sessions added up, overrides applied. The number
 of sessions (`session_count`, or the length of `sessions`),
 `slots_per_session`, each slot count in `slots_per_session_overrides`
@@ -6279,8 +6279,21 @@ and their sum are each refused above it, with the reason
 `ValueOutOfRange`, before anything of that size is allocated or visited.
 The limit is the same for both forms of grid, and its value comes from
 the instant-based one, which keeps the instant of every position
-(`docs/design/schedule-repack.md` says why). 100,000 positions are a
-slot every five minutes, day and night, for nearly a year.
+(`docs/design/schedule-repack.md` says why). 200,000 positions are a
+slot every five minutes, day and night, for nearly two years; a leap year
+of them is 105,408. The memory a grid takes rises with its positions:
+about 0.4 KB a position for an instant-based grid, some 40 MB for that
+leap year, and next to nothing for a shape-only one. A repack holds more,
+some 1.2 KB a position with instants and 0.8 KB without, so a repack of a
+grid of 100,000 positions or more needs a `memory_limit` above PHP's
+default of 128 MB: about 130 MB for the leap year and 250 MB at the
+limit. A grid of the sessions still to be played, and not of the whole
+season, costs less.
+A slot interval made by `DateInterval::createFromDateString()` (`5
+minutes`), which only the constructor takes, is added one step at a time,
+so a session of it has the limit on steps of a timeline as well: 100,001
+slots, the first and 100,000 steps after it. Written as an ISO 8601
+duration (`PT5M`) it has no such limit.
 `capacity_per_slot` has a limit as well, of a million million
 (`SessionGrid::MAX_CAPACITY_PER_SLOT`); see
 [Unbounded Capacity](#unbounded-capacity).
@@ -7409,7 +7422,7 @@ interval. The integer and the null in the first two types are how
 `shapeOnly()` reaches the constructor (a session count and no interval);
 do not pass them yourself, call `shapeOnly()`. The constant `SessionGrid::UNBOUNDED` is
 the plain-data word for an unbounded capacity; `SessionGrid::MAX_POSITIONS`
-(100,000) is the most positions, sessions or slots of one session a grid
+(200,000) is the most positions, sessions or slots of one session a grid
 can have, and `SessionGrid::MAX_CAPACITY_PER_SLOT` (a million million) the
 largest capacity that is a number.
 

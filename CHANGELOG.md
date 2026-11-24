@@ -13,6 +13,23 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Changed
+
+- **A session grid has at most 200,000 positions, up from 100,000** (#175).
+  A slot every five minutes, day and night, for a year is 105,120
+  positions (105,408 in a leap year), and `SessionGrid` refused it with
+  the reason `ValueOutOfRange`. `SessionGrid::MAX_POSITIONS` is now
+  200,000, and so are the most sessions a grid can have and the most slots
+  of one session. Every grid that loaded before loads as before and gives
+  the same positions and slot times; only a grid of 100,001 to 200,000
+  positions, refused before, now loads. Its cost rises in proportion to
+  its positions: some 80 MB for an instant-based grid at the limit, and
+  about 1.2 KB a position for a repack, so a repack of a grid of 100,000
+  positions or more needs a `memory_limit` above PHP's default of 128 MB
+  ("Schedule Repacking" in the usage guide). A session whose slot interval was
+  made by `DateInterval::createFromDateString()` is still held to the
+  limit on steps of such an interval, 100,001 slots.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

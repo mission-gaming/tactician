@@ -115,7 +115,7 @@ describe('The limits on the counts of a timeline and of a session grid', functio
     it('are these numbers', function (): void {
         // Changing one changes which configuration loads
         expect(TimelineDefinition::MAX_SLOTS_PER_ROUND)->toBe(10_000)
-            ->and(SessionGrid::MAX_POSITIONS)->toBe(100_000)
+            ->and(SessionGrid::MAX_POSITIONS)->toBe(200_000)
             ->and(SessionGrid::MAX_CAPACITY_PER_SLOT)->toBe(1_000_000_000_000)
             ->and(IntervalArithmetic::MAX_RELATIVE_STEPS)->toBe(100_000);
     });
@@ -155,53 +155,53 @@ describe('The limits on the counts of a timeline and of a session grid', functio
             ['slots_per_round' => 10_001, 'limit' => 10_000],
         ],
         'the sessions of a shape-only grid' => [
-            fn() => SessionGrid::fromArray(['session_count' => 100_001]),
-            'A session grid has at most 100000 positions, and so at most that many sessions',
-            ['session_count' => 100_001, 'limit' => 100_000],
+            fn() => SessionGrid::fromArray(['session_count' => 200_001]),
+            'A session grid has at most 200000 positions, and so at most that many sessions',
+            ['session_count' => 200_001, 'limit' => 200_000],
         ],
         'the sessions of shapeOnly()' => [
-            fn() => SessionGrid::shapeOnly(100_001),
-            'A session grid has at most 100000 positions, and so at most that many sessions',
-            ['session_count' => 100_001, 'limit' => 100_000],
+            fn() => SessionGrid::shapeOnly(200_001),
+            'A session grid has at most 200000 positions, and so at most that many sessions',
+            ['session_count' => 200_001, 'limit' => 200_000],
         ],
         'the slots of every session' => [
-            fn() => SessionGrid::fromArray(['session_count' => 1, 'slots_per_session' => 100_001]),
-            'A session grid has at most 100000 positions, and so a session at most that many slots',
-            ['slots_per_session' => 100_001, 'limit' => 100_000],
+            fn() => SessionGrid::fromArray(['session_count' => 1, 'slots_per_session' => 200_001]),
+            'A session grid has at most 200000 positions, and so a session at most that many slots',
+            ['slots_per_session' => 200_001, 'limit' => 200_000],
         ],
         'the slots of every session of a grid with instants' => [
             fn() => SessionGrid::fromArray([
-                'sessions' => ['2026-08-12 20:00'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT1S', 'slots_per_session' => 100_001,
+                'sessions' => ['2026-08-12 20:00'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT1S', 'slots_per_session' => 200_001,
             ]),
-            'A session grid has at most 100000 positions, and so a session at most that many slots',
-            ['slots_per_session' => 100_001, 'limit' => 100_000],
+            'A session grid has at most 200000 positions, and so a session at most that many slots',
+            ['slots_per_session' => 200_001, 'limit' => 200_000],
         ],
         'the slots of one session, by an override' => [
-            fn() => SessionGrid::fromArray(['session_count' => 3, 'slots_per_session_overrides' => [2 => 100_001]]),
-            'A session grid has at most 100000 positions, and so a session at most that many slots',
-            ['session' => 2, 'slots' => 100_001, 'limit' => 100_000],
+            fn() => SessionGrid::fromArray(['session_count' => 3, 'slots_per_session_overrides' => [2 => 200_001]]),
+            'A session grid has at most 200000 positions, and so a session at most that many slots',
+            ['session' => 2, 'slots' => 200_001, 'limit' => 200_000],
         ],
         'the positions, where every count is within the limit' => [
-            fn() => SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 100, 'slots_per_session_overrides' => [7 => 101]]),
-            'A session grid has at most 100000 positions',
-            ['positions' => 100_001, 'sessions' => 1000, 'limit' => 100_000],
+            fn() => SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 200, 'slots_per_session_overrides' => [7 => 201]]),
+            'A session grid has at most 200000 positions',
+            ['positions' => 200_001, 'sessions' => 1000, 'limit' => 200_000],
         ],
         // The sum is refused before a slot time is computed, as on a shape-only grid
         'the positions of a grid with instants, where every count is within the limit' => [
             fn() => SessionGrid::fromArray([
                 'sessions' => ['2026-08-12 20:00', '2026-08-19 20:00'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT1S',
-                'slots_per_session' => 50_001,
+                'slots_per_session' => 100_001,
             ]),
-            'A session grid has at most 100000 positions',
-            ['positions' => 100_002, 'sessions' => 2, 'limit' => 100_000],
+            'A session grid has at most 200000 positions',
+            ['positions' => 200_002, 'sessions' => 2, 'limit' => 200_000],
         ],
         // The list is refused for its length before a start is read: not one of these is a date
         'the session starts of plain data, before any is read' => [
             fn() => SessionGrid::fromArray([
-                'sessions' => array_fill(0, 100_001, 'not a date'), 'timezone' => 'Europe/London', 'slot_interval' => 'PT1M',
+                'sessions' => array_fill(0, 200_001, 'not a date'), 'timezone' => 'Europe/London', 'slot_interval' => 'PT1M',
             ]),
-            'A session grid has at most 100000 positions, and so at most that many sessions',
-            ['session_count' => 100_001, 'limit' => 100_000],
+            'A session grid has at most 200000 positions, and so at most that many sessions',
+            ['session_count' => 200_001, 'limit' => 200_000],
         ],
         // Amounts of time in a string are shown as the string and not as the duration
         // they would be (`P7D`), which is what the refusal asks the caller to write
@@ -235,13 +235,26 @@ describe('The limits on the counts of a timeline and of a session grid', functio
             'start' => '2026-08-01 18:00', 'timezone' => 'UTC', 'round_interval' => 'P1D',
             'slots_per_round' => 10_000, 'slot_interval' => 'PT1S',
         ]);
-        $grid = SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 100, 'capacity_per_slot' => 1_000_000_000_000]);
+        $grid = SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 200, 'capacity_per_slot' => 1_000_000_000_000]);
 
         expect($timeline->getSlotTime(1, 9_999)->format('Y-m-d H:i:s'))->toBe('2026-08-01 20:46:39')
-            ->and($grid->getPositionCount())->toBe(100_000)
-            ->and($grid->positionOf(99_999))->toBe(['session' => 999, 'slot' => 99])
+            ->and($grid->getPositionCount())->toBe(200_000)
+            ->and($grid->positionOf(199_999))->toBe(['session' => 999, 'slot' => 199])
             ->and($grid->getCapacityPerSlot())->toBe(1_000_000_000_000)
-            ->and(SessionGrid::fromArray($grid->toArray())->getPositionCount())->toBe(100_000);
+            ->and(SessionGrid::fromArray($grid->toArray())->getPositionCount())->toBe(200_000);
+    });
+
+    it('accept a slot every five minutes, day and night, for a leap year', function (): void {
+        // Issue #175: the limit was 100,000 and refused this grid. It runs
+        // across both clock changes of 2028 in London, where five minutes
+        // are elapsed time and the slots stay five minutes apart
+        $grid = SessionGrid::fromArray([
+            'sessions' => ['2028-01-01 00:00'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT5M',
+            'slots_per_session' => 366 * 288,
+        ]);
+
+        expect($grid->getPositionCount())->toBe(105_408)
+            ->and($grid->getSlotTime(0, 105_407)->format('Y-m-d H:i'))->toBe('2028-12-31 23:55');
     });
 
     it('assign a round of the most slots a round can have', function (): void {
@@ -298,9 +311,10 @@ describe('The limits on the counts of a timeline and of a session grid', functio
             $this->markTestSkipped('proc_open is disabled, so the cases cannot be run under a time limit.');
         }
 
-        // The whole corpus takes under two seconds; one count that is
-        // visited and not refused takes hours, or all the memory there is
-        $result = countLimitVerdictsInChildProcess(seconds: 20, megabytes: 256);
+        // The whole corpus takes a few seconds; one count that is visited
+        // and not refused takes hours, or all the memory there is. The
+        // memory is what a repack of the largest grid takes, some 250 MB
+        $result = countLimitVerdictsInChildProcess(seconds: 20, megabytes: 512);
         $expected = CountLimitCorpus::expected();
 
         $unanswered = array_values(array_diff(array_keys($expected), array_keys($result['verdicts'])));
@@ -313,7 +327,7 @@ describe('The limits on the counts of a timeline and of a session grid', functio
         Assert::assertSame(0, $result['exitCode']);
 
         expect($result['verdicts'])->toBe($expected)
-            ->and(count($expected))->toBe(49);
+            ->and(count($expected))->toBe(50);
     });
 });
 
