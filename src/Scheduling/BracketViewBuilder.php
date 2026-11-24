@@ -38,7 +38,7 @@ use MissionGaming\Tactician\Stage\SlotSource;
  *
  * @phpstan-type SourceSpec array{source: SlotSource, nodes: list<string>, reseeded: bool, draw: int|null}
  * @phpstan-type SlotDraft array{participant: Participant|null, spec: SourceSpec, notPlayed: bool}
- * @phpstan-type NodeDraft array{side: BracketSide, round: int, position: int, kind: BracketTie|null, slots: list<SlotDraft>, status: BracketNodeStatus, advancer: Participant|null, losers: list<Participant>, events: list<Event>, number: int|null}
+ * @phpstan-type NodeDraft array{side: BracketSide, round: int, position: int, kind: BracketTie|null, slots: list<SlotDraft>, status: BracketNodeStatus, advancer: Participant|null, losers: list<Participant>, events: list<Event>, number: int|null, place: bool}
  * @phpstan-type RoundDraft array{side: BracketSide, round: int, slotCount: int, number: int|null, manual: bool, next: bool, nodes: list<NodeDraft>}
  */
 final class BracketViewBuilder
@@ -302,7 +302,8 @@ final class BracketViewBuilder
 
     /**
      * The nodes of a round that stand in its slots: all but a third-place
-     * tie.
+     * tie and a node that holds no place (an entrant who went out alone
+     * beside an entrant a round drawn by hand put in a tie).
      *
      * @param RoundDraft $round
      *
@@ -312,7 +313,7 @@ final class BracketViewBuilder
     {
         return array_values(array_filter(
             $round['nodes'],
-            static fn(array $node): bool => $node['kind'] !== BracketTie::ThirdPlace
+            static fn(array $node): bool => $node['kind'] !== BracketTie::ThirdPlace && $node['place']
         ));
     }
 
@@ -430,6 +431,7 @@ final class BracketViewBuilder
             'losers' => $node['losers'],
             'events' => $node['events'],
             'number' => $number,
+            'place' => $node['place'],
         ];
     }
 
@@ -507,6 +509,7 @@ final class BracketViewBuilder
                 'losers' => $losers,
                 'events' => [],
                 'number' => null,
+                'place' => true,
             ];
         }
 
@@ -757,6 +760,7 @@ final class BracketViewBuilder
                 'losers' => [],
                 'events' => [],
                 'number' => null,
+                'place' => true,
             ];
         }
 

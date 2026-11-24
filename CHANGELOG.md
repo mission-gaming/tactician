@@ -13,6 +13,49 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+Both entries of this section come from one decision: **a round drawn by
+hand is read as drawn** (ADR 0023,
+`docs/adr/0023-a-round-drawn-by-hand-is-read-as-drawn.md`). Neither raises
+the version of an engine fingerprint: the cases are narrow and were read
+wrongly, and a new version would refuse the stamps of every bracket.
+
+- **A withdrawn entrant a round drawn by hand leaves alone holds no place
+  in the next round** (#172). Sixteen entrants on a fixed path, the first
+  withdraws after round 1, and the quarterfinals are drawn by hand among
+  the seven left (three ties and a bye): the withdrawn entrant, in none of
+  the ties, kept an empty slot of the next round, and the engine paired a
+  quarterfinal of one tie, a semifinal of one tie and the final, five
+  rounds, with a finalist who never played. Now an entrant who had
+  withdrawn when the round was paired and stands alone beside an entrant
+  the round put in a tie goes out in that round and holds no place: the
+  next round pairs exactly the entrants the round sent on (two semifinals,
+  then the final). The bracket view shows the entrant in a `Void` node of
+  its own that fills no slot. In double elimination such a stage no longer
+  leaves one place too many, which the engine refused
+  (`RecordedRoundMismatch`); it is now read. A round the engines pair never
+  holds such an entrant, so no state paired by the engines alone reads
+  otherwise. Who is affected: a bracket with a round drawn by hand after a
+  withdrawal. What to check: the round paired after it and the table.
+- **A last round drawn by hand across the final and the third-place tie
+  ends the bracket** (#183). With the third-place option, a last round that
+  put a semifinal winner in the third-place tie and a semifinal loser in
+  the final was read as a round before the last: the semifinal winner went
+  on alone, the engine paired a second final, and the bracket view showed
+  one entrant twice in a round. Now the tie the round marks as the
+  third-place tie (`BracketTie::ThirdPlace`) is that tie and the other tie
+  of the round is the final, whoever they hold (a tie marked
+  `BracketTie::Final` also where neither of its entrants stood in the
+  slots). The bracket is over when both are decided, placing the final's
+  two first and second and the third-place tie's third and fourth, and the
+  round is reported as manual. A last round whose events carry no mark is
+  read as before. Who is affected: a bracket with a third-place tie whose
+  last round was drawn by hand. What to check: `isComplete()`, the outcome
+  and the table of such a state.
+
+No golden fixture changed.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

@@ -1002,6 +1002,13 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["bool(true)\nAda v Di\nBo v Cy\nCy v Bo\n"],
             ['bool(false)'],
         ],
+        // Issue #172: a withdrawn entrant a round drawn by hand leaves alone holds no place
+        'a round drawn by hand after a withdrawal is followed by the round that pairs whom it sent on' => [
+            'docs/USAGE.md',
+            '$afterRoundOne = StageState::start($sixteen)',
+            ["semifinal: P8 v P5, P7 v P6\n"],
+            ['quarterfinal'],
+        ],
         'a withdrawal gives the tie away and draws nothing again' => [
             'docs/USAGE.md',
             '$afterWithdrawal = StageState::fromHistory(',

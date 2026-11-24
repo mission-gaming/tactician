@@ -615,9 +615,10 @@ trait EliminationBracketSupport
      * names each. The two of a tie are in the order of its first leg,
      * whichever leg the round names first: a history may supply the events
      * in any order. An event of any other size is no tie of a bracket and
-     * is read by nothing.
+     * is read by nothing. A tie is marked as the third-place tie or as the
+     * final where one of its events carries that mark (BracketTie).
      *
-     * @return array<string, array{participants: array{Participant, Participant}, events: list<Event>, thirdPlace: bool}>
+     * @return array<string, array{participants: array{Participant, Participant}, events: list<Event>, thirdPlace: bool, final: bool}>
      */
     private function recordedTies(?RoundPairing $recorded): array
     {
@@ -631,13 +632,14 @@ trait EliminationBracketSupport
 
             $key = 'tie ' . PairKey::of($participants[0]->getId(), $participants[1]->getId());
             $leg = is_int($event->getMetadataValue(FormatMetadataKey::TIE_LEG)) ? $event->getMetadataValue(FormatMetadataKey::TIE_LEG) : 1;
-            $ties[$key] ??= ['participants' => [$participants[0], $participants[1]], 'events' => [], 'thirdPlace' => false];
+            $ties[$key] ??= ['participants' => [$participants[0], $participants[1]], 'events' => [], 'thirdPlace' => false, 'final' => false];
             if ($leg < ($namedByLeg[$key] ??= $leg)) {
                 $namedByLeg[$key] = $leg;
                 $ties[$key]['participants'] = [$participants[0], $participants[1]];
             }
             $ties[$key]['events'][] = $event;
             $ties[$key]['thirdPlace'] = $ties[$key]['thirdPlace'] || BracketTie::of($event) === BracketTie::ThirdPlace;
+            $ties[$key]['final'] = $ties[$key]['final'] || BracketTie::of($event) === BracketTie::Final;
         }
 
         return $ties;
@@ -837,7 +839,17 @@ trait EliminationBracketSupport
      * one where an entrant of it has withdrawn; an entrant who stands
      * alone goes on where it was in the stage when the round was paired,
      * or the round lists it among its byes, and goes out in the round
-     * otherwise: with nobody to meet, nobody is there to go through.
+     * otherwise: with nobody to meet, nobody is there to go through. One
+     * who goes out so beside an entrant the round put in a tie is no unit:
+     * it holds no place in the next round, which the tie holds, and is
+     * listed in `dropped` (docs/adr/0023-a-round-drawn-by-hand-is-read-as-drawn.md).
+     *
+     * The tie a recorded round marks as the third-place tie is the extra
+     * tie, whoever it holds, and its two are in a tie of the round: an
+     * entrant of the slots in it does not go on alone. Where the round has
+     * an extra tie (the last round with a third-place tie), a tie it marks
+     * as the final is read as a tie of the round also where neither of its
+     * entrants stood in a slot.
      *
      * @param list<Participant|null> $slots The slots the round is entered with, in bracket order
      * @param RoundPairing|null $recorded The recorded round, or null where the round is not recorded
@@ -847,9 +859,9 @@ trait EliminationBracketSupport
      * @param int|null $pairedAt The number of the recorded round the slots were paired for (the
      *                           round itself, or the one this round was skipped before); null
      *                           when the round is read from the state as it stands
-     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, byes: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
-     *                                                                                                                                                                                                                                                                              `nodes` is what the bracket view shows of each unit, in
-     *                                                                                                                                                                                                                                                                              the same order, and `extraNode` of the extra tie;
+     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, dropped: list<Participant>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, byes: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
+     *                                                                                                                                                                                                                                                                              `nodes` is what the bracket view shows of each unit and each
+     *                                                                                                                                                                                                                                                                              dropped entrant, in slot order, and `extraNode` of the extra tie;
      *                                                                                                                                                                                                                                                                              `byes` lists who stood alone and went on, the nodes the
      *                                                                                                                                                                                                                                                                              bracket view shows as byes (BracketNodeStatus::Bye);
      *                                                                                                                                                                                                                                                                              `unresolved` the events that await a result, and
@@ -902,6 +914,8 @@ trait EliminationBracketSupport
         $extra = null;
         $extraNode = null;
         $inTie = [];
+        $inExtra = [];
+        $dropped = [];
         $byes = [];
         $unresolved = [];
         $uncontested = [];
@@ -919,8 +933,15 @@ trait EliminationBracketSupport
         }
         $inOrder += $ties;
 
+        // The extra tie is the tie the round marks as the third-place tie,
+        // and where it marks none, the tie between the two of the extra tie
+        // (a round recorded without the marks)
+        $markedThird = array_any($ties, static fn(array $tie): bool => $tie['thirdPlace']);
+        $swapped = false;
+
         foreach ($inOrder as $key => $tie) {
             [$first, $second] = $tie['participants'];
+            $isExtra = $tie['thirdPlace'] || (!$markedThird && $key === $extraKey);
 
             // The two are read in the order of their slots, whichever the
             // round names first: where the order shows (a void tie lists
@@ -934,9 +955,12 @@ trait EliminationBracketSupport
             // where the application added it: between two entrants neither
             // of whom is in the round, or with an entrant who is in another
             // tie of the round already.
+            // The final of a last round drawn by hand is the tie marked as
+            // the final, whoever it holds.
             if (
-                $key !== $extraKey
-                && !$tie['thirdPlace']
+                !$isExtra
+                && $key !== $extraKey
+                && !($extraTie !== null && $tie['final'])
                 && (
                     (!isset($position[$first->getId()]) && !isset($position[$second->getId()]))
                     || isset($inTie[$first->getId()])
@@ -954,7 +978,7 @@ trait EliminationBracketSupport
                 // may supply in any order: the tie that stands in no slot
                 // (the third-place tie) comes after those that do.
                 $refusals[] = [
-                    $key === $extraKey || $tie['thirdPlace'] ? 1 : 0,
+                    $isExtra ? 1 : 0,
                     min($position[$first->getId()] ?? PHP_INT_MAX, $position[$second->getId()] ?? PHP_INT_MAX),
                     count($refusals),
                     $settled['refusal'],
@@ -975,7 +999,17 @@ trait EliminationBracketSupport
                 }
             }
 
-            if ($key === $extraKey || $tie['thirdPlace']) {
+            // A last round drawn by hand that holds the extra tie as the
+            // final, or another tie as the extra tie, is not the round the
+            // bracket has, whatever ties it holds
+            $swapped = $swapped || ($extraKey !== null && ($isExtra !== ($key === $extraKey)));
+
+            if ($isExtra) {
+                // Its two are in a tie of the round, wherever they stood: an
+                // entrant of the slots the round put in the third-place tie
+                // does not go on alone
+                $inExtra[$first->getId()] = true;
+                $inExtra[$second->getId()] = true;
                 $extra = $settled;
                 $extraNode = $this->walkedNode([$first, $second], $tie['events'], $settled['winner'], $settled['losers'], $settled['open'], $settled['undecided'], $settled['uncontested']);
                 continue;
@@ -994,8 +1028,8 @@ trait EliminationBracketSupport
         foreach ($pairs as $index => $pair) {
             $first = $pair[0] ?? null;
             $second = $pair[1] ?? null;
-            $firstFree = $first instanceof Participant && !isset($inTie[$first->getId()]);
-            $secondFree = $second instanceof Participant && !isset($inTie[$second->getId()]);
+            $firstFree = $first instanceof Participant && !isset($inTie[$first->getId()]) && !isset($inExtra[$first->getId()]);
+            $secondFree = $second instanceof Participant && !isset($inTie[$second->getId()]) && !isset($inExtra[$second->getId()]);
 
             if ($first instanceof Participant && $second instanceof Participant && $firstFree && $secondFree) {
                 $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $out, $reading->levelAdvancers);
@@ -1031,9 +1065,17 @@ trait EliminationBracketSupport
                 // The node of an entrant who stands alone is its pair of
                 // slots where the other slot is empty, and the entrant alone
                 // where the other is in a tie of the round
+                // One who had withdrawn beside an entrant the round put in a
+                // tie holds no place in the next round: that tie holds the
+                // place of the pair (docs/adr/0023).
                 $held = true;
-                $entrants = ($first instanceof Participant && $second instanceof Participant) ? [$occupant] : $pair;
+                $besideATie = $first instanceof Participant && $second instanceof Participant;
+                $entrants = $besideATie ? [$occupant] : $pair;
                 if (isset($out[$occupant->getId()]) && !isset($recordedByes[$occupant->getId()])) {
+                    if ($besideATie) {
+                        $dropped[] = [$at, $sequence++, $occupant, $this->walkedNode($entrants, [], null, [$occupant], false, false, false, false, false)];
+                        continue;
+                    }
                     $rows[] = [$at, $sequence++, ['winner' => null, 'losers' => [$occupant]], $this->walkedNode($entrants, [], null, [$occupant], false, false, false)];
                     continue;
                 }
@@ -1061,7 +1103,7 @@ trait EliminationBracketSupport
             $reading->undecidedTie ??= $refusals[0][3];
         }
 
-        $manual = false;
+        $manual = $swapped;
         if ($recorded instanceof RoundPairing) {
             foreach (array_keys($ties) as $key) {
                 $manual = $manual || !isset($derived[$key]);
@@ -1076,6 +1118,8 @@ trait EliminationBracketSupport
         }
 
         usort($rows, static fn(array $one, array $other): int => [$one[0], $one[1]] <=> [$other[0], $other[1]]);
+        $shown = [...$rows, ...$dropped];
+        usort($shown, static fn(array $one, array $other): int => [$one[0], $one[1]] <=> [$other[0], $other[1]]);
 
         return [
             'manual' => $manual,
@@ -1083,8 +1127,9 @@ trait EliminationBracketSupport
                 static fn(array $row): array => ['winner' => $row[2]['winner'], 'losers' => $row[2]['losers']],
                 $rows
             ),
+            'dropped' => array_map(static fn(array $row): Participant => $row[2], $dropped),
             'extra' => $extra === null ? null : ['winner' => $extra['winner'], 'losers' => $extra['losers']],
-            'nodes' => array_map(static fn(array $row): array => $row[3], $rows),
+            'nodes' => array_map(static fn(array $row): array => $row[3], $shown),
             'extraNode' => $extraNode,
             'byes' => $byes,
             'unresolved' => $unresolved,
@@ -1132,7 +1177,7 @@ trait EliminationBracketSupport
         $gone = array_values(array_filter($present, static fn(Participant $entrant): bool => isset($out[$entrant->getId()])));
 
         if (count($present) === 2 && count($in) === 2) {
-            return ['entrants' => $entrants, 'status' => BracketNodeStatus::ToBePaired, 'events' => [], 'advancer' => null, 'losers' => []];
+            return ['entrants' => $entrants, 'status' => BracketNodeStatus::ToBePaired, 'events' => [], 'advancer' => null, 'losers' => [], 'place' => true];
         }
 
         return $this->walkedNode($entrants, [], $in[0] ?? null, $gone, false, false, count($present) === 2);
@@ -1148,6 +1193,8 @@ trait EliminationBracketSupport
      * @param array<Participant> $losers
      * @param bool $leftOut Whether the node is a tie the recorded round does not hold and that
      *                      nothing settles (a third-place tie a round drawn by hand left out)
+     * @param bool $holdsPlace Whether a slot of the next round is filled from the node: false for
+     *                         an entrant who went out alone beside an entrant the round put in a tie
      *
      * @return WalkedNode
      */
@@ -1159,7 +1206,8 @@ trait EliminationBracketSupport
         bool $open,
         bool $undecided,
         bool $uncontested,
-        bool $leftOut = false
+        bool $leftOut = false,
+        bool $holdsPlace = true
     ): array {
         $events = array_values($events);
         usort(
@@ -1185,6 +1233,7 @@ trait EliminationBracketSupport
             'events' => $events,
             'advancer' => $winner,
             'losers' => array_values($losers),
+            'place' => $holdsPlace,
         ];
     }
 

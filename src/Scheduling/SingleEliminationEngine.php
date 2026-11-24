@@ -103,6 +103,8 @@ use Override;
  * table has nobody in its first tier, and the selector names nobody.
  *
  * @experimental
+ *
+ * @phpstan-import-type WalkedNode from BracketReading
  */
 final readonly class SingleEliminationEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine, BracketViewEngine
 {
@@ -485,7 +487,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * will settle it. A round drawn
      * by hand keeps its ties as recorded: a node for each tie, at the slot
      * of the earlier of its two entrants, and for each entrant left alone;
-     * the rounds after it are shaped from the nodes it has.
+     * the rounds after it are shaped from the nodes it has that hold a
+     * place. An entrant who had withdrawn and was left alone beside an
+     * entrant in a tie is a `Void` node that holds none: no slot of the
+     * next round is filled from it (docs/adr/0023).
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
@@ -689,7 +694,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             );
 
             if ($isLastRound) {
-                $reading->lastTies = $this->lastTiesRead($slots, $thirdPlaceTie, $read);
+                $reading->lastTies = $this->lastTiesRead($thirdPlaceTie, $read);
             }
             if ($reading->capture) {
                 $reading->walked[] = [
@@ -720,6 +725,20 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                     $wentOutIn[$wentOut->getId()] = $structural;
                 }
             }
+            foreach ($read['dropped'] as $wentOut) {
+                $wentOutIn[$wentOut->getId()] = $structural;
+            }
+            // The two of the third-place tie are placed by it, below the
+            // final, as the entrants who went out in the round before the
+            // last are: also an entrant a last round drawn by hand put in it
+            // from a slot of the final
+            if ($isLastRound && $read['extraNode'] !== null) {
+                foreach ($read['extraNode']['entrants'] as $entrant) {
+                    if ($entrant instanceof Participant) {
+                        $wentOutIn[$entrant->getId()] = $structural - 1;
+                    }
+                }
+            }
             foreach ($read['byes'] as $advanced) {
                 $byes[$advanced->getId()] = ($byes[$advanced->getId()] ?? 0) + 1;
             }
@@ -732,6 +751,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $reading->awaitingRound = $reading->number;
                 $reading->unresolved = $read['unresolved'];
                 $reading->undecided = $read['undecided'];
+                if ($isLastRound) {
+                    // Still in the bracket: those of the final, which a
+                    // round drawn by hand may have drawn otherwise
+                    $slots = $this->stillInTheFinal($read['nodes']);
+                }
                 break;
             }
 
@@ -815,18 +839,56 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
+     * The entrants of the last round still in the bracket while it awaits
+     * a result: both entrants of a final still to be decided, and the one
+     * who went on from a final that is.
+     *
+     * @param list<WalkedNode> $nodes The nodes of the last round as read
+     *
+     * @return list<Participant|null>
+     */
+    private function stillInTheFinal(array $nodes): array
+    {
+        $in = [];
+        foreach ($nodes as $node) {
+            if (!$node['place']) {
+                continue;
+            }
+            if (!$node['status']->isSettled()) {
+                $in = [...$in, ...$node['entrants']];
+            } elseif ($node['advancer'] instanceof Participant) {
+                $in[] = $node['advancer'];
+            }
+        }
+
+        return $in;
+    }
+
+    /**
      * The last ties of a round that has been read (see readRound()): each
      * is decided where it sends one entrant on, or nobody and somebody out.
+     * The entrants of each are those the round holds: of the final, the
+     * entrants of the nodes that hold a place, and of the third-place tie,
+     * the two of its node, which a last round drawn by hand may have drawn
+     * otherwise than the slots.
      *
-     * @param list<Participant|null> $slots The two slots of the final
      * @param array{Participant, Participant}|null $thirdPlaceTie
-     * @param array{units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null} $read
+     * @param array{units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null} $read
      *
      * @return list<array{entrants: list<Participant>, settled: bool}>
      */
-    private function lastTiesRead(array $slots, ?array $thirdPlaceTie, array $read): array
+    private function lastTiesRead(?array $thirdPlaceTie, array $read): array
     {
-        $finalists = array_values(array_filter($slots, static fn(?Participant $slot): bool => $slot instanceof Participant));
+        $finalists = [];
+        foreach ($read['nodes'] as $node) {
+            if ($node['place']) {
+                foreach ($node['entrants'] as $entrant) {
+                    if ($entrant instanceof Participant) {
+                        $finalists[] = $entrant;
+                    }
+                }
+            }
+        }
         $winners = 0;
         $open = false;
         foreach ($read['units'] as $unit) {
@@ -837,8 +899,12 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         if ($thirdPlaceTie !== null) {
             $extra = $read['extra'];
+            $entrants = array_values(array_filter(
+                $read['extraNode']['entrants'] ?? [$thirdPlaceTie[0], $thirdPlaceTie[1]],
+                static fn(?Participant $entrant): bool => $entrant instanceof Participant
+            ));
             $ties[] = [
-                'entrants' => [$thirdPlaceTie[0], $thirdPlaceTie[1]],
+                'entrants' => $entrants,
                 'settled' => $extra !== null && ($extra['winner'] instanceof Participant || $extra['losers'] !== []),
             ];
         }
