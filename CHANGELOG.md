@@ -13,6 +13,14 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Fixed
+
+- The `Benchmarks` job installs the benchmark runner again. Composer refused
+  the runner's lock file (`tools/phpbench/composer.lock`) over a security
+  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
+  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
+  pinned to. Tooling only; no output and no public signature changes.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)
