@@ -484,6 +484,52 @@ describe('Slot times computed from the anchor', function (): void {
         expect(fn() => new TimelineDefinition($start, $huge))->toThrow(InvalidConfigurationException::class, 'too far');
     });
 
+    // The span alone was measured, so a start far from 1970 with a span under
+    // the limit went past the end of PHP's timestamps and wrapped round to a
+    // date before year 0 (#211)
+    it('refuses a round that would pass the end of the times PHP holds, from a start far from 1970', function (): void {
+        $start = new DateTimeImmutable('@3000000000000000000');
+        $daily = new TimelineDefinition($start, new DateInterval('P1D'));
+
+        $reason = null;
+        try {
+            $daily->getSlotTime(90_000_000_000_000);
+        } catch (InvalidConfigurationException $exception) {
+            $reason = $exception->getReason();
+        }
+
+        // Short of the end it is exact
+        $exact = $daily->getSlotTime(50_000_000_000_001);
+
+        expect($reason)->toBe(InvalidConfigurationReason::ValueOutOfRange)
+            ->and($exact->getTimestamp() - $start->getTimestamp())->toBe(86_400 * 50_000_000_000_000);
+    });
+
+    it('refuses an interval of months that would pass the end of the times PHP holds', function (): void {
+        $start = new DateTimeImmutable('@8000000000000000000');
+
+        $monthly = new TimelineDefinition($start, new DateInterval('P1M'));
+
+        expect(fn() => $monthly->getSlotTime(1_000_000_000_000))
+            ->toThrow(InvalidConfigurationException::class, 'past the times PHP can hold');
+    });
+
+    it('refuses a step of a relative date string that wraps round past the end of the times PHP holds', function (): void {
+        $start = new DateTimeImmutable('@8000000000000000000');
+        $relative = new TimelineDefinition($start, DateInterval::createFromDateString('1000000000 years'));
+
+        expect(fn() => $relative->getSlotTime(100))
+            ->toThrow(InvalidConfigurationException::class, 'reaches past the times PHP can hold');
+    });
+
+    it('refuses a session grid whose slots would pass the end of the times PHP holds', function (): void {
+        $interval = new DateInterval('PT0S');
+        $interval->d = 10_000_000_000_000;
+
+        expect(fn() => new SessionGrid([new DateTimeImmutable('@8000000000000000000')], $interval, 3))
+            ->toThrow(InvalidConfigurationException::class, 'past the times PHP can hold');
+    });
+
     it('takes the months of a mixed interval first and its days after, from the start', function (): void {
         // Round 13 of P1M7D is the start plus twelve months, plus 84 days:
         // one step of P12M84D. Adding P1M7D twelve times in turn lets the

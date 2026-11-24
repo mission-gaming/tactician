@@ -13,6 +13,50 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **A `MinimumRestRule` no longer passes kickoffs that its rest wraps round
+  past.** The rule adds its rest to a kickoff, and where the sum passed the
+  end of the times PHP holds PHP returned a time before the kickoff, so no
+  later kickoff was too close. Now a rest that passes that end covers every
+  later kickoff of the participant, and `validate()` reports it. Only a
+  rest of billions of years from a kickoff billions of years out is
+  affected (#171).
+
+### Added
+
+- **`MinimumRestRule::MAX_REST_DAYS`**, the longest rest the rule accepts:
+  100,000,000,000,000 days, some 270 billion years (#171).
+
+### Fixed
+
+- **A rest too long to add is refused when the rule is built.** A
+  `MinimumRestRule` given a rest of `PHP_INT_MAX` seconds was accepted,
+  because its constructor checked only that the rest moves 1970 forward,
+  and then enforced nothing: from any later kickoff the sum wrapped round.
+  A rest that reaches more than `MinimumRestRule::MAX_REST_DAYS` days, each
+  part counted as positive and a month as 31 days, is now refused by the
+  constructor and by `fromArray()` with `InvalidConfigurationException`
+  (reason `ValueOutOfRange`) (#171).
+- **An interval with a part of more than twelve digits is no longer written
+  as plain data that does not read back.** `TimelineDefinition::toArray()`
+  and `SessionGrid::toArray()` wrote a hand-built interval of 10^14 days as
+  `P100000000000000D`, which `fromArray()` refused: PHP reads at most twelve
+  digits for a part of a duration. `TimelineDefinition::writeInterval()`
+  now refuses such an interval with the reason `NotSerializable`, as it
+  refuses the others it cannot write, and `MinimumRestRule::toArray()`
+  refuses such a rest the same way. A timeline or a grid built with one
+  still gives its slot times (#171).
+- **A slot time past the end of PHP's timestamps is refused instead of
+  wrapping round.** `TimelineDefinition` and `SessionGrid` measured how far
+  the round or slot intervals reach and not where they start, so a start
+  far from 1970 with a span under the limit passed the end of the times PHP
+  holds and returned a date that had wrapped round (round 90,000,000,000,000
+  of a daily timeline from the year 95 billion was in the year −243
+  billion). Such a time is now refused with the reason `ValueOutOfRange`,
+  and so is a step of an interval made by
+  `DateInterval::createFromDateString()` that wraps round (#211).
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

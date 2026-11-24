@@ -87,6 +87,13 @@ final readonly class TimelineDefinition
      */
     public const int MAX_SLOTS_PER_ROUND = 10_000;
 
+    /**
+     * The largest number a part of an ISO 8601 duration can have for PHP
+     * to read it: twelve digits. writeInterval() refuses an interval with a
+     * larger part, which only one built by hand has.
+     */
+    private const int MAX_DURATION_PART = 999_999_999_999;
+
     /** @var array<string> Re-indexed 0..N-1 so index-based access always agrees with the capacity */
     private array $resources;
 
@@ -448,7 +455,12 @@ final readonly class TimelineDefinition
      *                                       round is so far from the start that its time
      *                                       cannot be computed (reason `ValueOutOfRange`:
      *                                       some 270 billion years, the range of PHP's
-     *                                       own timestamps; for an interval made by
+     *                                       own timestamps, or past either end of those
+     *                                       timestamps, some 291 billion years from 1970,
+     *                                       which a start far from 1970 reaches sooner; a
+     *                                       step of an interval made by
+     *                                       `DateInterval::createFromDateString()` that
+     *                                       wraps round past one of them; for an interval made by
      *                                       `DateInterval::createFromDateString()`, which
      *                                       is added one step at a time, more than
      *                                       100,000 steps, which is round 100,001)
@@ -694,6 +706,11 @@ final readonly class TimelineDefinition
      * - an inverted interval, and one with a negative part (hours set to
      *   -1): a duration PHP reads has no sign;
      * - an interval with a fraction of a second;
+     * - an interval with a part above 999,999,999,999 (a day count set by
+     *   hand to 100,000,000,000,000, say): PHP reads at most 12 digits for
+     *   each part of a duration and refuses `P100000000000000D`, although a
+     *   timeline or a grid can use such an interval for as many steps as
+     *   stay in range;
      * - an interval from `DateTimeImmutable::diff()` that has hours,
      *   minutes or seconds. PHP adds those as local time, and the hours of a
      *   duration read back are elapsed time: across a daylight-saving change
@@ -723,6 +740,7 @@ final readonly class TimelineDefinition
             $interval->invert === 1 => 'it is negative, and a duration PHP reads has no sign',
             $hasNegativePart => 'it has a negative part, which a duration PHP reads cannot hold',
             round(abs($interval->f) * 1_000_000) >= 1.0 => 'it has a fraction of a second, which a duration PHP reads cannot hold',
+            max($interval->y, $interval->m, $interval->d, $interval->h, $interval->i, $interval->s) > self::MAX_DURATION_PART => 'it has a part of more than 12 digits, which a duration PHP reads cannot hold',
             $hasTime && $interval->days !== false => 'PHP adds its hours, minutes and seconds as local time, and those of a duration read back as elapsed time',
             default => null,
         };

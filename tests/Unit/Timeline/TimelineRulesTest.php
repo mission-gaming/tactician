@@ -154,6 +154,93 @@ describe('MinimumRestRule', function (): void {
         'a day from a relative date string' => [DateInterval::createFromDateString('1 day'), 'P1D'],
         'hours from diff()' => [new DateTimeImmutable('2026-01-01 00:00')->diff(new DateTimeImmutable('2026-01-03 06:00')), 'P2DT6H'],
     ]);
+
+    // A rest of PHP_INT_MAX seconds moves 1970 forward, which is all the
+    // constructor checked, and wraps round from any kickoff after about
+    // 1970: the rule enforced nothing (#171)
+    it('refuses a rest too long to be added to a kickoff', function (DateInterval $rest): void {
+        try {
+            new MinimumRestRule($rest);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
+                ->and($exception->getContext()['limit_days'] ?? null)->toBe(MinimumRestRule::MAX_REST_DAYS);
+
+            return;
+        }
+
+        $this->fail('A rest too long to be added to a kickoff was accepted');
+    })->with([
+        'PHP_INT_MAX seconds' => [(static function (): DateInterval {
+            $rest = new DateInterval('PT0S');
+            $rest->s = PHP_INT_MAX;
+
+            return $rest;
+        })()],
+        'one day more than the limit' => [(static function (): DateInterval {
+            $rest = new DateInterval('PT0S');
+            $rest->d = MinimumRestRule::MAX_REST_DAYS + 1;
+
+            return $rest;
+        })()],
+        'years, read from plain data' => [TimelineDefinition::parseInterval('P999999999999Y', 'rest')],
+        'years, from a relative date string' => [DateInterval::createFromDateString('300000000000 years')],
+    ]);
+
+    it('refuses a rest too long to be added from plain data, where it is read', function (): void {
+        expect(fn() => MinimumRestRule::fromArray(['rest' => 'P999999999999Y']))
+            ->toThrow(InvalidConfigurationException::class, 'too long to be added to a kickoff');
+    });
+
+    it('enforces the longest rest it accepts', function (): void {
+        $rest = new DateInterval('PT0S');
+        $rest->d = MinimumRestRule::MAX_REST_DAYS;
+        $rule = new MinimumRestRule($rest);
+
+        $scheduled = scheduledFixtures([
+            [$this->alice, $this->bob, '2026-08-01 18:00'],
+            [$this->alice, $this->carol, '9999-08-01 18:00'],
+        ]);
+
+        expect($rule->validate($scheduled))->toHaveCount(1);
+    });
+
+    // From a kickoff billions of years out, even a rest the constructor
+    // accepts passes the end of the times PHP holds, and PHP's sum wraps
+    // round to before the kickoff. The rest then covers every later kickoff
+    it('reports a later kickoff inside a rest that passes the end of the times PHP holds', function (): void {
+        $rest = new DateInterval('PT0S');
+        $rest->d = 50_000_000_000_000;
+        $rule = new MinimumRestRule($rest);
+        $first = new DateTimeImmutable('@5000000000000000000');
+        $second = $first->modify('+1000 years');
+
+        expect($first->add($rest) <= $first)->toBeTrue('PHP no longer wraps the sum round; the test needs a later kickoff');
+
+        $violations = $rule->validate(new ScheduledSchedule([
+            new ScheduledEvent(new Event([$this->alice, $this->bob], new Round(1)), $first),
+            new ScheduledEvent(new Event([$this->alice, $this->carol], new Round(2)), $second),
+        ]));
+
+        expect($violations)->toHaveCount(1)
+            ->and($violations[0])->toContain('Alice');
+    });
+
+    it('refuses to write a rest with a part PHP cannot read back', function (): void {
+        $rest = new DateInterval('PT0S');
+        $rest->s = 1_000_000_000_000;
+        $rule = new MinimumRestRule($rest);
+
+        try {
+            $rule->toArray();
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
+                ->and($exception->getContext())->toBe(['rest' => 'PT1000000000000S']);
+
+            return;
+        }
+
+        $this->fail('A rest was written that fromArray() refuses: ' . json_encode($rule->toArray()));
+    });
 });
 
 describe('BlackoutRule', function (): void {
