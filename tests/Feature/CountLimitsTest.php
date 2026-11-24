@@ -466,6 +466,53 @@ describe('The slots of a round or a session, computed in one pass', function ():
         expect($sets)->toBe(200);
     });
 
+    it('are nothing for no rounds, and the same times for a round given twice in a row', function (): void {
+        $timeline = new TimelineDefinition(new DateTimeImmutable('2026-01-31 19:00', new DateTimeZone('Europe/London')), countLimitRelativeInterval('1 month'), 2, new DateInterval('PT1H'));
+
+        expect(iterator_to_array($timeline->getRoundSlotTimes()))->toBe([]);
+
+        $lists = [];
+        foreach ($timeline->getRoundSlotTimes(4, 4, 5) as $round => $slots) {
+            $lists[] = [$round, $slots];
+        }
+
+        expect(array_column($lists, 0))->toBe([4, 4, 5]);
+        Assert::assertEquals([$timeline->getSlotTime(4, 0), $timeline->getSlotTime(4, 1)], $lists[0][1]);
+        Assert::assertEquals($lists[0][1], $lists[1][1]);
+        Assert::assertEquals([$timeline->getSlotTime(5, 0), $timeline->getSlotTime(5, 1)], $lists[2][1]);
+    });
+
+    it('give the assigner, for a schedule with gaps in its rounds under a relative interval, the kickoffs counted from the start', function (): void {
+        $timeline = new TimelineDefinition(new DateTimeImmutable('2026-01-31 19:00', new DateTimeZone('Europe/London')), countLimitRelativeInterval('1 month'), 2, new DateInterval('PT1H'));
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $c = new Participant('c', 'C');
+        $d = new Participant('d', 'D');
+
+        // Rounds 2, 3, 7 and 12 held, two events in round 7: each round's
+        // first slot is counted on from the round before it that the
+        // schedule holds, and must be where getSlotTime() puts it
+        $scheduled = new TimelineAssigner()->assign(new Schedule([
+            new Event([$a, $b], new Round(2)),
+            new Event([$a, $c], new Round(3)),
+            new Event([$a, $d], new Round(7)),
+            new Event([$b, $c], new Round(7)),
+            new Event([$b, $d], new Round(12)),
+        ]), $timeline);
+
+        $kickoffs = array_map(
+            static fn(ScheduledEvent $event): array => [$event->getEvent()->getRound()?->getNumber(), $event->getKickoff()],
+            $scheduled->getScheduledEvents()
+        );
+        Assert::assertEquals([
+            [2, $timeline->getSlotTime(2, 0)],
+            [3, $timeline->getSlotTime(3, 0)],
+            [7, $timeline->getSlotTime(7, 0)],
+            [7, $timeline->getSlotTime(7, 1)],
+            [12, $timeline->getSlotTime(12, 0)],
+        ], $kickoffs);
+    });
+
     it('refuse a round number below 1 when the slots are asked for, and a round too far away when its slots are read', function (): void {
         $timeline = new TimelineDefinition(new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')), new DateInterval('P7D'), 2, new DateInterval('PT1H'));
 
