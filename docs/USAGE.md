@@ -6132,6 +6132,35 @@ blackout window and the `sessions` of a session grid. The `kickoff` of a
 serialized scheduled event declares no zone: it is UTC unless the string
 carries one, and any zone the string carries is accepted.
 
+**A declared timezone is a region or an offset.** The `timezone` field is
+a region identifier of the timezone database (`Europe/London`,
+`America/New_York`, `UTC`) or an explicit offset (`+01:00`, `-05:00`). An
+abbreviation is refused with the reason `TimezoneAbbreviation`, before the
+datetime is read: PHP reads one as a fixed offset all year, so `BST` is
+`+01:00` in January as well, and a caller who meant London would get
+kickoffs an hour out for half the year. Every abbreviation PHP knows is
+refused, `GMT` included (it is London's winter time, an hour out all
+summer), except the names of UTC itself: `Z`, `UTC` and `UCT`, in any
+case. Write the offset itself (`+01:00`) where a fixed one is meant. The context of the error has that offset under `fixed_offset`
+([ADR 0023](adr/0023-a-declared-timezone-is-a-region-or-an-offset.md)).
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\InvalidConfigurationException" -->
+```php
+// BST is +01:00 all year: London's winter kickoffs would be an hour out
+TimelineDefinition::fromArray([
+    'start' => '2026-08-01 18:00',
+    'timezone' => 'BST',
+    'round_interval' => 'P7D',
+]);
+```
+
+A definition or a session grid built in code with a start in an
+abbreviation (`new DateTimeZone('BST')`) works, as that fixed offset, and
+its `toArray()` refuses it with the reason `NotSerializable`, since
+`fromArray()` would refuse what it wrote. Build the start in a region or an
+offset where the configuration has to be stored. A blackout rule writes its
+bounds in UTC and is not affected.
+
 Two kinds of string are rejected, with the reason `UnparseableTime` (the
 kickoff with an `InvalidInputException`):
 
@@ -8504,6 +8533,7 @@ identifier for logs and stored data):
 | `PositionOutOfRange` | `position_out_of_range` | A session, slot, round or resource index is outside the grid or timeline |
 | `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
+| `TimezoneAbbreviation` | `timezone_abbreviation` | A declared timezone is an abbreviation (`BST`, `EST`, `GMT`), which PHP reads as a fixed offset all year; the context has that offset under `fixed_offset` |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `OverlappingTime` | `overlapping_time` | The slots of one round of a timeline, or of one session of a grid, run up to or past the first slot of the next, or two slots of one round or session are not at rising times |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |

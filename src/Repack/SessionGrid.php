@@ -503,8 +503,9 @@ final readonly class SessionGrid
      * @throws InvalidConfigurationException When the format version is not one this release reads
      *                                       (reason `UnsupportedFormatVersion`), a key is unknown
      *                                       (`UnknownOptionKey`), a
-     *                                       value is missing or malformed, or a session start
-     *                                       does not state an instant by itself
+     *                                       value is missing or malformed, the timezone is an
+     *                                       abbreviation (`TimezoneAbbreviation`), or a session
+     *                                       start does not state an instant by itself
      */
     public static function fromArray(array $config): self
     {
@@ -646,8 +647,15 @@ final readonly class SessionGrid
      *
      * @return array{format_version: int, sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{format_version: int, session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
      *
+     * The timezone is written as the session starts hold it: a region
+     * identifier or an offset. Starts held in a timezone abbreviation
+     * (`new DateTimeZone('BST')`) are refused, because fromArray() refuses
+     * an abbreviation (ZonedTime::writeTimezone()).
+     *
      * @throws InvalidConfigurationException When the slot interval has no ISO 8601 duration that
-     *                                       reads back as the same interval (`NotSerializable`)
+     *                                       reads back as the same interval, or the session
+     *                                       starts are in a timezone abbreviation (both
+     *                                       `NotSerializable`)
      */
     public function toArray(): array
     {
@@ -665,7 +673,7 @@ final readonly class SessionGrid
                     ZonedTime::write(...),
                     $this->sessionStarts
                 ),
-                'timezone' => $this->sessionStarts[0]->getTimezone()->getName(),
+                'timezone' => ZonedTime::writeTimezone($this->sessionStarts[0], 'timezone'),
                 'slot_interval' => TimelineDefinition::writeInterval($this->slotInterval, 'slot_interval'),
                 'slots_per_session' => $this->slotsPerSession,
                 'capacity_per_slot' => $this->capacityPerSlot ?? self::UNBOUNDED,
