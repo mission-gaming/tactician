@@ -948,6 +948,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00\nPT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00\n"],
             [],
         ],
+        'a round after a gap, told the round played before it and not told' => [
+            'docs/USAGE.md',
+            '$afterRoundOne = (new TimelineAssigner())->assignRound(',
+            ["2027-02-28 19:00\nOverlappingTime: round 2\n"],
+            [],
+        ],
         'shuffled legs from plain data repeat the schedule of their seed on every call' => [
             'docs/USAGE.md',
             '$shuffledOptions = RoundRobinOptions::fromArray(',

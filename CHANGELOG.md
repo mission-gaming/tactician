@@ -13,6 +13,25 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Added
+
+- **`TimelineAssigner::assignRound()` can be told the round played before
+  ([#173](https://github.com/mission-gaming/tactician/issues/173)).** The
+  two assigning calls now apply one rule: each round is compared with the
+  round played before it. `assign()` reads that round from the schedule;
+  `assignRound()` keeps nothing between calls and takes it as a new
+  optional argument, `previousRound` (0 when no round was played before).
+  Told it for every round, the calls refuse exactly what `assign()`
+  refuses for the schedule of the same rounds, with the same two rounds
+  named. Without the argument nothing changes: the round compared is the
+  one numbered before, which is right for a stage state, whose rounds are
+  numbered 1, 2, 3. Before this, a caller whose rounds had a gap had a
+  round compared with one nobody played (231 such sets refused round by
+  round in the review's sweep that `assign()` accepted) and the two played
+  rounds either side of the gap compared by no call. A round named as
+  played before that is not below the round's number, or is below 0, is
+  refused (`InvalidConfigurationException`, `RoundOutOfSequence`).
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

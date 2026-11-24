@@ -5952,18 +5952,23 @@ The rules of the mechanism:
   and round 3 from 28 February: a schedule of rounds 1 and 2 is
   assigned, and one that holds round 3 as well is refused. The order is
   the order of the round numbers, so a later round at an earlier time is
-  refused like one at the same time. `assignRound()` is given one round
-  and keeps nothing between calls, so it compares that round with the
-  one before it by number, which a stage that plays its rounds in order
-  from round 1 has played. Round 1 is compared with nothing, and so is
-  no round with the one after it: an overlap of two rounds is reported
-  when the later of them is assigned. The round before is the one before
-  by number whether or not it was played. A caller whose rounds have a
-  gap (a number skipped, or a pairing with no events) has a round
-  compared with one nobody played, which can refuse it, and the two
-  played rounds on either side of the gap compared with each other by
-  no call; `assign()` given a schedule of the rounds played compares
-  exactly those.
+  refused like one at the same time. `assignRound()` applies the same
+  rule, each round compared with the round played before it, but it is
+  given one round and keeps nothing between calls, so it is told which
+  round that was: `assignRound($pairing, $timeline, previousRound: 3)`,
+  or `previousRound: 0` for the first round played. Not told, it takes
+  the round numbered before it, which is the round played before for a
+  stage whose rounds are numbered 1, 2, 3 and so on (the rounds of a
+  `StageState` are); round 1 then has none. No round is compared with
+  the one after it: an overlap of two rounds is reported when the later
+  of them is assigned. A caller whose rounds have a gap (a number
+  skipped, or a pairing with no events) passes the round played before;
+  told it for every round, the calls refuse exactly what `assign()`
+  refuses for the schedule of the same rounds, with the same two rounds
+  named. Not told, a round after the gap is compared with a round nobody
+  played, which can refuse it, and not with the round before the gap. A
+  round named as played before that is not below the round's number, or
+  is below 0, is refused (`RoundOutOfSequence`).
 - **A round too far away is refused.** A round whose time is more than
   some 270 billion years from the start, which is past what PHP's
   timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
@@ -6071,10 +6076,45 @@ $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
 `assignRound()` makes the checks `assign()` makes, on the one round: the
-round fits, its slots rise, it starts after the round numbered before it
+round fits, its slots rise, it starts after the round played before it
 has ended, and it satisfies the rules the assigner was built with (see
 [Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
 events and no others, since the assigner keeps nothing between calls.
+
+A stage whose rounds on the timeline have a gap tells it the round
+played before. Monthly rounds from 31 December with two slots 30 days
+apart have round 2 run into round 3; a stage that plays rounds 1 and 3
+is assigned round 3 when it says round 1 came before it, and refused when
+it does not say, because round 3 is then compared with round 2:
+
+```php
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\RoundPairing;
+
+$monthly = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+    roundInterval: new DateInterval('P1M'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('P30D'),
+);
+$roundThree = new RoundPairing(3, null, [new Event([$participants[0], $participants[1]], new Round(3))]);
+
+$afterRoundOne = (new TimelineAssigner())->assignRound($roundThree, $monthly, previousRound: 1);
+echo $afterRoundOne[0]->getKickoff()->format('Y-m-d H:i') . "\n";
+
+try {
+    (new TimelineAssigner())->assignRound($roundThree, $monthly);
+} catch (InvalidConfigurationException $e) {
+    echo $e->getReason()?->name . ': round ' . $e->getContext()['round'] . "\n";
+}
+```
+
+```text
+2027-02-28 19:00
+OverlappingTime: round 2
+```
 
 Definitions are plain-data constructible for config-driven platforms,
 with ISO 8601 durations:

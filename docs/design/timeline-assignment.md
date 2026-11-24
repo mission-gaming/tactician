@@ -109,6 +109,27 @@ Settled decisions beyond the sketch:
   refused and no `assignRound()` call did, all 10 under a hand-built
   interval with a negative part. For rounds played in order from round 1
   the two calls agreed in every case.
+  In 0.4.0 ([#173](https://github.com/mission-gaming/tactician/issues/173))
+  the two calls apply one rule: **each round is compared with the round
+  played before it**. `assign()` reads that round from the schedule;
+  `assignRound()` takes it as an optional argument (`previousRound`, 0
+  for none) and, without it, the round numbered before, which is the
+  round played before for a stage state, whose rounds are numbered 1, 2,
+  3 (ADR 0018). Told it for every round, the calls refuse exactly the
+  sets of rounds `assign()` refuses, with the same reason and the same
+  two rounds named; a generated comparison in
+  `tests/Feature/TimelineRoundsHeldTest.php` checks that over thousands of
+  timelines and sets of rounds with gaps. Two other rules were measured
+  and set aside. Comparing each round with the one numbered before it in
+  both calls needs no argument, but it refuses a schedule for a round it
+  does not hold, and it is not complete: over 40,000 generated cases it
+  assigned 72 sets of rounds that overlap (13 under intervals with a
+  negative part, 57 under relative strings that step back, such as
+  `+1 month -30 days`, and 2 under intervals of neither kind), because two
+  played rounds on either side of a gap are compared by no call.
+  Checking every round from 1 to the highest assigned is complete
+  without an argument, but it does work in proportion to a round number
+  and would need a limit on the round numbers that can be assigned.
 - **A round has a furthest time** (0.3.0): the steps are multiplied out,
   and PHP adds an interval too large for its timestamps without an error
   and returns a date that has wrapped round. `IntervalArithmetic` refuses
