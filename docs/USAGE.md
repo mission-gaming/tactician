@@ -5451,9 +5451,26 @@ $violations = (new CompositionValidator())->validateChain(16, [
 ```
 
 The validator counts; it runs nothing. It reads a `MatchOutcomeSelector`
-as the hand-off after one knockout round of the previous stage's entrants:
-winners are half of them, rounded up for a bye, and losers half, rounded
-down. That is the arithmetic of a chain whose stages are single knockout
+as the hand-off after one knockout round of the previous stage's entrants,
+paired as the elimination engines pair the first round of a bracket: byes
+fill the field up to the next power of two, so the winners are half of
+that power (the winner of each tie and every entrant with a bye) and the
+losers are one for each tie. Where the field is a power of two that is
+half of it each; a field of 5 plays 1 tie and has 3 byes, so 4 go on and
+1 goes out, and a field of 12 plays 4 ties and has 4 byes:
+
+```php
+$fromFive = (new CompositionValidator())->validateChain(5, [
+    new StageTransition('next', 3, MatchOutcomeSelector::winners()),
+]);
+echo $fromFive[0] . "\n";
+// Stage 'next' expects 3 entrants but its selection yields 4 from the previous stage's 5.
+
+echo MatchOutcomeSelector::winners()->getYield()->countFrom(12) . "\n"; // 8
+echo MatchOutcomeSelector::losers()->getYield()->countFrom(12) . "\n"; // 4
+```
+
+That is the arithmetic of a chain whose stages are single knockout
 rounds, as declared above. It is not what the selector returns from the
 outcome of a whole bracket played by one of the elimination engines, which
 is the one winner (or loser) of the final. The validator cannot see which
@@ -5479,8 +5496,8 @@ selector of your own is counted the way the library's are. A
 | `RankRangeSelector::overall(from, to)`, `BestOfRankSelector::ofRank(rank, count)` | `Fixed` | the count |
 | `RankRangeSelector::perGroup(from, to)`, `topPerGroup(n)` | `PerPool` | the count per pool times the pools |
 | `BracketQualifiersSelector::of(perGroup, bestOfRank)` | `PerPoolPlusFixed` | the count per pool times the pools, plus the count across them; nothing from fewer pools than `getMinimumPools()`, which the validator reports |
-| `MatchOutcomeSelector::winners()` | `WinnersOfLastRound` | half the entrants rounded up; 1 after a whole bracket |
-| `MatchOutcomeSelector::losers()` | `LosersOfLastRound` | half the entrants rounded down; 1 after a whole bracket |
+| `MatchOutcomeSelector::winners()` | `WinnersOfLastRound` | half the next power of two of the entrants (the ties and the byes of a first bracket round); 1 after a whole bracket |
+| `MatchOutcomeSelector::losers()` | `LosersOfLastRound` | the ties of that round: the entrants beyond half the next power of two; 1 after a whole bracket |
 | a selector whose count only the outcome gives | `DependsOnOutcome` | not counted |
 
 The yield is stated before any outcome exists, so it cannot know of a

@@ -2465,6 +2465,21 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
+        // "a field of 5 plays 1 tie and has 3 byes, so 4 go on and 1 goes out" (issue #146)
+        'the composition validator counts one knockout round with the byes of a bracket' => [
+            'docs/USAGE.md',
+            '$fromFive = (new CompositionValidator())->validateChain(5, [',
+            <<<'PHP'
+                assert($fromFive === ["Stage 'next' expects 3 entrants but its selection yields 4 from the previous stage's 5."]);
+                $validator = new CompositionValidator();
+                assert($validator->validateChain(5, [new StageTransition('next', 4, MatchOutcomeSelector::winners())]) === []);
+                assert(MatchOutcomeSelector::losers()->getYield()->countFrom(5) === 1);
+                // "a field of 12 plays 4 ties and has 4 byes"
+                assert(MatchOutcomeSelector::winners()->getYield()->countFrom(12) === 8);
+                assert(MatchOutcomeSelector::losers()->getYield()->countFrom(12) === 4);
+                assert($validator->validateChain(16, [new StageTransition('next', 8, MatchOutcomeSelector::losers())]) === []);
+                PHP,
+        ],
         // "It is not what the selector returns from the outcome of a whole bracket"
         'the composition validator counts a match-outcome selector as one knockout round' => [
             'docs/USAGE.md',
@@ -2473,8 +2488,6 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($violations === []);
                 $validator = new CompositionValidator();
                 assert($validator->validateChain(8, [new StageTransition('next', 4, MatchOutcomeSelector::winners())]) === []);
-                assert($validator->validateChain(5, [new StageTransition('next', 3, MatchOutcomeSelector::winners())]) === []);
-                assert($validator->validateChain(5, [new StageTransition('repechage', 2, MatchOutcomeSelector::losers())]) === []);
                 // The four qualifiers above, played as one bracket: the validator counts two
                 // winners, and the selector returns the one winner of the final
                 assert($validator->validateChain(4, [new StageTransition('next', 2, MatchOutcomeSelector::winners())]) === []);
