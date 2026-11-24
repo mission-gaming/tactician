@@ -6113,7 +6113,30 @@ refused are:
 Build the interval as `new DateInterval('PT25M')` where the configuration
 has to be stored. A start with a fraction of a second is written with it
 (`2026-08-01 18:00:00.250000`), and so are a session start of a grid and
-a bound of a blackout window. A `MinimumRestRule` adds its rest once and
+a bound of a blackout window. So are the kickoffs assigned from such a
+start: `ScheduledEvent::toArray()` (and with it
+`ScheduledSchedule::toArray()`) and `SlotAssignment::toArray()` write a
+kickoff to the second (`2026-08-01T17:00:00Z`), and with its fraction
+after the seconds when it has one (`2026-08-01T17:00:00.250000Z`), so a
+kickoff read back is the slot time the definition gives:
+
+```php
+use MissionGaming\Tactician\Timeline\ScheduledSchedule;
+
+$quarterPast = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-08-01 18:00:00.25', new DateTimeZone('Europe/London')),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('PT1H'),
+);
+$stored = (new TimelineAssigner())->assign($schedule, $quarterPast)->toArray();
+echo $stored['events'][0]['kickoff'], "\n"; // 2026-08-01T17:00:00.250000Z
+
+$readBack = ScheduledSchedule::fromArray($stored)->getScheduledEvents()[0]->getKickoff();
+var_dump($readBack == $quarterPast->getSlotTime(1, 0)); // bool(true)
+```
+
+A `MinimumRestRule` adds its rest once and
 in UTC, so its `toArray()` writes a rest of amounts of time from either
 source (`48 hours` is `PT48H`) and refuses only what has no duration: a
 relative string that is more than amounts, a fraction of a second, a sign.
@@ -7290,8 +7313,9 @@ these keys:
 Each key holds what `toArray()` of the record holds under it: an event ID
 as a string, a session, a slot and a count as integers, a participant as
 its ID or null, a kind and a reason as their backing strings, the lists
-as lists, and a kickoff as the string `2026-08-12T19:00:00Z` or null. The
-keys are named because they are the scheme: a key that a `toArray()`
+as lists, and a kickoff as the string `2026-08-12T19:00:00Z`, or
+`2026-08-12T19:00:00.250000Z` when it has a fraction of a second, or null.
+The keys are named because they are the scheme: a key that a `toArray()`
 gains in a later version is not part of scheme `v1` and does not change a
 `v1` fingerprint.
 
@@ -7316,7 +7340,8 @@ What follows from that:
 - Every field the records have today is covered. A participant is covered
   by its ID and by nothing else of it, so a changed label or changed
   metadata leaves the fingerprint as it was. A kickoff is covered to the
-  second and is null for a shape-only grid.
+  microsecond (a kickoff on a whole second is written to the second, as
+  it always was) and is null for a shape-only grid.
 - `isBudgetExhausted()` is not covered: two outcomes holding the same
   plan are the same plan, however each search ended.
 - Nothing in it depends on the PHP version, the platform, the locale or
@@ -7503,7 +7528,7 @@ hand, in a test for example.
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
 | `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, in the timezone it was given in); throws an `UnavailableValueException` when there is none |
-| `toArray()` | `format_version`, `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
+| `toArray()` | `format_version`, `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in, and written with its fraction of a second when it has one (`2026-08-12T19:30:00.250000Z`) |
 
 #### `UnplacedEvent`
 
