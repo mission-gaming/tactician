@@ -146,7 +146,20 @@ Settled decisions beyond the sketch:
   such an interval are each computed from the one before, in one pass
   (`IntervalArithmetic::series()`): computing each from the round's
   first slot cost the square of the slot count in additions, 25 seconds
-  for 10,000 slots.
+  for 10,000 slots. The rounds of one schedule are computed the same way
+  (0.4.0, [#170](https://github.com/mission-gaming/tactician/issues/170)):
+  `assign()` asks the definition for the slots of all the rounds it holds
+  at once (`getRoundSlotTimes()`), and under such an interval each
+  round's first slot is counted on from the round before it in the list,
+  which is the same time, where computing each from the start again took
+  33 seconds for 10,000 rounds. The method is public and documented
+  ([#174](https://github.com/mission-gaming/tactician/issues/174)): it
+  replaced `roundSlotTimes()`, a public method marked `@internal` for the
+  assigner alone. A caller who shows a stage's slots before a schedule
+  exists needs the same thing, and a public method of a class that is to
+  become `@api` must be part of its API or not public; moving the
+  computation into the assigner instead would have put the slot-time
+  arithmetic in two classes.
 - **One check of who plays: nobody is in two events at one instant.** The
   sketch below lists "a participant assigned overlapping slots" among the
   things that fail loudly. The assigner at first validated capacity and

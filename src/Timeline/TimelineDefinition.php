@@ -475,54 +475,87 @@ final readonly class TimelineDefinition
     }
 
     /**
-     * Every slot of one round in slot order, in UTC: what getSlotTime()
-     * gives for each slot of the round, with the round's first slot
-     * computed once.
+     * Every slot of each round asked for, in UTC: for each round, the list
+     * getSlotTime() gives for its slots 0, 1, 2 and so on, with the round's
+     * first slot computed once.
      *
-     * The round is checked, and its first slot computed, when this is
-     * called. The slots after the first are produced as they are asked for,
-     * so that the assigner, which refuses a round at the first slot that is
-     * not after the one before it, computes none after that one.
+     * The rounds are given in the order they are wanted, and the lists come
+     * in that order, keyed by round number (a round given twice comes
+     * twice). The round numbers are checked when this is called; each
+     * round's slots are computed when its list is read, so a caller that
+     * stops reading computes no later round.
      *
-     * @internal For TimelineAssigner; not part of the public API.
+     * Rounds given in rising order are computed in one pass. Under a round
+     * interval made by `DateInterval::createFromDateString()`, which is
+     * added one step at a time, each round's first slot is computed from
+     * the first slot of the round before it in the list, so the cost rises
+     * with the highest round and not with the sum of the rounds: the rounds
+     * of a whole schedule cost what its last round costs alone. Under an
+     * interval written as a duration every round is computed from the start
+     * whatever the order, which costs the same for every round. The times
+     * are the ones getSlotTime() gives either way.
      *
-     * @param int $round 1-based round number
+     * The slots of a round are given as the definition declares them, filled
+     * or not. They are not checked here for rising times; the constructor
+     * checks the first two rounds and {@see TimelineAssigner} every round it
+     * assigns.
      *
-     * @return Generator<int, DateTimeImmutable> Keyed by slot index, from 0
+     * @param int ...$rounds 1-based round numbers, in the order the lists are wanted
      *
-     * @throws InvalidConfigurationException When the round is out of range or too far from the
-     *                                       start to be computed; and, while the slots are read,
-     *                                       when one of them is too far from the round's first
+     * @return Generator<int, list<DateTimeImmutable>> Keyed by round number, each list keyed
+     *                                                 by slot index from 0
+     *
+     * @throws InvalidConfigurationException When a round number is below 1 (reason
+     *                                       `PositionOutOfRange`), when this is called; and,
+     *                                       while the lists are read, when a round is too far
+     *                                       from the start to be computed (`ValueOutOfRange`,
+     *                                       as getSlotTime() says)
      */
-    public function roundSlotTimes(int $round): Generator
+    public function getRoundSlotTimes(int ...$rounds): Generator
     {
-        if ($round < 1) {
-            throw new InvalidConfigurationException(
-                'Round numbers are 1-based',
-                ['round' => $round],
-                reason: InvalidConfigurationReason::PositionOutOfRange
-            );
+        foreach ($rounds as $round) {
+            if ($round < 1) {
+                throw new InvalidConfigurationException(
+                    'Round numbers are 1-based',
+                    ['round' => $round],
+                    reason: InvalidConfigurationReason::PositionOutOfRange
+                );
+            }
         }
 
-        // Not a generator itself, so that the round is refused by this
+        // Not a generator itself, so that a round number is refused by this
         // call and not by the first read of what it returns
-        return $this->utcSlotTimesFrom(IntervalArithmetic::advance($this->start, $this->roundInterval, $round - 1));
+        return $this->slotTimesOfRounds(array_values($rounds));
     }
 
     /**
-     * The slots of a round from its first slot, in UTC.
+     * The slots of each round, in UTC, each round's first slot from the
+     * one before it where that is the same time.
      *
-     * @param DateTimeImmutable $first The round's first slot, in the start's timezone
+     * @param list<int> $rounds 1-based round numbers, already checked
      *
-     * @return Generator<int, DateTimeImmutable> Keyed by slot index, from 0
+     * @return Generator<int, list<DateTimeImmutable>> Keyed by round number
      *
-     * @throws InvalidConfigurationException When a slot is too far from the first to be computed
+     * @throws InvalidConfigurationException When a round, or a slot of one, is too far from
+     *                                       the start to be computed
      */
-    private function utcSlotTimesFrom(DateTimeImmutable $first): Generator
+    private function slotTimesOfRounds(array $rounds): Generator
     {
         $utc = new DateTimeZone('UTC');
-        foreach ($this->slotTimesFrom($first) as $slot => $time) {
-            yield $slot => $time->setTimezone($utc);
+        $reached = $this->start;
+        $reachedSteps = 0;
+
+        foreach ($rounds as $round) {
+            $first = IntervalArithmetic::advanceFrom($this->start, $this->roundInterval, $round - 1, $reached, $reachedSteps);
+            $reached = $first;
+            $reachedSteps = $round - 1;
+
+            $slots = [];
+            foreach ($this->slotTimesFrom($first) as $time) {
+                $slots[] = $time->setTimezone($utc);
+            }
+
+            yield $round => $slots;
         }
     }
 

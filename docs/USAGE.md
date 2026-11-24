@@ -6025,6 +6025,39 @@ P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00
 PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
 ```
 
+A definition answers for slot times without a schedule.
+`getSlotTime($round, $slot)` gives one slot, in UTC.
+`getRoundSlotTimes(...$rounds)` gives every slot of each round asked for,
+filled or not: a list per round, keyed by round number, in the order the
+rounds are given, each round computed when its list is read. The times are
+the ones `getSlotTime()` gives. Given in rising order, the rounds are
+computed in one pass: under an interval made by
+`DateInterval::createFromDateString()`, which is added one step at a time,
+each round's first slot is counted on from the round before it in the list,
+so the rounds of a whole schedule cost what its last round costs alone.
+This is how `assign()` computes the rounds of a schedule:
+
+```php
+$evenings = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('PT90M'),
+);
+
+foreach ($evenings->getRoundSlotTimes(1, 3) as $round => $slots) {
+    $times = array_map(fn (DateTimeImmutable $slot): string => $slot->format('j M H:i'), $slots);
+    echo "Round {$round}: " . implode(', ', $times) . " UTC\n";
+}
+echo $evenings->getSlotTime(3, 1)->format('j M H:i') . " UTC\n";
+```
+
+```text
+Round 1: 17 Oct 18:00, 17 Oct 19:30 UTC
+Round 3: 31 Oct 19:00, 31 Oct 20:30 UTC
+31 Oct 20:30 UTC
+```
+
 The assigner places events on slots and checks that a round fits and that
 it ends before the next round starts. It also refuses a round that puts
 one participant in two events at the same time, which a slot with two or

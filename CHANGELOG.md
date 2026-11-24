@@ -13,6 +13,35 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Added
+
+- **`TimelineDefinition::getRoundSlotTimes()` gives every slot of the
+  rounds asked for
+  ([#174](https://github.com/mission-gaming/tactician/issues/174)).**
+  `getRoundSlotTimes(int ...$rounds)` yields a list per round, keyed by
+  round number and in the order the rounds are given, of the times
+  `getSlotTime()` gives for its slots, in UTC; each round is computed
+  when its list is read. A round number below 1 is refused when it is
+  called (`PositionOutOfRange`), and a round too far from the start while
+  it is read (`ValueOutOfRange`). It replaces `roundSlotTimes()`, the one
+  public method in `src/` that was marked `@internal`: that method was
+  for the assigner alone and is removed; the new one is part of the
+  definition's experimental API, and the assigner uses it.
+
+### Fixed
+
+- **Assigning a schedule under a relative round interval is linear in its
+  rounds ([#170](https://github.com/mission-gaming/tactician/issues/170)).**
+  Under a round interval made by `DateInterval::createFromDateString()`
+  (`1 week`, `first monday of next month`), which is added one step at a
+  time, `TimelineAssigner::assign()` computed each round's start from the
+  timeline's start again, so the time it took rose with the square of the
+  rounds: 10,000 rounds took 33 seconds. Each round's start is now counted
+  on from the start of the round before it that the schedule holds, which
+  is the same time, and 10,000 rounds take some 50 milliseconds. The
+  kickoffs are the same; an interval written as an ISO 8601 duration was
+  linear already and is computed as before.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

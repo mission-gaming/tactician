@@ -313,7 +313,7 @@ describe('The limits on the counts of a timeline and of a session grid', functio
         Assert::assertSame(0, $result['exitCode']);
 
         expect($result['verdicts'])->toBe($expected)
-            ->and(count($expected))->toBe(49);
+            ->and(count($expected))->toBe(52);
     });
 });
 
@@ -401,10 +401,11 @@ describe('The slots of a round or a session, computed in one pass', function ():
         $compared = 0;
         foreach ($timelines as $timeline) {
             foreach ([1, 2, 3, 9, 40] as $round) {
-                $times = iterator_to_array($timeline->roundSlotTimes($round));
+                $lists = iterator_to_array($timeline->getRoundSlotTimes($round));
 
-                expect(array_keys($times))->toBe(range(0, $timeline->getSlotsPerRound() - 1));
-                foreach ($times as $slot => $time) {
+                expect(array_keys($lists))->toBe([$round])
+                    ->and(array_keys($lists[$round]))->toBe(range(0, $timeline->getSlotsPerRound() - 1));
+                foreach ($lists[$round] as $slot => $time) {
                     Assert::assertEquals($timeline->getSlotTime($round, $slot), $time);
                     Assert::assertSame('UTC', $time->getTimezone()->getName());
                     ++$compared;
@@ -415,14 +416,87 @@ describe('The slots of a round or a session, computed in one pass', function ():
         expect($compared)->toBe((3 + 4 + 5 + 1 + 1) * 5);
     });
 
-    it('refuse a round that is out of range or too far away when the slots are asked for, before one is read', function (): void {
+    it('are, for any rounds asked for together and in any order, the times asked for one slot at a time', function (): void {
+        $london = new DateTimeZone('Europe/London');
+        $randomizer = new Random\Randomizer(new Random\Engine\Xoshiro256StarStar(170));
+
+        // Each kind of round interval, rounds across clock changes and month
+        // ends: a relative interval is the one computed from the round
+        // before, and the times must be the ones computed from the start
+        $timelines = [
+            new TimelineDefinition(new DateTimeImmutable('2026-01-31 19:00', $london), countLimitRelativeInterval('1 month'), 2, new DateInterval('PT1H')),
+            new TimelineDefinition(new DateTimeImmutable('2026-03-27 01:30', $london), countLimitRelativeInterval('next weekday'), 3, countLimitRelativeInterval('25 minutes')),
+            new TimelineDefinition(new DateTimeImmutable('2026-10-20 00:30', $london), countLimitRelativeInterval('1 day'), 1),
+            new TimelineDefinition(new DateTimeImmutable('2026-01-31 19:00', $london), new DateInterval('P1M'), 2, new DateInterval('PT1H')),
+            new TimelineDefinition(new DateTimeImmutable('2026-03-22 00:30', $london), new DateInterval('PT168H')),
+        ];
+
+        $sets = 0;
+        foreach ($timelines as $timeline) {
+            for ($sample = 0; $sample < 40; ++$sample) {
+                // Rising with gaps, then shuffled, with a repeat now and then
+                $rounds = [];
+                foreach (range(1, 60) as $round) {
+                    if ($randomizer->getInt(0, 3) === 0) {
+                        $rounds[] = $round;
+                    }
+                }
+                if ($sample % 2 === 1) {
+                    $rounds = $randomizer->shuffleArray($rounds);
+                }
+                if ($sample % 5 === 4 && $rounds !== []) {
+                    $rounds[] = $rounds[0];
+                }
+
+                $given = [];
+                foreach ($timeline->getRoundSlotTimes(...$rounds) as $round => $slots) {
+                    $given[] = $round;
+                    $expected = array_map(
+                        static fn(int $slot): DateTimeImmutable => $timeline->getSlotTime($round, $slot),
+                        range(0, $timeline->getSlotsPerRound() - 1)
+                    );
+                    Assert::assertEquals($expected, $slots, "Round {$round}");
+                }
+
+                expect($given)->toBe($rounds);
+                ++$sets;
+            }
+        }
+
+        expect($sets)->toBe(200);
+    });
+
+    it('refuse a round number below 1 when the slots are asked for, and a round too far away when its slots are read', function (): void {
         $timeline = new TimelineDefinition(new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')), new DateInterval('P7D'), 2, new DateInterval('PT1H'));
 
         // The generator is never read: the call itself is what is refused
-        expect(countLimitRefusal(fn() => $timeline->roundSlotTimes(0))?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
-            ->and(countLimitRefusal(fn() => $timeline->roundSlotTimes(-3))?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
-            ->and(countLimitRefusal(fn() => $timeline->roundSlotTimes(PHP_INT_MAX))?->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
-            ->and(countLimitRefusal(fn() => $timeline->roundSlotTimes(1)))->toBeNull();
+        expect(countLimitRefusal(fn() => $timeline->getRoundSlotTimes(0))?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
+            ->and(countLimitRefusal(fn() => $timeline->getRoundSlotTimes(2, -3))?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
+            ->and(countLimitRefusal(fn() => $timeline->getRoundSlotTimes(PHP_INT_MAX)))->toBeNull()
+            ->and(countLimitRefusal(fn() => $timeline->getRoundSlotTimes(1)))->toBeNull();
+
+        // Read, the round too far away is refused, and the rounds before it
+        // are given first
+        $read = [];
+        $refusal = countLimitRefusal(function () use ($timeline, &$read): void {
+            foreach ($timeline->getRoundSlotTimes(1, 2, PHP_INT_MAX) as $round => $slots) {
+                $read[] = $round;
+            }
+        });
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
+            ->and($read)->toBe([1, 2]);
+    });
+
+    it('are computed for a whole schedule under a relative round interval in one pass', function (): void {
+        // 20,000 rounds a relative week apart, computed each from the start
+        // again, are two hundred million additions and take minutes: the
+        // corpus, run in a process of its own under a time limit, has the
+        // case
+        expect(CountLimitCorpus::expected())
+            ->toHaveKey('assign: a schedule of 20,000 rounds a relative week apart', 'loaded')
+            ->toHaveKey('timeline: the slots of 100,001 rounds a relative week apart, read together', 'loaded')
+            ->toHaveKey('timeline: the slots of rounds 1 and 100,002 a relative week apart, read together', 'refused: ValueOutOfRange');
     });
 
     it('are, for an interval made from a relative date string, each the one before plus the interval', function (): void {
