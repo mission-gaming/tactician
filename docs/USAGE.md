@@ -2818,9 +2818,12 @@ scheduler that holds one continues its sequence, and two calls give two
 schedules.
 
 Every round count the scheduler accepts is generated when it has no
-constraints. A round is paired without a look at the rounds to come, so at
-the larger round counts a draw can reach a round that has no pairing left
-without a repeat. The scheduler then draws again: with a seed, each later
+constraints, and in a field of odd size nobody has a second bye. A round is
+paired without a look at the rounds to come, so at the larger round counts
+a draw can reach a round that has no pairing left without a repeat, and at
+the largest counts of a field of odd size it can give a participant a
+second bye, which the engine does where the round has no pairing otherwise.
+The scheduler takes either as a failed draw and draws again: with a seed, each later
 draw from a seed of its own that the seed gives (a `Xoshiro256StarStar`
 sequence from the seed, advanced by one `jumpLong()`), and with a
 `Randomizer`, continuing its sequence. Either way the schedule is still a
@@ -2829,12 +2832,16 @@ first draw gives. If twenty draws are
 not enough, or there is nothing to draw from, it builds the rounds by the
 rotation that lays out a round robin, which cannot fail. Without a source of
 draws there is one draw, and it needs the rotation at a few of the largest
-round counts (of the fields up to 44: 26 participants from 24 rounds on, 34
-from 32, and 37 at 36). The first round is the list as given there too,
-with the bye of a field of odd size at the last position; the later rounds
-are those of the rotation, in which nobody has a second bye. With constraints a
-schedule may not exist at all, and an `IncompleteScheduleException` reports
-the round the last draw could not pair.
+round counts (of the fields up to 44: 26 participants from 24 rounds on, 33
+at 32, 34 from 32, and 37 at 36). The first round is the list as given there
+too, with the bye of a field of odd size at the last position; the later
+rounds are those of the rotation, in which nobody has a second bye. With
+constraints a schedule may not exist at all, and the rotation is not tried,
+since the constraints may reject it: an `IncompleteScheduleException`
+reports the round the last draw could not pair, and where every draw that
+is complete gives a participant a second bye (the constraints may leave a
+participant too few opponents to play every round), the first of them is
+the schedule.
 
 An event of a round that is never played is recorded with an
 [awarded result](#awarded-results), which counts in the table like any other
