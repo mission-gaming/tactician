@@ -13,6 +13,28 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Changed
+
+- **A round robin that fails under a factory-built `ConsecutiveRoleConstraint`
+  is analysed once** (#149). The constraints `ConsecutiveRoleConstraint::homeAway()`
+  and `position()` build now count among those the library knows to run no
+  code of the caller's, beside `NoRepeatPairings`,
+  `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+  `SeedProtectionConstraint`: a round robin that cannot be completed builds
+  its failure analysis for the order whose failure it reports, and not for
+  every rotated order it goes on from, and a Swiss round search skips the
+  branches that hold no pairing. The results are what they were, the
+  failure analysis included. Measured for 24 participants, three repeated
+  legs, `ConsecutiveRoleConstraint::homeAway(1)` and
+  `RoundParityRoleAssignment` named (no schedule exists): 43 to 128 s on
+  0.3.0, 2.0 to 2.3 s now; with mirrored legs 55 s and 4.6 s. Under the
+  default role assignment the failure was analysed once already. A
+  `ConsecutiveRoleConstraint` given a role extractor of the caller's is
+  asked as before, since the library cannot tell what the extractor
+  does. The factories now hand the constraint an extractor of an internal
+  class (`Constraints\PositionRole`) rather than a closure, which reads the
+  same roles.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

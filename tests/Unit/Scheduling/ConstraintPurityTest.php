@@ -52,6 +52,13 @@ describe('ConstraintPurity', function (): void {
             RoleBalanceConstraint::homeAway(2),
             new SeedProtectionConstraint(2, 0.5),
         ])],
+        // The extractor of the factories is the library's, and reads the
+        // participant's position in the event and nothing else
+        'a home/away streak limit' => [fn(): ConstraintSet => new ConstraintSet([ConsecutiveRoleConstraint::homeAway(2)])],
+        'a position streak limit beside a listed class' => [fn(): ConstraintSet => new ConstraintSet([
+            ConsecutiveRoleConstraint::position(3),
+            new NoRepeatPairings(),
+        ])],
     ]);
 
     it('does not know a set that could run code of the caller\'s', function (ConstraintSet $constraints): void {
@@ -59,7 +66,9 @@ describe('ConstraintPurity', function (): void {
     })->with([
         'a callable' => [fn(): ConstraintSet => new ConstraintSet([new CallableConstraint(static fn(): bool => true, 'Yes')])],
         'a callable from the builder' => [fn(): ConstraintSet => ConstraintSet::create()->custom(static fn(): bool => true)->build()],
-        'a role extractor, even a built-in one' => [fn(): ConstraintSet => new ConstraintSet([ConsecutiveRoleConstraint::homeAway(2)])],
+        'a role extractor of the caller\'s' => [fn(): ConstraintSet => new ConstraintSet([
+            new ConsecutiveRoleConstraint(2, static fn(Event $event, Participant $participant): bool => $event->getParticipants()[0]->getId() === $participant->getId()),
+        ])],
         'a metadata validator, even a built-in one' => [fn(): ConstraintSet => new ConstraintSet([MetadataConstraint::requireSameValue('group')])],
         'a class of the caller\'s' => [fn(): ConstraintSet => new ConstraintSet([new PurityTestConstraint()])],
         'a listed class beside a callable' => [fn(): ConstraintSet => new ConstraintSet([
