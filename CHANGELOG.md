@@ -90,6 +90,9 @@ heading **Output change (fix)**.
   `[FewestIdleSessions, FewestGapSlots]`, 25 of the 7,166 outcomes rank
   better by their list, and on 2,693 with current positions under three
   lists that also name `LeastChurn`, 173 of 8,079; none ranks worse.
+  Those extra polishes spend the second budget, so below the default
+  `stepBudget` one of them can be cut short and `isBudgetExhausted()` is
+  then true on an outcome where it used to be false.
 - **Lone participant-sessions** (#209): the new objective
   `RepackObjective::FewestLoneParticipantSessions`
   (`fewest_lone_participant_sessions`) and the figure

@@ -1879,12 +1879,19 @@ sides (#231). They follow decisions 66 to 69.
     schedule chosen is polished, each of those is polished in turn, with
     what the second budget has left, and replaces it where it then ranks
     better by events placed and then the ranking; on a tie the schedule
-    chosen stands, and a schedule already tried is not polished twice. So
+    chosen stands, and a schedule already tried is not polished twice,
+    nor one that is the schedule chosen before either is polished (it
+    could only polish to the same schedule). So
     the outcome is never worse than before by its own ranking, and the
     schedule chosen and its polish are made exactly as before, which keeps
     decision 66's guarantee as it was. With gap slots first nothing is
     turned down (the search's result is always kept), so no outcome of a
     list that ranks gap slots first, the default among them, changes.
+    The extra polishes spend steps of the second budget like the first,
+    so below the default budget one of them can be the search the budget
+    stops, and `isBudgetExhausted()` is then true where it was false
+    before (never the other way): a larger budget may let that polish
+    finish and give a schedule that ranks better.
 
     Carried no further than the polish, and why. Each schedule kept aside
     could also be carried through the steps between its choice and the
