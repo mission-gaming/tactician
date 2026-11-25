@@ -17,6 +17,7 @@ see [What is next](#what-is-next).
 | 0.2.2 | 2026-10-09 | The additions under [0.2.2](#022), and fixes to output that was broken |
 | 0.2.3 | 2026-10-13 | No additions: three fixes to repack output that was broken ([placement fixes](design/schedule-repack.md#placement-fixes-023)) |
 | 0.3.0 | 2026-11-03 | PHP 8.4; the additions under [0.3.0](#030), breaking changes with migration notes, and fixes to output that was broken |
+| 0.4.0 | 2026-11-25 | The additions under [0.4.0](#040), breaking changes with migration notes, and fixes to output that was broken |
 
 The work before 0.1.0 was planned in five phases. All five were complete in
 0.1.0, and the names are kept because the design notes refer to them.
@@ -93,6 +94,19 @@ their migration notes, and the output changes.
 - **Repack**: objectives, the figures of an outcome, and `ShortestGridFinder`
 - **Stored data**: a format version on every serialized form, unknown keys refused; typed diagnostics and typed identifiers; the `tie_winner` metadata deprecated
 
+### 0.4.0
+
+The changelog's `0.4.0` section has the detail, the breaking changes with
+their migration notes, and the output changes.
+
+- **Repack**: objectives ranked ahead of gap slots (`RepackObjective::FewestGapSlots`), lone participant-sessions as a figure of every outcome and as an objective, more events placed and fewer gap slots on seasons with their first rounds pinned and on requests with scattered pins, and a search for fewer gap slots that stops at a bound no placement goes below
+- **Session grids** of up to 200,000 positions, with position lookups that no longer walk the grid
+- **Timeline**: the slot times of any round (`getRoundSlotTimes()`), `assignRound()` told the round played before, kickoffs written with their fraction of a second, a declared timezone that is a region or an offset and never an abbreviation, rests and intervals refused where they would wrap round, and assignment linear in its rounds under a relative round interval
+- **Brackets**: a round drawn by hand read as drawn ([ADR 0025](adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md)), and only a winners tie its results decided drops its loser ([ADR 0026](adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md))
+- **Composition**: the yield of a knockout round counted with the byes of the bracket
+- **Swiss**: a pre-drawn schedule of a field of odd size gives nobody a second bye
+- **Cost**: one failure analysis for a round robin that fails under a factory-built `ConsecutiveRoleConstraint`
+
 ## Known limitations
 
 Each is a statement about `main`. The usage guide describes the behaviour
@@ -152,8 +166,8 @@ where a link is given.
 **Repack**
 
 - **Repack objectives are not optimised exactly, and rank after events placed and gap slots.** `RepackObjective::LeastChurn` is searched for by holding events where they are and letting go of them where that costs an event or a gap slot; the other two objectives are a tie-break and a repair by single moves. Where the schedule that exists has a gap another schedule avoids, the fewest moved events can end as the schedule made with no objective, in which most events move. Which events stay unplaced is not chosen by an objective, and without `LeastChurn` the count of moved events can depend on the ids of the request ([usage guide](USAGE.md#objectives), [design note](design/schedule-repack.md#objectives-030)).
-- **A few requests with scattered pins place an event or two fewer than 0.2.3, and small budgets place fewer.** Of 200 round robins of 16 to 40 with an eighth to a half of their events pinned at random on a grid with no room to spare, 4 place 1 or 2 events fewer than 0.2.3 at the default budget (the corpus as a whole places 53,368 of 53,744, where 0.2.3 placed 53,002). At a budget of 2,000 steps the corpus places 52,027 where 0.2.3 placed 52,637, because the last placement step then has a share of its work limit. These requests also take several times as long as they did in 0.2.3 ([design note](design/schedule-repack.md#more-schedules-for-hard-requests-040), decision 75; #162).
-- **A season with its first rounds pinned in order is still slower than in 0.2.3, and one shape keeps two gap slots.** On 160 single and double round robins of 20 to 40 with a fifth or a half of their rounds pinned in order, every event is placed, but one request (40 participants in two legs on sessions of four slots, with 16 rounds played) has 2 gap slots where 0.2.3 left none, the median time is some 20 times what it was (88 ms against 4), and the budget is reported stopped on 41 of them. Of the time left, about a quarter is the first round layout running to its work limit where pins fill its positions (#238), a sixth or more the second layout (the rounds laid on the positions with room, now also laid where the schedule has late starts and no gap, so that it does not keep late starts 0.2.3 did not have), and a third the packer's exact search of sessions it still cannot pack in its share ([design note](design/schedule-repack.md#the-packers-exact-search-040), decision 76; #242).
+- **A few requests with scattered pins place an event or two fewer than 0.2.3, and small budgets place fewer.** Of 200 round robins of 16 to 40 with an eighth to a half of their events pinned at random on a grid with no room to spare, 4 place 1 or 2 events fewer than 0.2.3 at the default budget (the corpus as a whole places 53,368 of 53,744, where 0.2.3 placed 53,002). At a budget of 2,000 steps the corpus places 52,027 where 0.2.3 placed 52,637, because the last placement step then has a share of its work limit. These requests also take several times as long as they did in 0.2.3 ([design note](design/schedule-repack.md#more-schedules-for-hard-requests-040), decision 75). The four requests still short (seeds 47, 64, 77 and 161 of that corpus) and the time are left to 1.0.0, beside the provably optimal repack mode, which reworks the same search (#162).
+- **A season with its first rounds pinned in order is still slower than in 0.2.3, and one shape keeps two gap slots.** On 160 single and double round robins of 20 to 40 with a fifth or a half of their rounds pinned in order, every event is placed, but one request (40 participants in two legs on sessions of four slots, with 16 rounds played) has 2 gap slots where 0.2.3 left none, the median time is some 20 times what it was (88 ms against 4), and the budget is reported stopped on 41 of them. Of the time left, about a quarter is the first round layout running to its work limit where pins fill its positions (#238), a sixth or more the second layout (the rounds laid on the positions with room, now also laid where the schedule has late starts and no gap, so that it does not keep late starts 0.2.3 did not have), and a third the packer's exact search of sessions it still cannot pack in its share ([design note](design/schedule-repack.md#the-packers-exact-search-040), decision 76). The remaining time and stopped budgets are left to 1.0.0, beside the provably optimal repack mode, which reworks the same search (#242).
 - **The shortest grid is the shortest the repacker finds.** `ShortestGridFinder` tries one number of sessions after another and proves a smaller number impossible by counting only; where a repack leaves an event unplaced on a smaller grid, that grid may still hold a placement ([usage guide](USAGE.md#the-shortest-grid)).
 
 ## Deferred work
