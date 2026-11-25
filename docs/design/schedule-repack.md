@@ -2107,6 +2107,106 @@ with scattered pins were brought closer to the events 0.2.3 placed
     what they took in 0.2.3, and the fifth schedule adds to the slowest
     ones (100 to 300 ms each, on requests below the ceiling).
 
+## The packer's exact search (0.4.0)
+
+76. **The exact search of a session goes part by part.** On the seasons
+    of decision 74 the packer spent the whole first budget (#242): 83 of
+    the 160 reported a stopped budget, all from `SessionPacker`'s exact
+    search, though every event was placed. Two kinds of session were
+    the cause. Most were the last sessions of the planned schedule, which
+    hold the events the round layout could not place (#238): a few dozen
+    events of small, separate groups of participants, many with one or
+    two events each. The search tries placements of every participant's
+    run, cheapest total late start first, and every combination of the
+    groups' runs is a placement of its own, so it spent its share of the
+    budget on combinations that differ only in groups that pack anyway.
+    One session of 16 events in eight groups took 73,363 steps to pack
+    (the share was 50,000). The others had a slot whose participants
+    split, by the events they can play there, into a set of an odd
+    number, which no matching covers, and the matching search found that
+    out only by searching.
+
+    So the exact search now looks at the session's independent parts,
+    the sets of participants its events connect. Only a slot's room ties
+    them: an event's two participants are in one part, so a slot's
+    matching is one matching per part, and a placement that packs leaves
+    every slot an even number of each part's participants. The placements
+    that pack the session at the least total late start are therefore the
+    combinations of each part's placements that pack it at that part's
+    least, wherever the combination leaves every slot room. The first of
+    them in the order the whole search tries them (participant by
+    participant, earliest start first) is the combination of each part's
+    first, and the matching the whole search finds for it is the
+    combination of the matchings each part's search finds, because the
+    whole search branches on one part's participants at a time and each
+    of its dead ends is in one part. Each part is searched alone, with the
+    session's share, and the parts' packings are combined; where they
+    overfill a slot, the session is searched whole as before. A part no
+    placement of whose runs leaves its slots even ends the search at no
+    step. And a placement with a slot whose participants fall into an odd
+    set is turned down before its matching is searched, at no step.
+
+    Both changes find what the whole search finds, in fewer steps, where
+    it finds anything: replayed on every exact search the 160 seasons and
+    the 200 round robins with scattered pins of decision 75 made (6,402
+    searches, each on the budget it had), the 2,358 that packed pack the
+    same way, 105 that stopped now pack, and the steps fall from 10.3
+    million to 5.3 million. They change the output only where the whole
+    search ran out, and then the session is packed without a gap where
+    the greedy fallback packed it.
+
+    That is not monotone further on. With a budget below the default, the
+    steps after the packing (the last placement step and the search for
+    fewer gap slots) run on shortened work limits, and a schedule packed
+    better can lead them to place fewer events: on the 1,200 small
+    requests of decision 74, at 2,000 and 300 steps, 92 of 11,948 outcomes
+    came out worse by their own ranking, some with an event fewer placed,
+    and 115 better. So below the default budget the session is searched
+    whole, as before, and those outcomes are the same as before in every
+    assignment (`StepBudget::limitsAreWhole()`). At the default budget
+    none of the 5,974 changes.
+
+    Considered and not taken. A second, event-by-event search that proves
+    there is no packing, or finds one to fall back on, before the
+    placements are tried: it placed what the whole search could not, but
+    finding the cheapest placement needs it to prove that cheaper ones
+    have no packing, which took longer than the search it was to shorten.
+    Searching each slot's matching for odd sets at every node rather than
+    once a placement: more sessions packed, at several times the time of
+    a step.
+
+    *Measured* at the default budget, no objective, on a busy machine:
+
+    | Requests | Version | Placed | Gap slots | Late starts | Stopped budget | Median / 90th percentile / slowest, ms |
+    |---|---|---|---|---|---|---|
+    | Seasons | 0.2.3 | 72,804 of 72,804 | 0 | 0 | 0 | 4 / 12 / 24 |
+    | Seasons | before | 72,804 | 6 | 564 | 83 | 94 / 370 / 1,296 |
+    | Seasons | after | 72,804 | 6 | 680 | 41 | 50 / 346 / 1,313 |
+    | Scattered | before | 53,368 of 53,744 | 414 | 923 | 5 | 250 / 1,291 / 2,375 |
+    | Scattered | after | 53,368 | 414 | 923 | 2 | 255 / 1,280 / 2,351 |
+
+    The scattered requests, the 63 round robins of decision 68 and the
+    settings with current positions of decision 74 come out the same, but
+    for two seasons in progress with fewer gap slots and one with one
+    event fewer moved. 40 of the 160 seasons change: the planned schedule
+    now packs without a gap where it did not, and the later schedules that
+    used to replace it are not made. Events placed and gap slots are the
+    same in every one; late starts, which no ranking counts, rise in 21
+    and fall in 2, because the later schedules happened to have none. A
+    season of 36 with half its rounds pinned (the benchmark
+    `bench36TwoLegsWithLeadingRoundsPinned`) takes 33 ms where it took
+    215 ms; 0.2.3 took 9.
+
+    *Still short of 0.2.3* (#242). The seasons take some 12 times what
+    they took in 0.2.3 at the median (50 ms against 4). Of what is left, about a quarter is the
+    first round layout running to its work limit where pins fill its
+    positions (#238), a sixth the second layout of decision 74, a third
+    the exact search of sessions it still cannot pack in its share (one
+    part of 40 participants with a few hundred thousand placements, or a
+    session of four whole rounds whose slots the matching search cannot
+    decompose in time), and the rest the planner, the structural order
+    and the search for fewer gap slots.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,

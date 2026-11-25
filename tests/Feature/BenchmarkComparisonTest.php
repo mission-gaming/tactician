@@ -167,6 +167,7 @@ describe('The benchmark suite', function (): void {
 
         expect($subjects)->toBe([
             'RepackBench' => [
+                'bench36TwoLegsWithLeadingRoundsPinned',
                 'bench24OnEvenSessions',
                 'bench24OnUnevenSessionsWithPins',
                 'bench40OnEvenSessions',

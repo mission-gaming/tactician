@@ -32,7 +32,9 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * same share of it as the caller's budget is of DEFAULT_STEPS when it is
  * less. So the default budget and any larger one give every such search
  * exactly the work it has always had, and a smaller one shortens all of
- * them in proportion. A repack makes a third instance for the round
+ * them in proportion. limitsAreWhole() says which of the two a budget is,
+ * for a search that does something only where the limits are whole (the
+ * packer's exact search going part by part). A repack makes a third instance for the round
  * layout, with steps that never run out and the caller's budget for the
  * limits. The order of the participants (StructuralOrder) has a work
  * limit too and is given no budget: see there for why.
@@ -172,6 +174,17 @@ final class StepBudget
         }
 
         return intdiv($whole * $this->callersBudget, self::DEFAULT_STEPS);
+    }
+
+    /**
+     * Whether every work limit is whole under this budget: whether the
+     * caller's budget is DEFAULT_STEPS or more. A search that makes a
+     * choice the work limits were not measured with below the default
+     * asks this first.
+     */
+    public function limitsAreWhole(): bool
+    {
+        return $this->callersBudget >= self::DEFAULT_STEPS;
     }
 
     /**

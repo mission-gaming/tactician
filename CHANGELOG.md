@@ -15,6 +15,28 @@ heading **Output change (fix)**.
 
 ### Output change (fix)
 
+- **The packer no longer spends its whole first budget on a season with
+  its first rounds pinned** (#242). The exact search of a session tried
+  every combination of the runs of its separate groups of participants,
+  and on the last sessions of such a season (small groups with one or two
+  events each) its share of the budget ran out though the session packs
+  without a gap. At the default budget and above it now packs each group
+  alone and combines the packings, which is the packing the whole search
+  finds, and turns down a placement no matching can cover before searching
+  it. Wherever the whole search packed a session, the packing is the same;
+  where it ran out, the session is now packed without a gap. On 160
+  seasons of 20 to 40 participants with a fifth or a half of their rounds
+  pinned in order, a stopped budget is reported by 41 where it was by 83,
+  the median time falls from 94 ms to 50 ms (0.2.3 took 4), and 40
+  outcomes change, every one with as many events placed and as many gap
+  slots; the late starts reported rise in 21 of them and fall in 2. Who is
+  affected: callers who repack a season in progress at the default budget
+  or a larger one. Below the default budget nothing changes, and on #162's
+  200 round robins with scattered pins, the 63 round robins of #209, the
+  golden fixtures and the examples, nothing changes either; of 1,280
+  outcomes of requests with current positions under four settings of the
+  objectives, 3 are better by their own ranking and the rest the same.
+
 - **A season with its first rounds pinned in order is repacked without the
   gap slots 0.2.3 did not leave** (#238). The round layout of a repack
   counted the positions its pins fill among its rounds; where the rounds
