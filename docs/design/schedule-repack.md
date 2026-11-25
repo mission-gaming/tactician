@@ -1921,10 +1921,12 @@ sides (#231). They follow decisions 66 to 69.
     large ones the schedule turned down rarely polishes past the one
     kept, and the extra polish costs a few per cent of the time.
 
-## Rounds on the positions with room (0.4.0)
+## More schedules for hard requests (0.4.0)
 
-A decision made when seasons with their first rounds pinned in order were
-found to leave gap slots that 0.2.3 did not (#238).
+Decisions made when seasons with their first rounds pinned in order were
+found to leave gap slots that 0.2.3 did not (#238), and when requests
+with scattered pins were brought closer to the events 0.2.3 placed
+(#162).
 
 74. **The rounds are laid out a second time, on the positions with room,
     as a fourth schedule.** The round layout (`RoundColouring`) works
@@ -2007,6 +2009,68 @@ found to leave gap slots that 0.2.3 did not (#238).
     took in 0.2.3, and the budget is still reported stopped on 83 of
     them, because the session packer of the planned schedule spends the
     whole first budget there. That is the time half of #162.
+
+75. **Where events are still short of the ceiling, they are planned once
+    more in a scrambled order.** On #162's 200 round robins with scattered
+    pins (16 to 40 participants, an eighth to a half of the events pinned
+    at random legal positions, a grid exactly full or with one spare
+    position), 0.4.0 so far placed fewer events than 0.2.3 on 8 requests,
+    by 1 or 2 each. No single order of the events is the best one, and
+    the last placement step (`LeftoverRecolourer`), which places what the
+    planner and the packer left over, finds other room from another
+    start. So where the schedule in hand, after the fourth, still places
+    fewer events than the ceiling of that step, `solve()` plans the events
+    once more, in an order scrambled from the order of the rounds: each
+    event's place in it times 2,654,435,761 (2^32 over the golden ratio),
+    modulo 4,294,967,291 (the largest prime below 2^32), ascending. That
+    spreads the events of a round over the whole list. The order is fixed
+    and made from the order of the rounds, so it depends on the ids no
+    more than they do. It is a fifth schedule, made on what the two
+    budgets have left, with no search for fewer gap slots of its own, and
+    returned on the third's terms. As with the fourth, only the schedule
+    every outcome is held to is offered it. A request whose events are all
+    placed never reaches it, so the seasons of decision 74 pay nothing.
+
+    Considered and not taken. A sixth and a seventh order (the round
+    order reversed, other multipliers) placed nothing more: by then the
+    recolourer's work limit is spent. A floor of 500,000 checks (0.2.3's
+    fixed limit) under the recolourer's limit at every budget, with the
+    fifth schedule, placed 52,982 events at 2,000 steps, above 0.2.3's
+    total at that budget, but left 11 requests short and took the median
+    from 17 ms to 280 ms, which defeats a small budget. It was not taken.
+
+    *Measured* at the default budget, no objective, times as proportions,
+    with the 0.2.3 figures from the same corpus run on its own:
+
+    | Requests | Version | Placed | Gap slots | Stopped budget | Median / 90th percentile / slowest, ms |
+    |---|---|---|---|---|---|
+    | Scattered | 0.2.3 | 53,002 of 53,744 | 888 | 0 | 34 / 123 / 173 |
+    | Scattered | before | 53,299 | 445 | 5 | 248 / 1,034 / 1,836 |
+    | Scattered | after | 53,368 | 414 | 5 | 252 / 1,290 / 2,344 |
+    | Scattered at 2,000 steps | 0.2.3 | 52,637 | 1,048 | 138 | 19 / 39 / 52 |
+    | Scattered at 2,000 steps | before | 51,916 | 1,151 | 200 | 21 / 47 / 71 |
+    | Scattered at 2,000 steps | after | 52,027 | 1,137 | 200 | 24 / 52 / 78 |
+    | Seasons (decision 74) | before and after | 72,804 of 72,804 | 6 | 83 | 100 / 384 / 1,377 and 101 / 375 / 1,426 |
+
+    At the default budget 24 requests place more events than before and
+    none fewer, and 3 more place as many with fewer gap slots. Of the 8
+    that were short of 0.2.3, 4 now reach it (seeds 4, 51, 55 and 182).
+    The seasons come out the same in every assignment, and so do the 63
+    round robins of decision 68. With current positions under the four
+    settings of decision 74, nothing is worse by its own ranking, and one
+    round robin with scattered pins places two more events with no
+    objective and one ahead.
+
+    *Still short* (#162). At the default budget, 4 requests place fewer
+    events than 0.2.3 did: seeds 47 (414 against 415), 64 (260 against
+    261), 77 (152 against 153) and 161 (361 against 363). More orders do
+    not reach them. That seems to need the recolourer itself to find what
+    0.2.3's order found by luck. At 2,000 steps the corpus places 52,027
+    events against 0.2.3's 52,637, because the recolourer's limit is a
+    share of the budget there (some 10,000 position checks, where 0.2.3
+    had a fixed 500,000). The scattered requests also take several times
+    what they took in 0.2.3, and the fifth schedule adds to the slowest
+    ones (100 to 300 ms each, on requests below the ceiling).
 
 ## Testing
 
