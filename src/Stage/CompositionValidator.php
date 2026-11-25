@@ -54,17 +54,25 @@ final readonly class CompositionValidator
      *   of whom meet in the first round of any bracket;
      * - the winners or the losers of the last round (a match-outcome
      *   selector) are counted from the entrants of the stage before. By
-     *   default that stage is one knockout round of all its entrants: half
-     *   of them go on, rounded up for winners (the bye goes on) and down for
-     *   losers. A transition built with `afterWholeBracket: true` says that
-     *   the stage plays a whole bracket, whose last round is the final: the
-     *   selection is 1 participant, winner or loser, whatever the size of
-     *   the field, and also where that round holds a third-place tie, which
-     *   the selector does not read. A stage needs 2 entrants, so such a
+     *   default that stage is one knockout round of all its entrants,
+     *   paired as the elimination engines pair the first round of a
+     *   bracket: byes fill the field up to the next power of two, so half
+     *   of that power goes on (the winners of the ties and the entrants
+     *   with a bye) and one loser of each tie goes out. 5 entrants give 4
+     *   winners and 1 loser, 16 give 8 and 8. A transition built with
+     *   `afterWholeBracket: true` says that the stage plays a whole
+     *   bracket, whose last round is the final: the selection is 1
+     *   participant, winner or loser, whatever the size of the field, and
+     *   also where that round holds a third-place tie, which the selector
+     *   does not read. A stage needs 2 entrants, so such a
      *   transition is always reported: one match-outcome selection cannot
      *   fill the stage after a whole bracket;
      * - a yield that depends on the outcome passes unchecked, and so does a
-     *   transition with no selector, apart from its declared entrant count.
+     *   transition with no selector, apart from its declared entrant count;
+     * - a transition whose stage before declares fewer than 2 entrants,
+     *   which is reported for that stage, is not counted: no yield is
+     *   computed from a count already reported, so the one mistake is
+     *   reported once.
      *
      * @param int $initialEntrants Entrants of the first stage
      * @param array<StageTransition> $transitions Each subsequent stage, in order
@@ -102,7 +110,9 @@ final readonly class CompositionValidator
                 );
             }
 
-            $yield = $transition->selector?->getYield()->countFrom($entrants, $pools, $transition->afterWholeBracket);
+            $yield = $entrants < 2
+                ? null
+                : $transition->selector?->getYield()->countFrom($entrants, $pools, $transition->afterWholeBracket);
             if ($yield !== null && $yield !== $transition->expectedEntrants) {
                 $violations[] = sprintf(
                     "Stage '%s' expects %d entrants but its selection yields %d from the previous stage's %d.",

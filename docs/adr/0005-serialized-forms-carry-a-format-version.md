@@ -192,6 +192,13 @@ Such a change:
    two forms that have one, and of the arrays the tests of the form expect
    for every other form.
 
+A new identifier among the values an existing key takes is not such a
+change, and the form stays in its version: every array written before reads
+as it did, and an earlier release refuses an array that holds the new
+identifier as an unknown identifier, loudly, and never misreads it, as with
+`balanced_where_possible` above (0.4.0 added `fewest_gap_slots` and
+`fewest_lone_participant_sessions` to the objectives of repack options so).
+
 An earlier version stops being read only in a major release, and the
 changelog of that release says so.
 
