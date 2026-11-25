@@ -34,7 +34,7 @@ there is not repeated here.
 | [0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md) | Classes are final, and the interfaces are the extension points (amends 0009 and 0014) |
 | [0023](0023-a-declared-timezone-is-a-region-or-an-offset.md) | A declared timezone is a region or an offset, never an abbreviation |
 | [0024](0024-a-kickoff-is-written-with-its-fraction-of-a-second.md) | A kickoff is written with its fraction of a second |
-| [0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md) | A round drawn by hand is read as drawn: a withdrawn entrant it leaves alone holds no place, and a last round's marked ties are its final and third-place tie (narrows 0007) |
+| [0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md) | A round drawn by hand is read as drawn: a withdrawn entrant it leaves alone holds no place, a last round's marked ties are its final and third-place tie, and an entrant who has gone out is not brought back (narrows 0007) |
 | [0026](0026-only-a-winners-tie-its-results-decided-drops-its-loser.md) | Only a winners tie its results decided drops its loser to the losers bracket (narrows 0011) |
 
 ## Adding a record

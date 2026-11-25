@@ -100,9 +100,9 @@ heading **Output change (fix)**.
   entrants. What to check: such a chain reports one violation fewer. No
   golden fixture changed.
 
-The next two entries of this section come from one decision: **a round drawn by
+The next three entries of this section come from one decision: **a round drawn by
 hand is read as drawn** (ADR 0025,
-`docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). Neither raises
+`docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). None of them raises
 the version of an engine fingerprint: the cases are narrow and were read
 wrongly, and a new version would refuse the stamps of every bracket.
 
@@ -139,6 +139,25 @@ wrongly, and a new version would refuse the stamps of every bracket.
   read as before. Who is affected: a bracket with a third-place tie whose
   last round was drawn by hand. What to check: `isComplete()`, the outcome
   and the table of such a state.
+- **A round drawn by hand does not bring back an entrant who has gone
+  out** (#230). A recorded tie was read as a tie of the round where one of
+  its two was in the round, whoever the other was: eight entrants, round 2
+  drawn by hand as `p8 v p1` and `p2 v p3` after p1 beat p8 in round 1,
+  and p8 went on when it won and was paired again (`p8 v p4; byes p2`). A
+  tie marked `BracketTie::ThirdPlace` was the third-place tie whoever it
+  held, so two quarterfinal losers could be placed third and fourth. Now a
+  tie between an entrant of the round and one who went out earlier (in
+  double elimination, out of the stage) is given to the entrant of the
+  round, whatever its results: the next round there is `p1 v p4; byes p2`,
+  and p8 stays level with the others who went out in round 1. The bracket
+  view shows the tie as `Uncontested`, naming only the entrant of the round.
+  A tie marked as the third-place tie between two who went out earlier is
+  no tie of the bracket, as any such tie. In single elimination, one who
+  went out and is drawn in the place of an entrant who had withdrawn (a
+  lucky loser) is read in that place, as before, so a round 0.2.3 drew
+  again after a withdrawal reads as it did. Who is affected: a bracket with
+  a round drawn by hand that names an entrant who went out earlier. What to
+  check: the round paired after it, the bracket view and the table.
 - **In double elimination, the withdrawn loser of a winners tie drops
   nobody to the losers bracket** (#182). A winners tie given away because
   one entrant withdrew used to drop that entrant, and the losers tie it

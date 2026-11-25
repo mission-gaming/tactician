@@ -393,3 +393,212 @@ describe('a last round drawn by hand across the final and the third-place tie (i
             ->and(handDrawnShape($engine->pairNextRound($state)))->toBe('p1 v p2, p4 v p3');
     });
 });
+
+describe('a round drawn by hand with an entrant who has gone out (issue #230)', function (): void {
+    /**
+     * Eight entrants in single elimination, round 1 played as paired with
+     * the first-named winning: p1, p4, p2 and p3 go on, p8, p5, p7 and p6
+     * go out.
+     *
+     * @return array{SingleEliminationEngine, StageState, array<string, Participant>}
+     */
+    $afterTheFirstRound = static function (EliminationOptions $options = new EliminationOptions()): array {
+        $field = handDrawnField(8);
+        $engine = new SingleEliminationEngine($options);
+        $state = StageState::start(array_values($field));
+        $first = $engine->pairNextRound($state);
+        expect(handDrawnShape($first))->toBe('p1 v p8, p4 v p5, p2 v p7, p3 v p6');
+
+        return [$engine, $state->withRoundPlayed($first, handDrawnFirstWins($first->getEvents())), $field];
+    };
+
+    it('gives the tie to the entrant who is in the round, and keeps the one who went out out', function (string $firstNamed, string $secondNamed) use ($afterTheFirstRound): void {
+        [$engine, $state, $field] = $afterTheFirstRound();
+
+        // Given: Round 2 drawn by hand as p8 v p1 and p2 v p3: p8 went out
+        // in round 1, and p4 is in no tie. The first-named wins, whichever
+        // that is
+        $second = new RoundPairing(2, 'semifinal', [
+            new Event([$field[$firstNamed], $field[$secondNamed]], new Round(2)),
+            new Event([$field['p2'], $field['p3']], new Round(2)),
+        ]);
+        $state = $state->withRoundPlayed($second, handDrawnFirstWins($second->getEvents()));
+
+        // Then: p1 goes on, and so does p4, alone in its slots; p8 is paired
+        // no more and stays level with the others who went out in round 1.
+        // Before, p8 went on when it won, to 'p8 v p4; byes p2'
+        $tiers = handDrawnTiers($engine, $state);
+        expect(handDrawnShape($engine->pairNextRound($state)))->toBe('p1 v p4; byes p2')
+            ->and($engine->getRecordedRounds($state)[1]->isManual())->toBeTrue()
+            ->and([$tiers['p8'], $tiers['p5'], $tiers['p6']])->toBe([$tiers['p7'], $tiers['p7'], $tiers['p7']])
+            ->and($tiers['p1'])->toBe(0);
+
+        // And the result of the tie is a result all the same: the table
+        // counts it (p1's win of round 1, and the win of round 2)
+        $wins = [];
+        foreach ($engine->getStandings($state)->getEntries() as $entry) {
+            $wins[$entry->getParticipant()->getId()] = $entry->getWins();
+        }
+        expect($wins['p1'] + $wins['p8'])->toBe(2)
+            ->and($wins[$firstNamed])->toBeGreaterThanOrEqual(1);
+
+        // And the view shows the tie given to p1, who alone is in it
+        $node = $engine->getBracket($state)->getRounds()[1]->getNodes()[0];
+        expect($node->getStatus())->toBe(BracketNodeStatus::Uncontested)
+            ->and(array_map(static fn(Participant $participant): string => $participant->getId(), $node->getParticipants()))->toBe(['p1'])
+            ->and($node->getAdvancer()?->getId())->toBe('p1')
+            ->and($node->getLosers())->toBe([])
+            ->and($node->getEvents())->toHaveCount(1);
+    })->with([
+        'the one who went out wins' => ['p8', 'p1'],
+        'the one in the round wins' => ['p1', 'p8'],
+    ]);
+
+    it('reads the tie of one who went out in the place of an entrant who had withdrawn as any tie', function () use ($afterTheFirstRound): void {
+        [$engine, $state, $field] = $afterTheFirstRound();
+
+        // Given: p4 withdraws after round 1, and round 2 is drawn by hand
+        // with p5, whom p4 beat, in its place against p1: a lucky loser
+        $state = $state->withoutParticipant($field['p4']);
+        $second = new RoundPairing(2, 'semifinal', [
+            new Event([$field['p5'], $field['p1']], new Round(2)),
+            new Event([$field['p2'], $field['p3']], new Round(2)),
+        ]);
+        $state = $state->withRoundPlayed($second, handDrawnFirstWins($second->getEvents()));
+
+        // Then: p5 beat p1 and plays the final
+        expect(handDrawnShape($engine->pairNextRound($state)))->toBe('p5 v p2')
+            ->and($engine->getRecordedRounds($state)[1]->isManual())->toBeTrue();
+    });
+
+    // The lucky loser is read from recorded facts alone: the same rounds,
+    // results and withdrawal supplied in another order read the same.
+    it('reads the lucky loser the same from a history supplied in another order', function () use ($afterTheFirstRound): void {
+        [$engine, $state, $field] = $afterTheFirstRound();
+        $state = $state->withoutParticipant($field['p4']);
+        $second = new RoundPairing(2, 'semifinal', [
+            new Event([$field['p5'], $field['p1']], new Round(2)),
+            new Event([$field['p2'], $field['p3']], new Round(2)),
+        ]);
+        $state = $state->withRoundPlayed($second, handDrawnFirstWins($second->getEvents()));
+
+        $fromRows = StageState::fromHistory(
+            array_values($field),
+            array_reverse($state->getRoundsPlayed()),
+            array_reverse($state->getResults()),
+            [new Withdrawal($field['p4'], 1)]
+        );
+
+        expect(handDrawnShape($engine->pairNextRound($fromRows)))->toBe('p5 v p2')
+            ->and(handDrawnTiers($engine, $fromRows))->toBe(handDrawnTiers($engine, $state))
+            ->and($engine->getBracket($fromRows))->toEqual($engine->getBracket($state));
+    });
+
+    // The exception is for an entrant who had withdrawn when the round was
+    // paired. Where the entrant left only after the round, it was still in
+    // the bracket when the round was drawn, so the one who went out took
+    // nobody's place: the tie is given to the entrant of the round.
+    it('reads no lucky loser in the place of an entrant who withdrew only after the round', function () use ($afterTheFirstRound): void {
+        [$engine, $state, $field] = $afterTheFirstRound();
+        $second = new RoundPairing(2, 'semifinal', [
+            new Event([$field['p5'], $field['p1']], new Round(2)),
+            new Event([$field['p2'], $field['p3']], new Round(2)),
+        ]);
+        $state = StageState::fromHistory(
+            array_values($field),
+            [...$state->getRoundsPlayed(), $second],
+            [...$state->getResults(), ...handDrawnFirstWins($second->getEvents())],
+            [new Withdrawal($field['p4'], 2)]
+        );
+
+        // Then: p5 is paired no more and stays level with the others who
+        // went out in round 1; the tie with p1 is given to p1
+        $tiers = handDrawnTiers($engine, $state);
+        $next = $engine->pairNextRound($state);
+        $named = $next->getByes();
+        foreach ($next->getEvents() as $event) {
+            $named = [...$named, ...$event->getParticipants()];
+        }
+        $node = $engine->getBracket($state)->getRounds()[1]->getNodes()[0];
+        expect(array_map(static fn(Participant $participant): string => $participant->getId(), $named))->not->toContain('p5')
+            ->and([$tiers['p5'], $tiers['p6'], $tiers['p8']])->toBe([$tiers['p7'], $tiers['p7'], $tiers['p7']])
+            ->and($node->getStatus())->toBe(BracketNodeStatus::Uncontested)
+            ->and($node->getAdvancer()?->getId())->toBe('p1');
+    });
+
+    it('reads a third-place tie with one who went out earlier as given to the entrant who is in it', function () use ($afterTheFirstRound): void {
+        [$engine, $state, $field] = $afterTheFirstRound(new EliminationOptions(thirdPlace: true));
+        $semifinals = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($semifinals, handDrawnFirstWins($semifinals->getEvents()));
+        expect(handDrawnShape($engine->pairNextRound($state)))->toBe('p1 v p2, p4 v p3');
+
+        // Given: The third-place tie is drawn by hand as p8 v p4: p8 went
+        // out in round 1, and p3 is in no tie
+        $last = new RoundPairing(3, 'final', [
+            new Event([$field['p1'], $field['p2']], new Round(3), [BracketTie::METADATA_KEY => BracketTie::Final->value]),
+            new Event([$field['p8'], $field['p4']], new Round(3), [BracketTie::METADATA_KEY => BracketTie::ThirdPlace->value]),
+        ]);
+        $state = $state->withRoundPlayed($last, handDrawnFirstWins($last->getEvents()));
+
+        // Then: The bracket is over, p4 third and p3 fourth, and p8 stays
+        // with the others who went out in round 1. Before, p8 was third
+        $tiers = handDrawnTiers($engine, $state);
+        expect($engine->isComplete($state))->toBeTrue()
+            ->and([$tiers['p1'], $tiers['p2'], $tiers['p4'], $tiers['p3']])->toBe([0, 1, 2, 3])
+            ->and([$tiers['p8'], $tiers['p5'], $tiers['p6']])->toBe([$tiers['p7'], $tiers['p7'], $tiers['p7']])
+            ->and($tiers['p7'])->toBe(4)
+            ->and($engine->getBracket($state)->getRounds()[2]->getNodes()[1]->getStatus())->toBe(BracketNodeStatus::Uncontested);
+    });
+
+    it('reads a third-place tie between two who went out earlier as no tie of the bracket', function () use ($afterTheFirstRound): void {
+        [$engine, $state, $field] = $afterTheFirstRound(new EliminationOptions(thirdPlace: true));
+        $semifinals = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($semifinals, handDrawnFirstWins($semifinals->getEvents()));
+
+        // Given: The tie marked as the third-place tie is between p8 and
+        // p5, who went out in round 1
+        $last = new RoundPairing(3, 'final', [
+            new Event([$field['p1'], $field['p2']], new Round(3), [BracketTie::METADATA_KEY => BracketTie::Final->value]),
+            new Event([$field['p8'], $field['p5']], new Round(3), [BracketTie::METADATA_KEY => BracketTie::ThirdPlace->value]),
+        ]);
+        $state = $state->withRoundPlayed($last, handDrawnFirstWins($last->getEvents()));
+
+        // Then: The round holds no third-place tie: the final ends the
+        // bracket, p4 and p3 share the tier below it, and p8 and p5 stay
+        // with the others who went out in round 1. Before, p8 and p5 were
+        // third and fourth
+        $tiers = handDrawnTiers($engine, $state);
+        expect($engine->isComplete($state))->toBeTrue()
+            ->and([$tiers['p1'], $tiers['p2'], $tiers['p4'], $tiers['p3']])->toBe([0, 1, 2, 2])
+            ->and([$tiers['p8'], $tiers['p5'], $tiers['p6'], $tiers['p7']])->toBe([3, 3, 3, 3])
+            ->and($engine->getBracket($state)->getRounds()[2]->getNodes()[1]->getStatus())->toBe(BracketNodeStatus::NotPlayed);
+    });
+
+    it('gives a losers tie of double elimination with one who went out to the entrant who is in the stage', function (): void {
+        // Given: Seven entrants, the first-named winning: p6 goes out in
+        // round 2 (losers round 1), p4 and p3 drop in round 3, and p7
+        // withdraws, which gives p4 a bye in losers round 2
+        $field = handDrawnField(7);
+        $engine = new DoubleEliminationEngine();
+        $state = StageState::start(array_values($field));
+        for ($round = 0; $round < 3; ++$round) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, handDrawnFirstWins($pairing->getEvents()));
+        }
+        $state = $state->withoutParticipant($field['p7']);
+        $losersRound = $engine->pairNextRound($state);
+        expect(handDrawnShape($losersRound))->toBe('p3 v p5; byes p4');
+
+        // When: The round is drawn by hand with p6 against p4, and p6 wins
+        $drawn = new RoundPairing(4, $losersRound->getLabel(), [
+            ...array_values($losersRound->getEvents()),
+            new Event([$field['p6'], $field['p4']], new Round(4)),
+        ]);
+        $state = $state->withRoundPlayed($drawn, handDrawnFirstWins($drawn->getEvents()));
+
+        // Then: p4 goes on to losers round 3, and p6 is paired no more.
+        // Before, p6 went on in p4's place
+        expect(handDrawnShape($engine->pairNextRound($state)))->toBe('p3 v p4')
+            ->and($engine->getRecordedRounds($state)[3]->isManual())->toBeTrue();
+    });
+});
