@@ -51,6 +51,42 @@ describe('SeedProtectionConstraint', function (): void {
             ->and($constraint->isSatisfied(new Event([$copies[0], $copies[2]], new Round(2)), $context))->toBeTrue();
     });
 
+    // The class docblock's rule: the lowest seeds, unseeded participants
+    // never, a tie in list order. The fields are drawn with few distinct
+    // seeds, so that ties at the cut are common, and with unseeded
+    // participants and participants listed out of seed order.
+    it('protects the lowest seeds, unseeded never, ties in list order', function (): void {
+        $randomizer = new Random\Randomizer(new Random\Engine\Xoshiro256StarStar(250));
+
+        for ($case = 0; $case < 400; ++$case) {
+            $size = $randomizer->getInt(2, 12);
+            $protect = $randomizer->getInt(1, 5);
+            $participants = [];
+            for ($i = 0; $i < $size; ++$i) {
+                $seed = $randomizer->getInt(0, 3) === 0 ? null : $randomizer->getInt(1, 4);
+                $participants[] = new Participant("p{$i}", "P {$i}", $seed);
+            }
+
+            // The rule, stated as a sort: stable, so ties keep list order
+            $seeded = array_values(array_filter($participants, fn(Participant $p): bool => $p->getSeed() !== null));
+            usort($seeded, fn(Participant $a, Participant $b): int => $a->getSeed() <=> $b->getSeed());
+            $top = array_map(fn(Participant $p): string => $p->getId(), array_slice($seeded, 0, $protect));
+
+            $constraint = new SeedProtectionConstraint($protect, 1.0);
+            $context = roundRobinContext($participants);
+            foreach ($participants as $first) {
+                foreach ($participants as $second) {
+                    if ($first === $second) {
+                        continue;
+                    }
+                    $bothTop = in_array($first->getId(), $top, true) && in_array($second->getId(), $top, true);
+                    expect($constraint->isSatisfied(new Event([$first, $second], new Round(1)), $context))
+                        ->toBe(!$bothTop, "case {$case}: {$first->getId()} and {$second->getId()}");
+                }
+            }
+        }
+    });
+
     it('uses the plan bye-aware rounds per leg for odd fields', function (): void {
         $participants = [];
         for ($i = 1; $i <= 5; ++$i) {
