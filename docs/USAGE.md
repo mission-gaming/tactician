@@ -7106,6 +7106,13 @@ not only break ties with it:
   around the gaps and the lone participant-sessions. A list such as
   `[LeastChurn, FewestGapSlots]` leaves a schedule that has nothing
   wrong with it but its gaps where it is.
+- **Both sides of a choice.** Where the search for fewer gap slots finds
+  a schedule that ranks worse than the one it started from (it closed a
+  gap at the price of something ranked ahead of gap slots), or better,
+  the other of the two is not thrown away: the repairs of the tie-break
+  run on it too, with what the budget has left, and it is returned where
+  it then ranks better. A choice made before the repairs can turn down
+  the schedule they would have made the best.
 
 **What it gives.** On every complete single round robin of 4 to 24
 participants with nothing pinned, on sessions of four slots and from the
