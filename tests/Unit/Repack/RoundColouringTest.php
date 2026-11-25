@@ -291,6 +291,28 @@ describe('RoundColouring', function (): void {
         assertRoundsAreProper($edges, $positions);
     })->with(range(1, 20));
 
+    it('lays the rounds past a position its pins fill in the middle of the grid', function (): void {
+        // Two sessions of three slots, two events to a slot, and the second
+        // slot of the first session full of two pinned events between
+        // participants from outside. The round robin of four needs three
+        // rounds, and on the positions with room they are the first, the
+        // third and the fourth (0:0, 0:2, 1:0): round k of an event is the
+        // k-th of those, not the k-th position of the grid. In pair order
+        // the events start at rounds 1, 2, 0, 0, 1 and 2; 1-3 finds round 1
+        // taken by 0-1 and goes on to round 2, and 2-3 finds rounds 2 and 0
+        // full and goes on to round 1. No search is needed
+        $edges = roundRobinPairs(4);
+        $pinSlots = [0 => [20 => [1], 21 => [1], 22 => [1], 23 => [1]]];
+        $pinCounts = [0 => [1 => 2]];
+        $onRoom = new StepBudget(PHP_INT_MAX);
+
+        $positions = RoundColouring::of($edges, $pinSlots, $pinCounts, [3, 3], 2, $onRoom, true);
+
+        expect($positions)->toBe([[0, 2], [1, 0], [0, 0], [0, 0], [1, 0], [0, 2]])
+            ->and($onRoom->stoppedASearch())->toBeFalse();
+        assertRoundsAreProper($edges, $positions);
+    });
+
     it('has no place for an event where pins fill every position', function (): void {
         $positions = RoundColouring::of([[0, 1], [2, 3]], [0 => [4 => [0, 1], 5 => [0, 1]]], [0 => [0 => 1, 1 => 1]], [2], 1, new StepBudget(PHP_INT_MAX), true);
 
