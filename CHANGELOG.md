@@ -13,6 +13,8 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
 ### Output change (fix)
 
 - **A pre-drawn Swiss schedule of a field of odd size gives nobody a second
@@ -283,7 +285,11 @@ wrongly, and a new version would refuse the stamps of every bracket.
   from a winners tie. What to check: the losers bracket of the view and
   the bye counts of the table.
 
-No golden fixture changed.
+One golden fixture changed, with the entry on the packer's budget above
+(#242): `tests/Fixtures/golden/examples/29-rescheduling-with-least-churn.txt`,
+whose repack with no objective moves 8 games where it moved 12. The entries
+on rounds drawn by hand and on the withdrawn loser of a winners tie change
+none.
 
 ### Added
 
@@ -368,7 +374,9 @@ No golden fixture changed.
   has exactly one event, pinned events counted, where that event is a
   movable one, summed over the participants. `RepackOutcome`'s
   constructor takes it as an eighth argument, `loneParticipantSessions`
-  (0 when left out; a negative count is refused).
+  (0 when left out; a negative count is refused). Both new cases are added
+  to an enum of the stable `Repack` namespace: a `match` over
+  `RepackObjective` with no `default` arm needs an arm for each.
 
 ### Changed
 
@@ -411,7 +419,7 @@ No golden fixture changed.
   made by `DateInterval::createFromDateString()` is still held to the
   limit on steps of such an interval, 100,001 slots.
 
-- **A declared timezone that is an abbreviation is refused** (#151, ADR
+- **Breaking: a declared timezone that is an abbreviation is refused** (#151, ADR
   0023, `docs/adr/0023-a-declared-timezone-is-a-region-or-an-offset.md`).
   The `timezone` of `TimelineDefinition::fromArray()`,
   `SessionGrid::fromArray()` and each window of `BlackoutRule::fromArray()`
@@ -431,18 +439,18 @@ No golden fixture changed.
   or `GMT` meant as London: the kickoffs of the half of the year the
   abbreviation was wrong for move by the hour), or the offset itself
   (`+01:00`), which keeps every kickoff as it was.
-- **`toArray()` refuses a start held in a timezone abbreviation.**
+- **Breaking: `toArray()` refuses a start held in a timezone abbreviation.**
   `TimelineDefinition::toArray()` and `SessionGrid::toArray()` wrote the
   name of the start's timezone, and for a start built in code in an
   abbreviation (`new DateTimeZone('BST')`, or a string that ends in one)
   that is a name `fromArray()` now refuses. They refuse it instead, with
   the reason `NotSerializable`, as they refuse an interval that would not
   read back; the definition and the grid themselves work with such a start
-  as before. Build the start in a region identifier or an offset where the
-  configuration is stored. `BlackoutRule::toArray()` writes its bounds in
+  as before. To migrate, build the start in a region identifier or an
+  offset where the configuration is stored. `BlackoutRule::toArray()` writes its bounds in
   UTC and is not affected.
 
-- **Repack outcomes are format version 2.** `toArray()` writes
+- **Breaking: repack outcomes are format version 2.** `toArray()` writes
   `'format_version' => 2`, and `metrics` holds `lone_participant_sessions`
   after `lone_event_sessions`. An outcome's array has no `fromArray()`;
   code that reads the array it stored should expect the new key. Repack
@@ -451,7 +459,7 @@ No golden fixture changed.
   that name neither new objective, and refuses options that name
   `fewest_gap_slots` or `fewest_lone_participant_sessions` as an unknown
   identifier (`InvalidConfigurationException`, reason `UnknownIdentifier`).
-- **Below the default budget a repack can spend up to four times
+- **Breaking: below the default budget a repack can spend up to four times
   `stepBudget`, where it spent at most twice** (#244). The rounds laid on
   the positions with room and the events planned in a scrambled order
   are made there on copies of what each of the two budgets has left, and
@@ -459,8 +467,16 @@ No golden fixture changed.
   leaves the steps after it as many as they would have without it. At
   the default budget and above the bound is still twice `stepBudget`.
   Who is affected: callers who size `stepBudget` below the default to
-  bound the work of a repack. The usage guide ("The Step Budget") and the
-  `RepackOptions` docblock state the new bound.
+  bound the work of a repack. To migrate, halve such a budget to keep the
+  bound on the work that it set (the outcome can then differ). The usage
+  guide ("The Step Budget") and the `RepackOptions` docblock state the new
+  bound.
+
+- The development tools are updated: `ergebnis/composer-normalize` 2.56.0,
+  `friendsofphp/php-cs-fixer` 3.95.29, `phpstan/phpstan` 2.3.5,
+  `phpstan/phpstan-strict-rules` 2.1.1 and `rector/rector` 2.8.4, with the
+  unused parameter of a test helper that Rector 2.8 reports removed.
+  Development dependencies only; no output and no public signature changes.
 
 ### Fixed
 
@@ -540,14 +556,6 @@ No golden fixture changed.
   ended at the bound where a budget below the default used to stop it
   instead (19 of the 6,000 small requests at 100 steps and 3 at 2,000; never
   the other way).
-- The `Benchmarks` job installs the benchmark runner again. Composer refused
-  the runner's lock file (`tools/phpbench/composer.lock`) over a security
-  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
-  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
-  pinned to. The library's own development lock file (`composer.lock`) takes
-  the same release, so the `Dependency audit` job passes again. Tooling and
-  development dependencies only; no output and no public signature changes.
-
 - A warning PHP raises while it compiles a file now fails the suite. A
   test file without a namespace imported `Override`, which PHP 8.4 and 8.5
   warn has no effect; the warning is raised when Pest loads the file,
@@ -557,14 +565,6 @@ No golden fixture changed.
   `src/`, `tests/` and `examples/` with `php -l` under the PHP that runs
   the suite and fails on anything it says besides "No syntax errors
   detected" (#221). Test suite only; the library is unchanged.
-
-- The `Benchmarks` job installs the benchmark runner again. Composer refused
-  the runner's lock file (`tools/phpbench/composer.lock`) over a security
-  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
-  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
-  pinned to. The library's own development lock file (`composer.lock`) takes
-  the same release, so the `Dependency audit` job passes again. Tooling and
-  development dependencies only; no output and no public signature changes.
 
 - The `round robin` shard of the `Mutation testing` workflow is split by
   mutator set into five shards (`round robin, numbers and returns`,
@@ -6441,7 +6441,8 @@ PHP 8.3+.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
-[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mission-gaming/tactician/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mission-gaming/tactician/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/mission-gaming/tactician/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mission-gaming/tactician/compare/v0.2.1...v0.2.2

@@ -137,7 +137,9 @@ the last one, which is about the library as a whole.
   [recording which engine pairs a state](docs/USAGE.md#recording-which-engine-pairs-a-state)
 - **Timeline assignment**: kickoff times and named resources for every event
   from a declarative slot pattern, with minimum-rest and blackout rules.
-  Kickoffs are emitted in UTC.
+  Kickoffs are emitted in UTC, and the slot times of any round can be read
+  from the pattern. A declared timezone is a region or an offset, never an
+  abbreviation.
   [Timeline assignment](docs/USAGE.md#timeline-assignment)
 - **Schedule repacking**: existing events, some of them pinned, placed onto an
   irregular grid of sessions so that nobody is double-booked and each
@@ -146,11 +148,13 @@ the last one, which is about the library as a whole.
   given without times and with no limit on the events in a slot, and an
   outcome has a fingerprint that tells whether a plan computed again is the
   plan that was shown. An outcome also carries the figures to rank it by
-  (events unplaced, gap slots, lone-event sessions, idle sessions, events
-  moved); a repack can be asked to move as few events as it can from where
-  they are, and a helper finds the fewest sessions that place everything.
+  (events unplaced, gap slots, lone-event sessions, lone participant-sessions,
+  idle sessions, events moved); a repack can be asked to move as few events
+  as it can from where they are, an objective can be ranked ahead of gap
+  slots, and a helper finds the fewest sessions that place everything.
   [Schedule repacking](docs/USAGE.md#schedule-repacking),
   [objectives](docs/USAGE.md#objectives),
+  [objectives ahead of gap slots](docs/USAGE.md#objectives-ahead-of-gap-slots),
   [the shortest grid](docs/USAGE.md#the-shortest-grid),
   [grids without instants](docs/USAGE.md#grids-without-instants),
   [unbounded capacity](docs/USAGE.md#unbounded-capacity),
