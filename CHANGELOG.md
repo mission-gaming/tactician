@@ -459,6 +459,27 @@ No golden fixture changed.
   the suite and fails on anything it says besides "No syntax errors
   detected" (#221). Test suite only; the library is unchanged.
 
+- The `Benchmarks` job installs the benchmark runner again. Composer refused
+  the runner's lock file (`tools/phpbench/composer.lock`) over a security
+  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
+  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
+  pinned to. The library's own development lock file (`composer.lock`) takes
+  the same release, so the `Dependency audit` job passes again. Tooling and
+  development dependencies only; no output and no public signature changes.
+
+- The `round robin` shard of the `Mutation testing` workflow is split by
+  mutator set into five shards (`round robin, numbers and returns`,
+  `round robin, removals and arrays`, `round robin, control structures and
+  strings`, `round robin, logic`, `round robin, equality and arithmetic`).
+  The round robin scheduler is one file with some 1,350 of the shard's
+  changes. After the round robin engine's tests joined the run and doubled
+  the time of each test process, the shard was stopped at its 170-minute
+  limit three weeks running, with no score. Each new shard makes the
+  changes of the sets it names, and the last makes the rest of Pest's
+  default set; together they make each change once, and
+  `tests/Feature/CiConfigurationTest.php` now checks that for every file
+  (#222). CI only; the library is unchanged.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

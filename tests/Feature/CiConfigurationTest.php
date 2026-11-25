@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
 use MissionGaming\Tactician\Tests\Support\MutationMemoryLimit;
+use Pest\Mutate\Contracts\MutatorSet;
+use Pest\Mutate\Mutators\Sets\DefaultSet;
+use Pest\Mutate\Mutators\Sets\EqualitySet;
+use Pest\Mutate\Mutators\Sets\NumberSet;
 use PHPUnit\Framework\Assert;
 
 // The CI hardening is configuration, so nothing in the library exercises it.
@@ -497,13 +501,85 @@ function ciMutationShards(string $workflow): array
     return $shards;
 }
 
+/**
+ * The mutators option of each shard of the mutation workflow: name => the
+ * text of its `mutators` entry, or '' for a shard that has none.
+ *
+ * @return array<string, string>
+ */
+function ciMutationShardMutators(string $workflow): array
+{
+    preg_match_all('/^          - shard: (.+)\n            path: \S+\n(?:            mutators: (\S+)\n)?/m', $workflow, $entries, PREG_SET_ORDER);
+
+    $options = [];
+    foreach ($entries as $entry) {
+        $options[$entry[1]] = $entry[2] ?? '';
+    }
+
+    return $options;
+}
+
+/**
+ * The mutators a shard makes the changes of, read as Pest reads the option:
+ * no option is Pest's default set, `--mutator=<names>` the mutators those
+ * names stand for, and `--except=<names>` the default set less them. A name
+ * is a mutator or a set as Pest's `Mutators` constants spell it (`SetNumber`
+ * for `Mutators::SET_NUMBER`, the number set), and a set stands for its
+ * mutators.
+ *
+ * @return list<string> Class names of mutators, one entry per time the shard makes its changes
+ *
+ * @throws PHPUnit\Framework\AssertionFailedError
+ * @throws PHPUnit\Framework\Exception
+ * @throws PHPUnit\Framework\ExpectationFailedException
+ */
+function ciMutatorsOfShard(string $option): array
+{
+    $default = array_values(DefaultSet::mutators());
+    if ($option === '') {
+        return $default;
+    }
+
+    if (preg_match('/^--(mutator|except)=([A-Za-z]+(?:,[A-Za-z]+)*)$/', $option, $match) !== 1) {
+        Assert::fail("The mutators option {$option} is neither --mutator=<names> nor --except=<names>");
+    }
+
+    $named = [];
+    foreach (explode(',', $match[2]) as $name) {
+        $constant = 'Pest\\Mutate\\Mutators::' . strtoupper((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $name));
+        Assert::assertTrue(defined($constant), "{$name} is not a mutator or a set Pest knows");
+        $class = constant($constant);
+        Assert::assertIsString($class);
+        if (is_a($class, MutatorSet::class, true)) {
+            foreach ($class::mutators() as $mutator) {
+                $named[] = $mutator;
+            }
+        } else {
+            $named[] = $class;
+        }
+    }
+
+    return $match[1] === 'mutator' ? $named : array_values(array_diff($default, $named));
+}
+
 // The source is mutated in shards, one job each, so that every job ends
 // well inside its limit on a four-core runner. A shard is a list of paths
-// for the one `--path` option. A PHP file of the two directories that no
-// shard names would never be mutated, and nothing would say so; a file in
-// two shards would be counted twice.
-it('mutates every file of the two directories in exactly one shard', function () use ($root): void {
-    $shards = ciMutationShards((string) file_get_contents($root . '/.github/workflows/mutation.yml'));
+// for the one `--path` option, and it may name the sets of mutators it
+// makes the changes of: a file too big for one job is split over shards
+// that way. A PHP file of the two directories that no shard names would
+// never be mutated, and nothing would say so; a change made by two shards
+// would be counted twice, and one that the shards of a split file all
+// leave out would never be made.
+it('makes every change to a file of the two directories in exactly one shard', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/mutation.yml');
+    $shards = ciMutationShards($workflow);
+    $mutatorsOf = ciMutationShardMutators($workflow);
+    expect(array_keys($mutatorsOf))->toBe(array_keys($shards));
+    // Every mutators entry was read: one the reader above does not match (a
+    // space or a comment after the names) would be taken for a shard without
+    // mutators, while the workflow still hands its text to Pest
+    expect(preg_match_all('/^\s+mutators:/m', $workflow))
+        ->toBe(count(array_filter($mutatorsOf, static fn(string $option): bool => $option !== '')));
 
     expect(count($shards))->toBeGreaterThanOrEqual(2);
 
@@ -540,10 +616,39 @@ it('mutates every file of the two directories in exactly one shard', function ()
     }
 
     $inNone = array_keys(array_filter($coveredBy, static fn(array $names): bool => $names === []));
-    $inSeveral = array_keys(array_filter($coveredBy, static fn(array $names): bool => count($names) > 1));
+    expect($inNone)->toBe([], 'No shard of mutation.yml mutates: ' . implode(', ', $inNone));
 
-    expect($inNone)->toBe([], 'No shard of mutation.yml mutates: ' . implode(', ', $inNone))
-        ->and($inSeveral)->toBe([], 'More than one shard of mutation.yml mutates: ' . implode(', ', $inSeveral));
+    // Over the shards that name a file, every mutator of the default set
+    // is made once, and no other: a file in one shard without mutators, or
+    // split over shards whose mutators add up to the default set
+    $default = DefaultSet::mutators();
+    sort($default);
+    $notOnce = [];
+    foreach ($coveredBy as $file => $names) {
+        $made = [];
+        foreach ($names as $name) {
+            foreach (ciMutatorsOfShard($mutatorsOf[$name]) as $mutator) {
+                $made[] = $mutator;
+            }
+        }
+        sort($made);
+        if ($names !== [] && $made !== $default) {
+            $notOnce[] = $file . ' (' . implode(', ', $names) . ')';
+        }
+    }
+    expect($notOnce)->toBe([], 'The shards of mutation.yml do not make every change of the default set exactly once to: ' . implode('; ', $notOnce));
+
+    // Shards that split the same files name the same files: a file added to
+    // one of them and not to the others would have some changes only
+    $splits = [];
+    foreach ($shards as $name => $paths) {
+        if ($mutatorsOf[$name] !== '') {
+            $splits[implode(',', $paths)][] = $name;
+        }
+    }
+    foreach ($splits as $names) {
+        expect(count($names))->toBeGreaterThanOrEqual(2);
+    }
 
     // Together the shards are what the script mutates when it is given no
     // path: the two directories, which the script names itself (in the
@@ -553,6 +658,29 @@ it('mutates every file of the two directories in exactly one shard', function ()
     expect((array) $composer['scripts']['mutation'])->toContain('@php tests/bin/run-mutation.php')
         ->and((string) file_get_contents($root . '/tests/bin/run-mutation.php'))->toContain("'--path=src/Scheduling,src/Repack/Internal',");
 });
+
+// The reading of a shard's mutators, which the test above relies on
+it('reads the mutators of a shard as Pest does', function (): void {
+    $default = DefaultSet::mutators();
+    $numbers = NumberSet::mutators();
+
+    expect(ciMutatorsOfShard(''))->toBe($default)
+        ->and(ciMutatorsOfShard('--mutator=SetNumber'))->toBe($numbers)
+        ->and(ciMutatorsOfShard('--except=SetNumber'))->toBe(array_values(array_diff($default, $numbers)))
+        // The default set holds a part of the equality set: named, the set
+        // is all of it, which is more than the default set
+        ->and(array_diff(EqualitySet::mutators(), $default))->not->toBe([])
+        ->and(ciMutatorsOfShard('--mutator=SetEquality'))->toBe(EqualitySet::mutators());
+});
+
+it('refuses a mutators option Pest would not read', function (string $option): void {
+    ciMutatorsOfShard($option);
+})->with([
+    'a set Pest does not have' => ['--mutator=SetNoSuch'],
+    'a class name of a set' => ['--mutator=NumberSet'],
+    'another option' => ['--ignore=src/Scheduling'],
+    'a space between the names' => ['--mutator=SetNumber, SetReturn'],
+])->throws(PHPUnit\Framework\AssertionFailedError::class);
 
 it('reports a mutation score for every shard once a week, in jobs that enforce no minimum and end inside their limit', function () use ($root): void {
     $workflow = (string) file_get_contents($root . '/.github/workflows/mutation.yml');
@@ -569,7 +697,7 @@ it('reports a mutation score for every shard once a week, in jobs that enforce n
     expect(preg_match_all('/^\s*composer mutation\b/m', $workflow))->toBe(1);
     expect($jobs['mutation'])
         ->toContain("      fail-fast: false\n")
-        ->toContain("        composer mutation -- --path=\${{ matrix.path }} 2>&1 | tee build/mutation.log\n");
+        ->toContain("        composer mutation -- --path=\${{ matrix.path }} \${{ matrix.mutators }} 2>&1 | tee build/mutation.log\n");
     expect(preg_match_all('/^            path: /m', $jobs['mutation']))->toBe(count(ciMutationShards($workflow)));
 
     // Its check name is its own, one per shard
@@ -631,7 +759,7 @@ it('reports a mutation score for every shard once a week, in jobs that enforce n
         ->and($workflow)->not->toContain('ini-values')
         ->and($workflow)->not->toContain('PHP_INI_SCAN_DIR');
     expect($jobs['mutation'])
-        ->toContain("        composer mutation -- --path=\${{ matrix.path }} 2>&1 | tee build/mutation.log\n")
+        ->toContain("        composer mutation -- --path=\${{ matrix.path }} \${{ matrix.mutators }} 2>&1 | tee build/mutation.log\n")
         ->and($workflow)->not->toMatch('/^[^#\n]*\bpest\b/m');
 
     // The script: the two directories, the lines a test executes, in
