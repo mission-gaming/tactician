@@ -513,14 +513,15 @@ Because purity is not part of `ConstraintInterface`, the library does not
 assume it where assuming it would change what a constraint that breaks the
 rule gets back. Two shortcuts are taken only for a `ConstraintSet` made of
 `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint`
-and `SeedProtectionConstraint` objects, which run no code of yours: a round
-robin that cannot be completed is analysed once and not once per order
-tried, and a Swiss round search skips the branches that hold no pairing.
-Any other set gets the same results without the shortcuts, which on those
-two failure paths takes longer: a set that holds a `CallableConstraint`, a
-`MetadataConstraint` or a `ConsecutiveRoleConstraint` (each holds a
-callable, also when one of its factories built it), or a class of your
-own.
+and `SeedProtectionConstraint` objects, and of `ConsecutiveRoleConstraint`
+objects built by `homeAway()` or `position()`, which run no code of yours: a
+round robin that cannot be completed is analysed once and not once per
+order tried, and a Swiss round search skips the branches that hold no
+pairing. Any other set gets the same results without the shortcuts, which
+on those two failure paths takes longer: a set that holds a
+`CallableConstraint`, a `MetadataConstraint` (which holds a callable, also
+when one of its factories built it), a `ConsecutiveRoleConstraint` given a
+role extractor of your own, or a class of your own.
 
 ### Role-Based Constraints
 
