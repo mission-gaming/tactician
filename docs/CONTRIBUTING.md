@@ -259,10 +259,16 @@ for a pull request, and it is apart from the scheduled workflow above so
 that a slow run cannot hide what that one found. The source is mutated in
 shards, one `Mutation testing, <shard>` job each, so that every job ends
 well inside its limit on a standard runner. A shard is a list of files, and
-every PHP file of the two directories is in exactly one:
-`tests/Feature/CiConfigurationTest.php` fails when a file is in none or in
-two, so when you add a file to either directory, add it to a shard of that
-workflow. Each job publishes its shard's score, the counts and the first
+every PHP file of the two directories is in exactly one, or, where one file
+has more changes than a job gets through, split over several shards by the
+sets of mutators each one makes the changes of (`mutators:
+--mutator=SetNumber,SetReturn` in the workflow, and one shard with
+`--except=` and the sets the others name, for the rest of Pest's default
+set). The round robin scheduler is split over five shards that way.
+`tests/Feature/CiConfigurationTest.php` fails when a file is in no shard or
+when a change to it would be made by no shard or by two, so when you add a
+file to either directory, add it to a shard of that workflow, and to every
+shard of a split, if it is one of the split files. Each job publishes its shard's score, the counts and the first
 untested changes in its job summary. A job that is stopped at its time
 limit is red and has no score; its summary says how many changes it got
 through and what it found in them, and the shard is then to be split. Read
