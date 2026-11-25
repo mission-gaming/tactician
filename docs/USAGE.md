@@ -518,7 +518,8 @@ and `SeedProtectionConstraint` objects, and of `ConsecutiveRoleConstraint`
 objects built by `homeAway()` or `position()`, which run no code of yours: a
 round robin that cannot be completed is analysed once and not once per
 order tried, the analysis asks each constraint once about each role order of
-a missing pairing and not again for the set as a whole, and a Swiss round
+a missing pairing (once in all where the constraint reads no position) and
+not again for the set as a whole, and a Swiss round
 search skips the branches that hold no pairing. Any other set gets the same
 results without the shortcuts, which on those failure paths takes longer: a
 set that holds a
