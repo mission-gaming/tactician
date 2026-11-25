@@ -2238,7 +2238,12 @@ with scattered pins were brought closer to the events 0.2.3 placed
     budgets and are kept on the ranking, as decisions 74 and 75 say.
     Below it a repack can now do up to twice the steps of either budget,
     the second time on work whose result is kept only where it is better;
-    each copy is bounded by what its budget had left.
+    each copy is bounded by what its budget had left. That is up to four
+    times `stepBudget` in all, where decision 36 put the bound at twice:
+    the usage guide, the `RepackOptions` docblock and the `StepBudget`
+    docblock state the bound of each side of the default. Keeping the
+    bound at twice would mean taking the copies' steps from the two
+    budgets, which is what left the steps after them short.
 
     *Measured* on those 1,200 requests, against the repacker of decision
     73 (better and worse by each outcome's own ranking):

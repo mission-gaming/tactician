@@ -145,6 +145,16 @@ heading **Output change (fix)**.
   that name neither new objective, and refuses options that name
   `fewest_gap_slots` or `fewest_lone_participant_sessions` as an unknown
   identifier (`InvalidConfigurationException`, reason `UnknownIdentifier`).
+- **Below the default budget a repack can spend up to four times
+  `stepBudget`, where it spent at most twice** (#244). The rounds laid on
+  the positions with room and the events planned in a scrambled order
+  are made there on copies of what each of the two budgets has left, and
+  their steps are not taken from it, so that a schedule that is not kept
+  leaves the steps after it as many as they would have without it. At
+  the default budget and above the bound is still twice `stepBudget`.
+  Who is affected: callers who size `stepBudget` below the default to
+  bound the work of a repack. The usage guide ("The Step Budget") and the
+  `RepackOptions` docblock state the new bound.
 
 ### Fixed
 

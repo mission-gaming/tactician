@@ -135,7 +135,7 @@ anything else that competes.
 | **Lone participant-session** | A participant and a session in which that participant has exactly one event, pinned events counted, where that event is a movable one (`RepackOutcome::getLoneParticipantSessionCount()`): the participant turns up for one event. A figure of a participant, counted once for each participant and session; a session with two events between four participants holds four. |
 | **Repack objective** | A figure of the outcome a repack is asked to keep low (`RepackObjective`, listed in order in `RepackOptions(objectives: ...)`): moved events, lone-event sessions, lone participant-sessions, idle sessions, and gap slots themselves (`FewestGapSlots`). Every objective ranks after events placed, which none ever costs, and before the two weights. Gap slots rank first among the figures unless the list names `FewestGapSlots`; an objective listed before it is **ranked ahead of gap slots**. None is the default. |
 | **Shortest grid** | The fewest sessions on which a repack places every event (`ShortestGridFinder`), for a grid the caller describes as a function of its number of sessions. Searched one number at a time, upwards, and reported with what happened at every smaller number. |
-| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the steps after the packing (the last placement step and the search for fewer gap slots) have a second one of their own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. The searches that count their own work and not steps (laying the events out before any session is chosen, the last placement step, the search for fewer gap slots) have limits that are fixed at the default budget and above, and the same share of those limits as the budget is of the default below it, so a smaller budget shortens every search. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
+| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the steps after the packing (the last placement step and the search for fewer gap slots) have a second one of their own, so a repack can spend up to twice that number (below the default budget, up to four times: two of its schedules are made there on copies of what each budget has left). Steps, not time, so the result is the same on every machine. The searches that count their own work and not steps (laying the events out before any session is chosen, the last placement step, the search for fewer gap slots) have limits that are fixed at the default budget and above, and the same share of those limits as the budget is of the default below it, so a smaller budget shortens every search. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
 | **Last placement step** | The part of a repack that runs only when an event is still unplaced: it moves placed events along alternating paths, and exchanges one placed event for one unplaced event where that lets a further one in, to place events the earlier phases left over. It never double-books, never moves a pin and never exceeds a slot's capacity. |
 | **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
 | **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
@@ -6450,7 +6450,9 @@ The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
 (the packing searches spend from one budget of
 `RepackOptions(stepBudget: ...)` steps, and the steps after the packing
-from a second of the same size, so a repack can spend up to twice that;
+from a second of the same size, so a repack can spend up to twice that,
+and below the default budget up to four times, since two of its
+schedules are made there on copies of what each budget has left;
 the layout made before any session is chosen, the last placement step
 and the search for fewer gap slots also stop at limits on their own
 work, which a budget below the default makes smaller in proportion; the
@@ -6988,8 +6990,9 @@ Three limits are worth knowing:
 **What objectives cost.** The schedule with no objective is always made
 first, on the two budgets as before, so that no objective can cost an
 event. Everything the objectives add runs on the steps those two budgets
-have left, so a repack still spends at most twice `stepBudget`, and
-`isBudgetExhausted()` means what it meant. The work that is not counted
+have left, so the objectives add nothing to the most a repack can
+spend ([The Step Budget](#the-step-budget)), and `isBudgetExhausted()`
+means what it meant. The work that is not counted
 in steps is done once for each schedule made, so a repack with
 objectives takes longer. On the requests above (PHP 8.4, no OPcache,
 on a machine doing other work, so read them as proportions), the median
@@ -7143,8 +7146,8 @@ slots for 100. The design note has the measurements, and what the
 other kinds of season give.
 
 **What it costs.** Each shape tried is a repack of its own, made on what
-the two budgets have left after the schedule with no objective, so a
-repack still spends at most twice `stepBudget`. On the 63 round robins
+the two budgets have left after the schedule with no objective, so the
+shapes add nothing to the most a repack can spend. On the 63 round robins
 (PHP 8.4, no OPcache), the median was 7 ms for 2 with no objective, the
 90th percentile 210 ms for 126, and the slowest 419 ms for 234.
 
@@ -7248,7 +7251,16 @@ only when a gap is left, spend from a second one of their own, so that
 they still run when the searches before them spent theirs. The third
 schedule, made only where the result leaves something to gain, has no
 budget of its own: it is planned and packed with what the first has
-left, and placed and searched with what the second has left. **A repack can therefore spend up to twice `stepBudget`.**
+left, and placed and searched with what the second has left. **A repack can therefore spend up to twice `stepBudget` at the default budget and above.**
+Below the default it can spend up to four times `stepBudget`: the
+rounds laid on the positions with room and the events planned in a
+scrambled order, the two schedules made only where the ones before
+leave something to gain, are made there on copies of what each budget
+has left, and the steps they spend are not taken from it. A schedule
+that is not kept then leaves the steps after it as many steps as they
+would have without it, which at a small budget is what decides whether
+those steps get as far; a search a kept schedule's copy stopped counts
+as one the budget stopped.
 
 A step is not a fixed amount of work, so some searches count their own
 work as well, in position checks (one look at whether an event fits a

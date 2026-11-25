@@ -27,8 +27,14 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * costs steps only when a session has eight slots or more. The steps after
  * the packing (the last placement step, which runs only when an event is
  * still unplaced, and the search for fewer gap slots, which runs only
- * when a gap is left) get a budget of their own of the same size, so a
- * repack spends at most twice the budget. Where the schedule that comes
+ * when a gap is left) get a budget of their own of the same size, so at
+ * the default budget and above a repack spends at most twice the budget.
+ * Below the default it can spend up to four times the budget: two of the
+ * schedules it makes (the rounds laid on the positions with room, and the
+ * events planned in a scrambled order) are made there on copies of what
+ * each budget has left, whose steps are not taken from it, so that a
+ * schedule that is not kept leaves the steps after it as many steps as
+ * they would have without it. Where the schedule that comes
  * of this places fewer events than could be placed, or has a gap, the
  * events are planned and packed once more in another order, on what the
  * two budgets have left and no more. When a budget runs out, the
@@ -73,8 +79,8 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * most three more for the fewest moved events, and up to six laid out on
  * the sessions in other shapes for an objective about the shape of the
  * sessions ahead of gap slots) and moves single events afterwards, all of
- * it on what the two budgets have left, so a repack still spends at most
- * twice the budget; it takes longer, because the work that is not counted
+ * it on what the two budgets have left, so the objectives add nothing to
+ * the most a repack can spend; it takes longer, because the work that is not counted
  * in steps is done once for each schedule.
  *
  * The weights are bounded so that the objective stays an integer. The
@@ -110,7 +116,9 @@ final readonly class RepackOptions
      *                        the packing, and as many again for the steps
      *                        after the packing; below the default it also
      *                        shortens, in proportion, the searches that
-     *                        count their own work
+     *                        count their own work, and two schedules may
+     *                        spend as much again of each on copies of what
+     *                        it has left
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
      * @param list<RepackObjective> $objectives The figures to keep low after events
