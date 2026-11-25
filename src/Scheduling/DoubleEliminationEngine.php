@@ -514,7 +514,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $exits = 0;
         /** @var list<Participant> $voided */
         $voided = [];
-        $noteExits = static function (array $out) use (&$wentOutAt, &$exits, &$voided): void {
+        $noteExits = static function (array $out) use ($reading, &$wentOutAt, &$exits, &$voided): void {
             ++$exits;
             foreach ([...$voided, ...$out] as $entrant) {
                 if ($entrant instanceof Participant) {
@@ -522,12 +522,13 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 }
             }
             $voided = [];
+            $reading->wentOut = array_fill_keys(array_keys($wentOutAt), true);
         };
         // An entrant read as going out of a tie both entrants had left, who
         // was still in the stage when its next tie was paired, went on
-        $revive = static function (array $revived) use (&$wentOutAt, &$voided): void {
+        $revive = static function (array $revived) use ($reading, &$wentOutAt, &$voided): void {
             foreach ($revived as $entrant) {
-                unset($wentOutAt[$entrant->getId()]);
+                unset($wentOutAt[$entrant->getId()], $reading->wentOut[$entrant->getId()]);
                 $voided = array_values(array_filter(
                     $voided,
                     static fn(Participant $other): bool => $other->getId() !== $entrant->getId()

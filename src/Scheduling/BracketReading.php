@@ -157,6 +157,18 @@ final class BracketReading
     public array $decidingTies = [];
 
     /**
+     * Who has gone out of the bracket in the rounds the walk has read, by
+     * ID: in single elimination everyone a round put out, and in double
+     * elimination everyone a stage put out of the stage, not those a
+     * winners tie dropped. An entrant read as going on after all (a void
+     * tie, docs/adr/0011) is not among them. A round drawn by hand does not
+     * bring one of them back (EliminationBracketSupport::readRound()).
+     *
+     * @var array<int|string, true>
+     */
+    public array $wentOut = [];
+
+    /**
      * @param array<int, RoundPairing> $recorded The recorded rounds by round number
      * @param array<string, Result> $resultIndex The recorded results by round, pairing and leg
      * @param array<int|string, true> $withdrawn The IDs of the participants who have withdrawn:

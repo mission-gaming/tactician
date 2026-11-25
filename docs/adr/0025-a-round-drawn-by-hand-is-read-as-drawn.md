@@ -2,9 +2,10 @@
 
 Status: accepted. Narrows, in
 [0007](0007-recorded-rounds-are-read-not-derived.md), what point 1 says of
-an entrant a recorded round leaves alone, and says how the last round of a
+an entrant a recorded round leaves alone, says how the last round of a
 single elimination bracket with a third-place tie is read when it is drawn
-by hand.
+by hand, and says how a round drawn by hand that names an entrant who has
+gone out is read (amended for issue #230).
 
 ## Context
 
@@ -34,6 +35,14 @@ hand-drawn rounds were read in a way nobody who drew them meant.
   went on alone: two units, a second round labelled final, and the same
   entrant twice in the view of one round (in the third-place tie and as a
   bye).
+- **An entrant who had gone out came back** (issue #230, found in the
+  review of this record). A recorded tie was read as a tie of the round
+  where one of its two entrants was in the round, whoever the other was.
+  Eight entrants, round 1 played as paired; round 2 drawn by hand as
+  `p8 v p1` and `p2 v p3`, although p8 lost to p1 in round 1. p8 won, went
+  on, and was paired in the next round. A tie marked as the third-place tie
+  was read as that tie whoever it held, so two quarterfinal losers could be
+  placed third and fourth.
 
 The choice for the second was between reading such a round as a manual
 pairing of the last round and refusing it as a breach of a hard rule. Every
@@ -81,17 +90,61 @@ ties when they were decided ([0013](0013-a-finished-bracket-keeps-its-winner.md)
 are the entrants of the ties the round holds. A round whose events carry no
 mark is read as any round is: nothing in it says which tie is which.
 
-Neither rule depends on the order in which the facts arrived: the first
+**A round drawn by hand does not bring back an entrant who has gone out.**
+An entrant has gone out where an earlier round of the walk put it out of
+the bracket: in single elimination the loser of a tie, an entrant that went
+out alone, the two of a void tie that nobody went on from; in double
+elimination one put out of the stage, not one a winners tie dropped. A tie
+of the round between an entrant who is in the round (in its slots, or in
+the tie that stands in no slot) and one who has gone out and is not in the
+round is given to the entrant who is in the round, whatever its results
+say, as a tie is given away that the other entrant has withdrawn from. The
+one who had gone out goes out nowhere here: it holds the place it went out
+in, in the table and in the outcome, and the node of the tie names only the
+entrant of the round (`Uncontested`). The tie is reported as manual, as a
+tie the engine would not have paired, and its results are recorded results,
+which the table counts as it counts every result. A tie marked as the
+third-place tie is that tie only where one of its two is in the round; so
+marked between two who went out earlier, it is no tie of the bracket and is
+read by nothing, like any tie between two who went out.
+
+The choice was between that, refusing the state, and reading the round as
+drawn with the entrant back in the bracket. Bringing it back reads a later
+result against an earlier one: the bracket would hold an entrant that its
+own results put out. Refusing makes the stage unreadable on every call for
+a round an organiser drew, which 0007 (point 2) refuses for no draw the
+engine would not have made; the two refusals there are about a state that
+cannot be read at all. Reading the entrant as out keeps every earlier
+result and reads the round, as an entrant who had withdrawn is read.
+
+**Except where it takes the place of an entrant who had withdrawn, in
+single elimination.** Where the entrant of the round in such a tie was to
+meet an entrant who had withdrawn when the round was paired, and the round
+puts that entrant in no tie and lists it among no byes, the one who had
+gone out is in the round in its place: the round brought it in as a lucky
+loser, and the tie is read as any tie, its winner going on. The withdrawn
+entrant goes out in the round and holds no place, as above. That is what a
+redrawn round looked like when 0.2.3 drew the round again after a
+withdrawal, and what such a round recorded by that release is read as
+(`tests/Feature/StoredByEarlierReleasesTest.php`). Double elimination
+does not read it so: the stages there take their entrants by place from
+each other, and an entrant outside a stage can hold a place in another.
+
+None of the rules depends on the order in which the facts arrived: the first
 reads who had withdrawn when the round was paired, which the rounds and the
 withdrawals say whatever order they were recorded in
 ([0012](0012-a-withdrawal-states-its-round.md)), and the second reads the
-marks of the recorded events.
+marks of the recorded events. Who has gone out is read from the results
+of the earlier rounds, and whether the entrant had withdrawn when the
+round was paired as the first rule reads it, so the third rule reads the
+same facts whatever order they were recorded in.
 
 **The fingerprint keeps its version.** A state that holds such a round is
 paired otherwise from it now, which
 [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)
 would answer with a new version of the rules. As there, the case is narrow
-(a round drawn by hand, after a withdrawal or across the last two ties) and
+(a round drawn by hand, after a withdrawal, across the last two ties or
+with an entrant who had gone out) and
 was read wrongly, and a new version would refuse the stamp of every bracket
 on a fixed path and of every double elimination bracket, which pair as they
 did.
@@ -107,6 +160,14 @@ did.
 - The bracket view shows the withdrawn entrant of the first rule in a node
   of its own, `Void`, which holds no place: no slot of the next round is
   filled from it.
+- In the case of #230 p1 goes on from the tie with p8, p8 stays level
+  with the other entrants who went out in round 1, and the next round is
+  `p1 v p4` with a bye for p2 (p4 was in no tie and went on alone). A
+  third-place tie drawn with a quarterfinal loser against a semifinal loser
+  places the semifinal loser third and the other semifinal loser fourth.
 - `tests/Feature/HandDrawnRoundsTest.php` holds the cases, and
   `tests/Feature/EliminationInvariantsTest.php` a sweep of brackets with
-  rounds drawn by hand among the entrants left after withdrawals.
+  rounds drawn by hand among the entrants left after withdrawals, and a
+  sweep of single and double elimination brackets with rounds drawn by hand
+  with an entrant who had gone out, in which no such entrant is paired again
+  or goes on.

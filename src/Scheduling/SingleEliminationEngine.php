@@ -683,6 +683,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             if ($claimed) {
                 ++$reading->number;
             }
+            $reading->wentOut = array_fill_keys(array_keys($wentOutIn), true);
             $read = $this->readRound(
                 $reading,
                 $slots,
@@ -690,7 +691,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $claimed ? $reading->number : $reading->number + 1,
                 $legsPerTie,
                 $thirdPlaceTie,
-                $pairedAt
+                $pairedAt,
+                true
             );
 
             if ($isLastRound) {

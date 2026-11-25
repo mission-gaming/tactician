@@ -4578,7 +4578,25 @@ An event of a bracket round between two entrants neither of whom is in the
 round, or with an entrant who is in another tie of that round already, is
 no tie of the bracket: it is read by nothing, as an event the application
 added always was. (`fromHistory()` refuses the second kind before an engine
-sees it.)
+sees it.) A tie marked as the third-place tie between two who went out
+earlier is such an event too.
+
+**A round drawn by hand does not bring back an entrant who has gone out.**
+Where a tie of the round is between an entrant who is in the round and one
+who went out of the bracket earlier (in double elimination, out of the
+stage), the tie is given to the entrant who is in the round, whatever its
+results say, as a tie is given away that the other entrant has withdrawn
+from (`Uncontested` in the bracket view, a node that names only the entrant
+who is in the round). The one who had gone out stays where it went out, in
+the table too, and is never paired again; a third-place tie drawn so places
+the entrant of the round in it third. The results of such a tie are
+recorded results all the same, and count in the table as results do. One
+case is read otherwise, in single elimination only: the entrant who went
+out takes the place of the entrant the other was to meet, where that
+entrant had withdrawn when the round was paired and the round puts it in no
+tie and lists it among no byes. The round has then brought it in as a
+lucky loser, and the tie is read as any tie: the winner goes on
+([ADR 0025](adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md)).
 
 **Who a bracket round drawn by hand sends on.** Each tie of the round sends
 on the entrant who won it, and an entrant the round leaves out of its ties

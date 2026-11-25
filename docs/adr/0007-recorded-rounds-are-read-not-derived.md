@@ -20,7 +20,10 @@ point 8 is `fromHistory()`'s own any more, and what it checks of a round
 that the verbs do not is one result for an event. What point 1 says of an entrant a recorded
 round leaves alone is narrowed by
 [0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md): one who had
-withdrawn when the round was paired holds no place in the next round.
+withdrawn when the round was paired holds no place in the next round. What
+point 2 reads of a round drawn by hand is narrowed by the same record: a tie
+with an entrant who has gone out of the bracket is given to the other
+entrant, and does not bring the first back.
 
 ## Context
 
