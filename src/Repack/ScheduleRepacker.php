@@ -472,6 +472,10 @@ final readonly class ScheduleRepacker
             // taken where it then ranks better: the choice that turned it
             // down was made before the polish
             $indexById = array_flip($ids);
+            // A schedule kept aside that is the one chosen, before either is
+            // polished, would only be polished to the same schedule again
+            $chosen = $positions;
+            ksort($chosen);
             $polish = new ObjectivePolish(
                 $ranking,
                 $pairs,
@@ -487,7 +491,7 @@ final readonly class ScheduleRepacker
                 array_map(static fn(UnplacedEvent $event): int => $indexById[$event->getEventId()], $unplaced)
             );
             $best = [count($unplaced), ...$ranking->key($positions)];
-            $tried = [];
+            $tried = [$chosen];
             foreach ($turnedDown as $schedule) {
                 if (in_array($schedule, $tried, true)) {
                     continue;

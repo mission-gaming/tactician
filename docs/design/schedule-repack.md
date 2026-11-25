@@ -1879,7 +1879,9 @@ sides (#231). They follow decisions 66 to 69.
     schedule chosen is polished, each of those is polished in turn, with
     what the second budget has left, and replaces it where it then ranks
     better by events placed and then the ranking; on a tie the schedule
-    chosen stands, and a schedule already tried is not polished twice. So
+    chosen stands, and a schedule already tried is not polished twice,
+    nor one that is the schedule chosen before either is polished (it
+    could only polish to the same schedule). So
     the outcome is never worse than before by its own ranking, and the
     schedule chosen and its polish are made exactly as before, which keeps
     decision 66's guarantee as it was. With gap slots first nothing is
