@@ -100,6 +100,34 @@ heading **Output change (fix)**.
   entrants. What to check: such a chain reports one violation fewer. No
   golden fixture changed.
 
+- **A season with its first rounds pinned in order is repacked without the
+  gap slots 0.2.3 did not leave** (#238). The round layout of a repack
+  counted the positions its pins fill among its rounds; where the rounds
+  already played are pinned in order those are the first positions, so
+  the layout had too few rounds to hold the events and the planned
+  schedule, with gaps, was returned. Where the schedule still leaves an
+  event unplaced or a gap and pins fill a position, the rounds are now
+  laid out once more on the positions with room only, and that schedule
+  replaces the one in hand only where it places more events, or as many
+  with fewer gap slots (then by the objectives' own ranking). On 160
+  single and double round robins of 20 to 40 participants with a fifth or
+  a half of their rounds pinned in order and no current positions, the
+  gap slots fall from 244 to 6 (0.2.3 left none), every event is placed as
+  before, and 50 outcomes change, each with fewer gap slots. Who is
+  affected: callers who repack a season in progress with its played
+  rounds pinned. Requests on which no position is full of pins, or whose
+  schedule has neither a gap nor an unplaced event, come out exactly as
+  before, the golden fixtures and examples among them; on the sets
+  measured (#162's 200 round robins with scattered pins, 320 requests
+  with current positions under four settings of the objectives, and the
+  63 round robins of #209) no outcome is worse by its own ranking at the
+  default budget. Below it, with an objective ranked ahead of gap slots,
+  an outcome whose budget is reported stopped can come out worse by its
+  own ranking: 5 of 5,974 small repacks at 2,000 steps, each by one to
+  four of a figure and none by an event placed. The
+  median time is unchanged; the slowest season took 1.3 seconds where it
+  took 1.1.
+
 The next four entries of this section come from one decision: **a round drawn by
 hand is read as drawn** (ADR 0025,
 `docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). None of them raises

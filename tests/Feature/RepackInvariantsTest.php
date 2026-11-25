@@ -23,6 +23,7 @@ use MissionGaming\Tactician\Repack\UnplacedReason;
 use MissionGaming\Tactician\Repack\ViolationKind;
 use MissionGaming\Tactician\Tests\Support\RepackBruteForce;
 use Random\Engine\Mt19937;
+use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 
 /**
@@ -2346,5 +2347,188 @@ describe('Repacking without an avoidable gap', function (): void {
         'a session of 1,000 slots, 2,000 steps' => [1_000, 2_000],
         'a session of 1,000 slots, 20,000 steps' => [1_000, 20_000],
         'a session of 1,000 slots, the default budget' => [1_000, 200_000],
+    ]);
+});
+
+/**
+ * A season of a round robin of an even number, laid out round by round
+ * on sessions of the same number of slots by the circle method, with its
+ * first rounds played and pinned in order and every other event movable
+ * with no current position: the shape of a season in progress handed to
+ * a repack whole. The grid has as many positions as the season has
+ * rounds (the last session may have spare ones), half the field to a
+ * slot, so a pinned round fills its position.
+ *
+ * @param int $playedOneIn A fifth (5) or a half (2) of the rounds are played
+ *
+ * @return array{0: list<MovableEvent>, 1: list<PinnedEvent>, 2: SessionGrid}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function seasonWithRoundsPinnedInOrder(int $participants, int $legs, int $slots, int $playedOneIn): array
+{
+    $entrants = [];
+    for ($i = 0; $i < $participants; ++$i) {
+        $entrants[] = new Participant(sprintf('p%02d', $i), "P{$i}");
+    }
+    $rounds = [];
+    for ($leg = 0; $leg < $legs; ++$leg) {
+        $seats = range(0, $participants - 1);
+        for ($round = 0; $round < $participants - 1; ++$round) {
+            $pairs = [];
+            for ($i = 0; $i < intdiv($participants, 2); ++$i) {
+                $pair = [$seats[$i], $seats[$participants - 1 - $i]];
+                $pairs[] = $leg === 0 ? $pair : array_reverse($pair);
+            }
+            $rounds[] = $pairs;
+            array_splice($seats, 1, 0, [array_pop($seats)]);
+        }
+    }
+    $played = intdiv(count($rounds), $playedOneIn);
+
+    $movable = [];
+    $pinned = [];
+    $next = 0;
+    foreach ($rounds as $round => $pairs) {
+        foreach ($pairs as [$a, $b]) {
+            $id = sprintf('e%04d', $next++);
+            if ($round < $played) {
+                $pinned[] = new PinnedEvent($id, $entrants[$a], $entrants[$b], intdiv($round, $slots), $round % $slots);
+            } else {
+                $movable[] = new MovableEvent($id, $entrants[$a], $entrants[$b]);
+            }
+        }
+    }
+
+    return [
+        $movable,
+        $pinned,
+        SessionGrid::shapeOnly(intdiv(count($rounds) + $slots - 1, $slots), $slots, capacityPerSlot: intdiv($participants, 2)),
+    ];
+}
+
+/**
+ * A round robin of an even number of 10 to 14 participants with an eighth
+ * to a half of its events pinned at random legal positions, on a grid of
+ * exactly as many positions as it has rounds or one more, half the field
+ * to a slot, and every other event movable with no current position: the
+ * scattered-pin shape of #162, smaller.
+ *
+ * @return array{0: list<MovableEvent>, 1: list<PinnedEvent>, 2: SessionGrid}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function roundRobinPinnedAtRandom(int $seed): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $participants = 2 * $random->getInt(5, 7);
+    $entrants = [];
+    for ($i = 0; $i < $participants; ++$i) {
+        $entrants[] = new Participant(sprintf('p%02d', $i), sprintf('p%02d', $i));
+    }
+    $events = [];
+    $seats = range(0, $participants - 1);
+    for ($round = 0; $round < $participants - 1; ++$round) {
+        for ($i = 0; $i < intdiv($participants, 2); ++$i) {
+            $events[] = [$seats[$i], $seats[$participants - 1 - $i]];
+        }
+        array_splice($seats, 1, 0, [array_pop($seats)]);
+    }
+    $events = $random->shuffleArray($events);
+    $slots = $random->getInt(2, 4);
+    $positions = $participants - 1 + $random->getInt(0, 1);
+    $sessions = intdiv($positions + $slots - 1, $slots);
+    $overrides = $positions % $slots === 0 ? [] : [$sessions - 1 => $positions % $slots];
+    $capacity = intdiv($participants, 2);
+    $positionList = [];
+    for ($session = 0; $session < $sessions; ++$session) {
+        for ($slot = 0; $slot < ($overrides[$session] ?? $slots); ++$slot) {
+            $positionList[] = [$session, $slot];
+        }
+    }
+    $toPin = (int) round($random->getInt(125, 500) / 1000 * count($events));
+    $room = array_fill(0, count($positionList), $capacity);
+    $busy = [];
+    $movable = [];
+    $pinned = [];
+    foreach ($events as $k => [$a, $b]) {
+        $id = sprintf('e%04d', $k);
+        if ($k < $toPin) {
+            $legal = [];
+            foreach (array_keys($positionList) as $index) {
+                if ($room[$index] > 0 && !isset($busy[$index][$a]) && !isset($busy[$index][$b])) {
+                    $legal[] = $index;
+                }
+            }
+            if ($legal !== []) {
+                $index = $legal[$random->getInt(0, count($legal) - 1)];
+                --$room[$index];
+                $busy[$index][$a] = true;
+                $busy[$index][$b] = true;
+                $pinned[] = new PinnedEvent($id, $entrants[$a], $entrants[$b], $positionList[$index][0], $positionList[$index][1]);
+
+                continue;
+            }
+        }
+        $movable[] = new MovableEvent($id, $entrants[$a], $entrants[$b]);
+    }
+
+    return [$movable, $pinned, SessionGrid::shapeOnly($sessions, $slots, $overrides, $capacity)];
+}
+
+describe('Repacking seasons with their first rounds pinned in order', function (): void {
+    it('places every event of the season and leaves no gap slot, as 0.2.3 did', function (int $participants, int $legs, int $slots, int $playedOneIn): void {
+        // The rounds left over fit the positions after the pinned ones
+        // exactly, so a placement of every event with no gap is there to
+        // be found. Before the rounds were also laid on the positions with
+        // room, the layout counted the positions the pinned rounds fill
+        // among its rounds, and five of these came out with gap slots: 18
+        // in two legs on sessions of four slots with half the rounds played
+        // (4), 20 in two legs on sessions of three with a fifth played (4)
+        // and with half played (2), 20 in two legs on sessions of four with
+        // a fifth played (4), and 22 in two legs on sessions of four with
+        // half played (2)
+        [$movable, $pinned, $grid] = seasonWithRoundsPinnedInOrder($participants, $legs, $slots, $playedOneIn);
+
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+
+        expect($outcome->getUnplaced())->toBe([])
+            ->and($outcome->getAssignments())->toHaveCount(count($movable))
+            ->and($outcome->getGapSlotCount())->toBe(0);
+        assertProperness($outcome, $movable, $pinned);
+    })->with(function (): Generator {
+        foreach ([16, 18, 20, 22] as $participants) {
+            foreach ([1, 2] as $legs) {
+                foreach ([2, 3, 4] as $slots) {
+                    foreach ([5, 2] as $playedOneIn) {
+                        yield "{$participants} in {$legs} legs, {$slots} slots, 1 in {$playedOneIn} played" => [$participants, $legs, $slots, $playedOneIn];
+                    }
+                }
+            }
+        }
+    });
+
+    it('places no fewer events where the pins are scattered, nor as many with more gap slots, than the repack did before', function (int $seed, int $placedBefore, int $gapSlotsBefore): void {
+        // The figures were measured with the repacker as it stood before
+        // the rounds were also laid on the positions with room (after the
+        // polish of what a ranked choice turned down, #231). The default
+        // budget, no objective
+        [$movable, $pinned, $grid] = roundRobinPinnedAtRandom($seed);
+
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+
+        $placed = count($outcome->getAssignments());
+        expect($placed)->toBeGreaterThanOrEqual($placedBefore);
+        if ($placed === $placedBefore) {
+            expect($outcome->getGapSlotCount())->toBeLessThanOrEqual($gapSlotsBefore);
+        }
+        assertProperness($outcome, $movable, $pinned);
+    })->with([
+        [1, 56, 0], [2, 44, 0], [3, 35, 0], [4, 32, 3], [5, 56, 2],
+        [6, 44, 0], [7, 37, 4], [8, 28, 0], [9, 49, 0], [10, 30, 0],
+        [11, 30, 0], [12, 64, 0], [13, 24, 0], [14, 47, 2], [15, 47, 2],
+        [16, 70, 0], [17, 43, 0], [18, 68, 0], [19, 32, 0], [20, 44, 2],
+        [21, 37, 0], [22, 34, 0], [23, 49, 0], [24, 43, 0], [25, 37, 0],
+        [26, 52, 0], [27, 64, 0], [28, 67, 0], [29, 41, 0], [30, 50, 0],
     ]);
 });

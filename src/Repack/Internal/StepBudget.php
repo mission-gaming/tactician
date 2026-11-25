@@ -16,8 +16,10 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * placement step (LeftoverRecolourer) and the search for fewer gap slots
  * (GapSearch), so that they run even when the phases before them spent
  * the first. The third schedule the repacker makes, where the first two
- * leave something to gain, is made on what the two have left. Steps, not
- * wall clock: behaviour is reproducible.
+ * leave something to gain, is made on what the two have left, and so is
+ * the search for fewer gap slots on the fourth (the rounds laid on the
+ * positions with room, whose layout has steps of its own like the
+ * first). Steps, not wall clock: behaviour is reproducible.
  *
  * A step is not a fixed amount of work: one step of the last placement
  * step or of the search for fewer gap slots looks at every position, the

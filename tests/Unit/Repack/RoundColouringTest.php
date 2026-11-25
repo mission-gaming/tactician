@@ -198,6 +198,127 @@ describe('RoundColouring', function (): void {
         expect(array_keys($positions))->toBe(array_values(array_intersect(array_keys($edges), array_keys($positions))));
     })->with(range(1, 40));
 
+    it('lays the rounds of a season with its first rounds pinned on the positions after them, where the layout over every position has to search', function (): void {
+        // A round robin of eight on one session of seven slots, four events
+        // to a slot, its first two rounds pinned in order at slots 0 and 1:
+        // those two slots are full. Five rounds are left, and on the five
+        // slots with room they need no search at all, so a budget of one
+        // step stops nothing. The layout over every position counts the two
+        // full slots among its five rounds, has three for twenty events, and
+        // that one step's share of its work limit stops its search; it gets
+        // there at the default budget
+        $rounds = [
+            [[0, 7], [1, 6], [2, 5], [3, 4]],
+            [[0, 6], [5, 7], [1, 4], [2, 3]],
+            [[0, 5], [4, 6], [3, 7], [1, 2]],
+            [[0, 4], [3, 5], [2, 6], [1, 7]],
+            [[0, 3], [2, 4], [1, 5], [6, 7]],
+            [[0, 2], [1, 3], [4, 7], [5, 6]],
+            [[0, 1], [2, 7], [3, 6], [4, 5]],
+        ];
+        $pinSlots = [];
+        $pinCounts = [];
+        $edges = [];
+        foreach ($rounds as $round => $pairs) {
+            foreach ($pairs as $pair) {
+                if ($round < 2) {
+                    foreach ($pair as $pid) {
+                        $pinSlots[0][$pid][] = $round;
+                    }
+                    $pinCounts[0][$round] = ($pinCounts[0][$round] ?? 0) + 1;
+                } else {
+                    $edges[] = [min($pair), max($pair)];
+                }
+            }
+        }
+        sort($edges);
+        $everyRound = ['0:2' => 4, '0:3' => 4, '0:4' => 4, '0:5' => 4, '0:6' => 4];
+
+        $onRoom = new StepBudget(PHP_INT_MAX, 1);
+        $positions = RoundColouring::of($edges, $pinSlots, $pinCounts, [7], 4, $onRoom, true);
+        expect(eventsPerPosition($positions))->toBe($everyRound)
+            ->and($onRoom->stoppedASearch())->toBeFalse();
+        assertRoundsAreProper($edges, $positions);
+
+        $everywhere = new StepBudget(PHP_INT_MAX, 1);
+        RoundColouring::of($edges, $pinSlots, $pinCounts, [7], 4, $everywhere);
+        expect($everywhere->stoppedASearch())->toBeTrue();
+
+        $positions = RoundColouring::of($edges, $pinSlots, $pinCounts, [7], 4, new StepBudget(PHP_INT_MAX));
+        expect(eventsPerPosition($positions))->toBe($everyRound);
+    });
+
+    it('lays the rounds on the positions with room exactly as on every position where pins fill none', function (int $seed): void {
+        $rng = new Randomizer(new Mt19937($seed));
+        $count = $rng->getInt(4, 9);
+        $edges = [];
+        for ($i = $rng->getInt(4, 20); $i > 0; --$i) {
+            $a = $rng->getInt(0, $count - 2);
+            $edges[] = [$a, $rng->getInt($a + 1, $count - 1)];
+        }
+        sort($edges);
+        $slotCounts = [$rng->getInt(1, 4), $rng->getInt(1, 4)];
+        $capacity = $rng->getInt(2, 4);
+        $pinned = $rng->getInt(0, $count - 1);
+        $pinSlots = [1 => [$pinned => [0]]];
+        $pinCounts = [1 => [0 => 1]];
+
+        expect(RoundColouring::fillsAPosition($pinCounts, $capacity))->toBeFalse()
+            ->and(RoundColouring::of($edges, $pinSlots, $pinCounts, $slotCounts, $capacity, new StepBudget(PHP_INT_MAX), true))
+            ->toBe(RoundColouring::of($edges, $pinSlots, $pinCounts, $slotCounts, $capacity, new StepBudget(PHP_INT_MAX)));
+    })->with(range(1, 20));
+
+    it('never lays a round on a position its pins fill', function (int $seed): void {
+        $rng = new Randomizer(new Mt19937($seed));
+        $count = $rng->getInt(4, 9);
+        $edges = [];
+        for ($i = $rng->getInt(4, 20); $i > 0; --$i) {
+            $a = $rng->getInt(0, $count - 2);
+            $edges[] = [$a, $rng->getInt($a + 1, $count - 1)];
+        }
+        sort($edges);
+        $slotCounts = [$rng->getInt(2, 5), $rng->getInt(1, 4)];
+        // The first slot of the first session is full of pins between two
+        // participants from outside
+        $pinSlots = [0 => [20 => [0], 21 => [0]]];
+        $pinCounts = [0 => [0 => 1]];
+
+        $positions = RoundColouring::of($edges, $pinSlots, $pinCounts, $slotCounts, 1, new StepBudget(PHP_INT_MAX), true);
+
+        expect(RoundColouring::fillsAPosition($pinCounts, 1))->toBeTrue()
+            ->and(array_keys(eventsPerPosition($positions)))->not->toContain('0:0')
+            ->and(max([0, ...eventsPerPosition($positions)]))->toBeLessThanOrEqual(1);
+        assertRoundsAreProper($edges, $positions);
+    })->with(range(1, 20));
+
+    it('lays the rounds past a position its pins fill in the middle of the grid', function (): void {
+        // Two sessions of three slots, two events to a slot, and the second
+        // slot of the first session full of two pinned events between
+        // participants from outside. The round robin of four needs three
+        // rounds, and on the positions with room they are the first, the
+        // third and the fourth (0:0, 0:2, 1:0): round k of an event is the
+        // k-th of those, not the k-th position of the grid. In pair order
+        // the events start at rounds 1, 2, 0, 0, 1 and 2; 1-3 finds round 1
+        // taken by 0-1 and goes on to round 2, and 2-3 finds rounds 2 and 0
+        // full and goes on to round 1. No search is needed
+        $edges = roundRobinPairs(4);
+        $pinSlots = [0 => [20 => [1], 21 => [1], 22 => [1], 23 => [1]]];
+        $pinCounts = [0 => [1 => 2]];
+        $onRoom = new StepBudget(PHP_INT_MAX);
+
+        $positions = RoundColouring::of($edges, $pinSlots, $pinCounts, [3, 3], 2, $onRoom, true);
+
+        expect($positions)->toBe([[0, 2], [1, 0], [0, 0], [0, 0], [1, 0], [0, 2]])
+            ->and($onRoom->stoppedASearch())->toBeFalse();
+        assertRoundsAreProper($edges, $positions);
+    });
+
+    it('has no place for an event where pins fill every position', function (): void {
+        $positions = RoundColouring::of([[0, 1], [2, 3]], [0 => [4 => [0, 1], 5 => [0, 1]]], [0 => [0 => 1, 1 => 1]], [2], 1, new StepBudget(PHP_INT_MAX), true);
+
+        expect($positions)->toBe([]);
+    });
+
     it('has nothing to lay out for no events', function (): void {
         expect(RoundColouring::of([], [], [], [3], 2, new StepBudget(PHP_INT_MAX)))->toBe([]);
     });

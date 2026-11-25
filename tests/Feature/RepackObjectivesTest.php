@@ -1248,6 +1248,33 @@ describe('Objectives ranked ahead of gap slots', function (): void {
             ->and($outcome->getGapSlotCount())->toBe(0);
     });
 
+    it('come out as before now that a schedule kept aside that is the one chosen is not polished again', function (): void {
+        // A schedule kept aside that is the schedule chosen, before either
+        // is polished, polishes to the same schedule, so the polish skips
+        // it. The digest is of the fingerprints of these 3,200 outcomes as
+        // they were before it did (with the polish of decision 73, #237),
+        // at a budget the polish can run short of and at the default
+        $lists = [
+            [RepackObjective::FewestLoneParticipantSessions, RepackObjective::FewestGapSlots],
+            [RepackObjective::FewestIdleSessions, RepackObjective::FewestGapSlots],
+            [RepackObjective::FewestLoneParticipantSessions, RepackObjective::FewestGapSlots, RepackObjective::LeastChurn],
+            [RepackObjective::FewestLoneParticipantSessions, RepackObjective::LeastChurn, RepackObjective::FewestGapSlots],
+        ];
+        $fingerprints = [];
+        foreach (range(2000, 2399) as $seed) {
+            [$movable, $pinned, $grid] = smallRequestWithCurrentPositions($seed);
+            foreach ($lists as $list) {
+                foreach ([2_000, 200_000] as $budget) {
+                    $fingerprints[] = new ScheduleRepacker()->repack(
+                        new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: $list))
+                    )->fingerprint();
+                }
+            }
+        }
+
+        expect(hash('sha256', implode("\n", $fingerprints)))->toBe('68dd7dbc244eff73a79033d31dfa29f35f1f7eecc268d3d36d71e27161edf2a3');
+    });
+
     it('take the polished schedule the search for fewer gap slots found where the one it kept polishes worse', function (): void {
         // Three sessions of three slots, two events to a slot. The reshaped
         // schedule has three lone participant-sessions and one gap slot;
