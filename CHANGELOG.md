@@ -13,6 +13,17 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Fixed
+
+- `composer test`, `composer ci` and `composer test-coverage` run to the end
+  on a developer's machine. The suite takes longer than Composer's default
+  process timeout of 300 seconds (about 400 seconds on a laptop, longer with
+  coverage), so Composer stopped it part way through with "exceeded the
+  timeout of 300 seconds". CI was not affected, because its PHP setup turns
+  the timeout off. The `test` and `test-coverage` scripts now lift the
+  timeout themselves, as `bench` and `mutation` already did. Nothing a
+  consumer installs changes.
+
 ## [0.4.0] - 2026-11-25
 
 ### Output change (fix)

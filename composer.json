@@ -99,8 +99,12 @@
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
         "security-audit": "@composer audit --locked --abandoned=report",
-        "test": "pest",
+        "test": [
+            "Composer\\Config::disableProcessTimeout",
+            "pest"
+        ],
         "test-coverage": [
+            "Composer\\Config::disableProcessTimeout",
             "@putenv XDEBUG_MODE=coverage",
             "pest --coverage --coverage-clover=build/clover.xml"
         ]
