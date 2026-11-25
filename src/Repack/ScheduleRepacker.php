@@ -612,11 +612,14 @@ final readonly class ScheduleRepacker
 
     /**
      * The order the fifth schedule of solve() plans the events in: each
-     * event's place in the order of the rounds times this odd number
-     * (2^32 over the golden ratio), modulo the largest prime below 2^32,
-     * ascending. A fixed, scrambled order that spreads the events of one
-     * round over the whole list; any such order would do, and this one is
-     * fixed so that the output is.
+     * event's place in the order of the rounds times this prime (the one
+     * nearest 2^32 over the golden ratio), modulo the largest prime below
+     * 2^32, ascending. A fixed, scrambled order that spreads the events of
+     * one round over the whole list; any such order would do, and this one
+     * is fixed so that the output is. Below the modulus the map is one to
+     * one, and the product stays an integer for every place below
+     * 3,474,701,543 (PHP_INT_MAX over this number), far more events than
+     * a request can hold.
      */
     private const int SCRAMBLE_FACTOR = 2_654_435_761;
 
