@@ -1621,12 +1621,14 @@ final readonly class ScheduleRepacker
         }
 
         // What the two schedules made on copies found counts only where one
-        // of them is kept: then a search they stopped is one the budget
-        // stopped, but their steps are still not spent
+        // of them is kept. A search they stopped is one the budget stopped
+        // either way, though their steps are still not spent: a schedule
+        // not kept because its search was cut short can be kept at a
+        // larger budget, and the outcome is then another
         if (!$apart || $extraKept) {
             $others = [...$others, ...$extraOthers];
         }
-        if ($apart && $extraKept) {
+        if ($apart) {
             $budget->recordStopsOf($extraBudget);
             $recolourBudget->recordStopsOf($extraRecolourBudget);
             $layoutStopped = $layoutStopped || $extraLayoutBudget->stoppedASearch();

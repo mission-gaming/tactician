@@ -1005,6 +1005,40 @@ describe('Repack step budget flag', function (): void {
         }
     })->with([[8, 6], [8, 12], [10, 8], [10, 20], [12, 10], [12, 30]]);
 
+    it('is false below the default budget only when a larger budget changes nothing, on a season with its first rounds pinned in order', function (int $participants, int $legs, int $slots, int $playedOneIn): void {
+        // The rounds laid on the positions with room are laid here for
+        // late starts as well, on a copy of what the budgets have left and
+        // on the layout's share of its work limit. Where that share cut
+        // the layout short and the schedule was not kept, the stop was not
+        // recorded, and at a larger budget the layout ended and was kept:
+        // each of these reported no stopped budget at 1,000, 2,000 or 5,000
+        // steps with another outcome at a larger one
+        [$movable, $pinned, $grid] = seasonWithRoundsPinnedInOrder($participants, $legs, $slots, $playedOneIn);
+        $repacker = new ScheduleRepacker();
+        $outcomes = array_map(
+            static fn(int $budget): RepackOutcome => $repacker->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+            ),
+            [300, 1_000, 2_000, 5_000, 20_000, 200_000]
+        );
+
+        foreach ($outcomes as $at => $outcome) {
+            if (!$outcome->isBudgetExhausted()) {
+                foreach (array_slice($outcomes, $at + 1) as $larger) {
+                    expect($larger->toArray())->toBe($outcome->toArray())
+                        ->and($larger->isBudgetExhausted())->toBeFalse();
+                }
+            }
+        }
+    })->with([
+        '12 in 1 leg, 2 slots, 1 in 5 played' => [12, 1, 2, 5],
+        '14 in 1 leg, 2 slots, 1 in 4 played' => [14, 1, 2, 4],
+        '14 in 1 leg, 3 slots, 1 in 5 played' => [14, 1, 3, 5],
+        '16 in 1 leg, 2 slots, 1 in 2 played' => [16, 1, 2, 2],
+        '18 in 1 leg, 3 slots, 1 in 4 played' => [18, 1, 3, 4],
+        '20 in 1 leg, 2 slots, 1 in 3 played' => [20, 1, 2, 3],
+    ]);
+
     it('is true for some outcome that a larger budget would have changed', function (): void {
         // Without this the property above could hold with the flag stuck on
         $changed = 0;

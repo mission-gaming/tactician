@@ -7265,8 +7265,9 @@ leave something to gain, are made there on copies of what each budget
 has left, and the steps they spend are not taken from it. A schedule
 that is not kept then leaves the steps after it as many steps as they
 would have without it, which at a small budget is what decides whether
-those steps get as far; a search a kept schedule's copy stopped counts
-as one the budget stopped.
+those steps get as far. A search a copy stopped counts as one the
+budget stopped, whether or not its schedule is kept: at a larger budget
+the search could have ended and its schedule been kept.
 
 A step is not a fixed amount of work, so some searches count their own
 work as well, in position checks (one look at whether an event fits a

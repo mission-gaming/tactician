@@ -2265,8 +2265,15 @@ with scattered pins were brought closer to the events 0.2.3 placed
     the two schedules are made on copies of what the two budgets have
     left (`share(1)`), a work limit of their own as the round layout has,
     and the steps they spend are not spent from the two budgets; a search
-    a kept schedule's copy stopped is recorded as one the budget stopped
-    (`StepBudget::recordStopsOf()`). A schedule not kept leaves the
+    a copy stopped is recorded as one the budget stopped
+    (`StepBudget::recordStopsOf()`), whether or not its schedule is kept.
+    (As first written, only a kept schedule's stops were recorded. Once
+    the fourth schedule was also laid for late starts (decision 76), 18
+    of 387 outcomes of seasons with rounds pinned in order at budgets
+    from 1,000 to 20,000 reported no stopped budget where a larger budget
+    gave another outcome: the layout's share of its work limit cut the
+    fourth short, it was not kept, and at the larger budget it was. Only
+    the flag changes with the record.) A schedule not kept leaves the
     repack as it would be without it, the schedules its search for fewer
     gap slots turned down included. And where an objective ranks ahead
     of gap slots, the two are kept only where they place more events. At

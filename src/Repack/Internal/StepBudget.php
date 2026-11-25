@@ -128,8 +128,9 @@ final class StepBudget
 
     /**
      * Take on the searches another budget stopped, and none of its steps:
-     * for work done on a copy of what is left (share(1)) whose result is
-     * kept while its steps are not spent here.
+     * for work done on a copy of what is left (share(1)) whose steps are
+     * not spent here, whether or not its result is kept, since a larger
+     * budget could have let the search end and the result be kept.
      */
     public function recordStopsOf(self $other): void
     {
