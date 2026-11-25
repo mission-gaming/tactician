@@ -2025,7 +2025,7 @@ with scattered pins were brought closer to the events 0.2.3 placed
     layouts, the polish) another schedule to start from, and on what the
     budget had left, part of it spent by the fourth schedule's search,
     they did not get it as far. With no objective none is worse, and at
-    the default budget none of the 5,974 is.
+    the default budget none of the 5,974 is (#244).
 
     What this leaves: these seasons still take some 20 times what they
     took in 0.2.3, and the budget is still reported stopped on 83 of
@@ -2094,7 +2094,7 @@ with scattered pins were brought closer to the events 0.2.3 placed
     with which the attempts of the fewest moved events had placed two
     events more than that schedule, and they now place as many as it
     (9 events unplaced where 7 were). With no objective none is worse,
-    and at the default budget none is.
+    and at the default budget none is (#244).
 
     *Still short* (#162). At the default budget, 4 requests place fewer
     events than 0.2.3 did: seeds 47 (414 against 415), 64 (260 against
