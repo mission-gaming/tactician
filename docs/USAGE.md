@@ -5978,9 +5978,10 @@ The rules of the mechanism:
   round named as played before that is not below the round's number, or
   is below 0, is refused (`RoundOutOfSequence`).
 - **A round too far away is refused.** A round whose time is more than
-  some 270 billion years from the start, which is past what PHP's
-  timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
-  return a date that has wrapped round. Short of that a round number has
+  some 270 billion years from the start, or past either end of what PHP's
+  timestamps hold (some 291 billion years from 1970, which a start far
+  from 1970 reaches sooner), fails with the reason `ValueOutOfRange`;
+  PHP would return a date that has wrapped round. Short of that a round number has
   no limit where the interval is a duration: the steps are multiplied
   out, so round a million costs what round two costs. An interval made by
   `DateInterval::createFromDateString()` has no multiple and is added once
@@ -6189,7 +6190,10 @@ refused are:
   interval of whole days, months and years that `diff()` returned is
   written;
 - one with a fraction of a second, an inverted one, and one with a negative
-  part.
+  part;
+- one with a part of more than twelve digits (a day count set by hand to
+  100,000,000,000,000), because PHP reads no more than twelve for a part of
+  a duration and would refuse `P100000000000000D` when it is read back.
 
 Build the interval as `new DateInterval('PT25M')` where the configuration
 has to be stored. A start with a fraction of a second is written with it
@@ -6197,7 +6201,8 @@ has to be stored. A start with a fraction of a second is written with it
 a bound of a blackout window. A `MinimumRestRule` adds its rest once and
 in UTC, so its `toArray()` writes a rest of amounts of time from either
 source (`48 hours` is `PT48H`) and refuses only what has no duration: a
-relative string that is more than amounts, a fraction of a second, a sign.
+relative string that is more than amounts, a fraction of a second, a sign,
+a part of more than twelve digits.
 
 **A datetime in plain data states its date in full**: the year, the month
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
@@ -6306,6 +6311,15 @@ round by round can check the timeline it accumulates, which is how rest
 between rounds is checked there. Both built-in
 rules are plain-data constructible with `fromArray()`/`toArray()`, and
 custom rules implement the two-method `TimelineRule` interface.
+
+A `MinimumRestRule` refuses a rest longer than
+`MinimumRestRule::MAX_REST_DAYS` days (some 270 billion years, each part of
+the rest counted as positive and a month as 31 days) when it is built, with
+the reason `ValueOutOfRange`: PHP adds a longer rest to a kickoff without
+complaint and returns a time that has wrapped round to before it, and the
+rule would find no kickoff too close. A rest it accepts that still passes
+the end of the times PHP holds, from a kickoff billions of years out, covers
+every later kickoff of that participant.
 
 ## Schedule Repacking
 
