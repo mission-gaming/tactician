@@ -193,12 +193,14 @@ final readonly class SelectionYield
             return 0;
         }
 
-        $size = 2;
-        while ($size < $entrants) {
-            $size *= 2;
+        // Half the next power of two, found without forming that power,
+        // which is beyond the integers for a field of more than 2^62
+        $half = 1;
+        while ($half < $entrants - $half) {
+            $half *= 2;
         }
 
-        return $entrants - intdiv($size, 2);
+        return $entrants - $half;
     }
 
     /**

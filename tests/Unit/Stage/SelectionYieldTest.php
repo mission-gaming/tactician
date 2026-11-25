@@ -72,6 +72,11 @@ describe('SelectionYield', function (): void {
         'losers of 16, one round' => [SelectionYield::losersOfLastRound(), 16, null, false, 8],
         'winners of 1: nobody to meet' => [SelectionYield::winnersOfLastRound(), 1, null, false, 1],
         'losers of 1: no tie' => [SelectionYield::losersOfLastRound(), 1, null, false, 0],
+        // The next power of two of a field this large is beyond the
+        // integers; the count is still half of it
+        'winners of the largest field an integer holds' => [SelectionYield::winnersOfLastRound(), PHP_INT_MAX, null, false, 2 ** 62],
+        'losers of the largest field an integer holds' => [SelectionYield::losersOfLastRound(), PHP_INT_MAX, null, false, PHP_INT_MAX - 2 ** 62],
+        'winners of 2^62 + 1: 1 tie' => [SelectionYield::winnersOfLastRound(), 2 ** 62 + 1, null, false, 2 ** 62],
         'winners after a whole bracket' => [SelectionYield::winnersOfLastRound(), 16, null, true, 1],
         'losers after a whole bracket' => [SelectionYield::losersOfLastRound(), 16, null, true, 1],
         'depends on the outcome' => [SelectionYield::dependsOnOutcome(), 16, 4, false, null],
