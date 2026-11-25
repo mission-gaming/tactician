@@ -20,7 +20,7 @@ there is not repeated here.
 | [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
 | [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says (amended by 0014, 0019 and 0022; narrowed by 0017 for a league) |
 | [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table (amended by 0014) |
-| [0011](0011-a-tie-both-entrants-left-is-void.md) | A tie both entrants left is void |
+| [0011](0011-a-tie-both-entrants-left-is-void.md) | A tie both entrants left is void (narrowed by 0026 for the dropper of a winners tie) |
 | [0012](0012-a-withdrawal-states-its-round.md) | A withdrawal states its round (amended: an adjustment does too) |
 | [0013](0013-a-finished-bracket-keeps-its-winner.md) | A finished bracket keeps its winner |
 | [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md) | A bracket's table forms its tied sets inside a tier and credits its byes (amends 0009 and 0010; extended to Swiss by 0019; amended by 0022) |
@@ -32,7 +32,7 @@ there is not repeated here.
 | [0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md) | Nobody is in a round of a stage state twice (amends 0007; amended by 0021) |
 | [0021](0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md) | Everyone in a round of a stage state is an entrant (amends 0007 and 0020) |
 | [0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md) | Classes are final, and the interfaces are the extension points (amends 0009 and 0014) |
-| [0024](0024-only-a-winners-tie-its-results-decided-drops-its-loser.md) | Only a winners tie its results decided drops its loser to the losers bracket (narrows 0011) |
+| [0026](0026-only-a-winners-tie-its-results-decided-drops-its-loser.md) | Only a winners tie its results decided drops its loser to the losers bracket (narrows 0011) |
 
 ## Adding a record
 

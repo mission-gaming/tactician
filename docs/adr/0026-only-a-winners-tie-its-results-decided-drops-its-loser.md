@@ -1,4 +1,4 @@
-# 0024. Only a winners tie its results decided drops its loser
+# 0026. Only a winners tie its results decided drops its loser
 
 Status: accepted. Narrows, in
 [0011](0011-a-tie-both-entrants-left-is-void.md), what it says of the

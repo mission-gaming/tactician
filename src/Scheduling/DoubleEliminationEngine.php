@@ -171,7 +171,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * and has no complete result for is not played: the other entrant
      * advances and is listed among the byes of the stage, and the
      * withdrawn entrant takes the loss. Only a winners tie its results
-     * decided drops its loser to the losers bracket (docs/adr/0024): the
+     * decided drops its loser to the losers bracket (docs/adr/0026): the
      * withdrawn loser of a winners tie given away drops nobody, the losers
      * slot it would have filled is empty, so the entrant who would have
      * met it there goes on alone and is listed among the byes, and it goes
@@ -423,7 +423,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * entrant: the losers slot it would fill holds the placeholder Bye. Nor
      * is the loser of a winners tie its results did not decide (one given
      * away, or void): that slot holds the placeholder Void, at every moment,
-     * whatever is recorded later (docs/adr/0024).
+     * whatever is recorded later (docs/adr/0026).
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
@@ -474,7 +474,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * One walk through the fixed stage sequence (see resolveState()).
      *
      * Only a winners tie its results decided drops its loser to the losers
-     * bracket (docs/adr/0024). A tie given away drops nobody; nor does a
+     * bracket (docs/adr/0026). A tie given away drops nobody; nor does a
      * winners tie both of whose entrants have left, also where one of the two went on from it after all
      * (it was still in the stage when its next winners tie was paired):
      * the other had withdrawn by then, and an entrant who stands alone in
@@ -863,7 +863,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $nextContended = [];
         foreach ($read['units'] as $place => $unit) {
             $isVoid = !$unit['winner'] instanceof Participant && count($unit['losers']) === 2;
-            // Only a tie its results decided drops its loser (docs/adr/0024)
+            // Only a tie its results decided drops its loser (docs/adr/0026)
             $beaten = $read['beaten'][$place] ?? null;
             $winners[] = $unit['winner'];
             $losers[] = $beaten;

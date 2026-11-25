@@ -17,7 +17,7 @@ use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\Withdrawal;
 
 // Only a winners tie its results decided drops its loser (issue #182,
-// docs/adr/0024-only-a-winners-tie-its-results-decided-drops-its-loser.md).
+// docs/adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md).
 
 /**
  * Every event of a round with a result for those with no withdrawn

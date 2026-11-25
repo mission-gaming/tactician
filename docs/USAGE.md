@@ -4693,7 +4693,7 @@ echo $first->getLabel() . ' v ' . $second->getLabel() . "\n"; // Ada v Bo
   ([ADR 0013](adr/0013-a-finished-bracket-keeps-its-winner.md)).
 - **Double elimination.** Only a winners tie its results decided drops its
   loser to the losers bracket
-  ([ADR 0024](adr/0024-only-a-winners-tie-its-results-decided-drops-its-loser.md)).
+  ([ADR 0026](adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md)).
   An entrant who withdraws from a winners tie gives it away and drops
   nobody: the losers bracket slot it would have filled is empty, so the
   entrant who would have met it there stands alone (a bye), and it goes

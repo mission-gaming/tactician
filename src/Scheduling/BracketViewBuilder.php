@@ -530,7 +530,7 @@ final class BracketViewBuilder
      * @param SourceSpec $spec
      * @param array<string, NodeDraft> $nodes
      * @param bool $voidDropsNobody Whether only a node its results decided has a loser to give
-     *                              (double elimination, docs/adr/0024)
+     *                              (double elimination, docs/adr/0026)
      */
     private static function filledBy(array $spec, array $nodes, bool $voidDropsNobody): ?Participant
     {

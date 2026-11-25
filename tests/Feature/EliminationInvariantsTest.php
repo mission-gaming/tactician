@@ -1963,7 +1963,7 @@ it('shows the bracket as the engine reads it after every step, whatever happens 
 // played was uncontested; where the tie was read as void and the other
 // entrant found later to have gone through, it did not drop, and that losers
 // tie was a bye. So a later withdrawal changed how an earlier round looked.
-// Now only a winners tie its results decided drops its loser (ADR 0024).
+// Now only a winners tie its results decided drops its loser (ADR 0026).
 // Whatever happens, once the next round on its side of the bracket is
 // recorded, the view of a recorded round stays as it was: the same nodes,
 // the same statuses, advancers, losers and slots. (Before that, a tie given

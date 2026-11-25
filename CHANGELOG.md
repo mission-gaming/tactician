@@ -22,8 +22,8 @@ heading **Output change (fix)**.
   withdrew later as well (before its next winners tie, so the tie turned
   void, ADR 0011) the same losers tie was shown as a bye. A later
   withdrawal changed how an earlier recorded round looked. Now only a
-  winners tie its results decided drops its loser (ADR 0024,
-  `docs/adr/0024-only-a-winners-tie-its-results-decided-drops-its-loser.md`):
+  winners tie its results decided drops its loser (ADR 0026,
+  `docs/adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md`):
   the losers slot of a withdrawn loser is empty at every moment (the
   placeholder `Void` in the bracket view), the entrant who would have met
   it there has a bye, which `StandingEntry::getByes()` counts and a ranking
