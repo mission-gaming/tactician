@@ -80,16 +80,17 @@ final readonly class SeedProtectionConstraint implements ConstraintInterface
             return true; // Protection period ended
         }
 
-        $topSeedIds = array_map(
-            static fn(Participant $participant): string => $participant->getId(),
-            $this->getTopSeeds($context->getParticipants())
-        );
-        $eventTopSeeds = array_filter(
-            $participants,
-            static fn(Participant $participant): bool => in_array($participant->getId(), $topSeedIds, true)
-        );
+        $topSeedIds = $this->topSeedIds($context->getParticipants());
 
-        return count($eventTopSeeds) <= 1; // Max 1 top seed per event during protection
+        // Each place of the event counts, as each participant it holds does
+        $eventTopSeeds = 0;
+        foreach ($participants as $participant) {
+            if (isset($topSeedIds[$participant->getId()])) {
+                ++$eventTopSeeds;
+            }
+        }
+
+        return $eventTopSeeds <= 1; // Max 1 top seed per event during protection
     }
 
     /**
@@ -173,17 +174,48 @@ final readonly class SeedProtectionConstraint implements ConstraintInterface
     }
 
     /**
-     * Get the top seeds from participants.
+     * The IDs of the top seeds, as keys: the topSeedsToProtect seeded
+     * participants with the lowest seeds, of two with the same seed the one
+     * earlier in the list first.
+     *
+     * One pass that keeps the best seeds so far in order, a new one going
+     * after those with the same seed, is the field sorted stably by seed and
+     * cut at topSeedsToProtect, without the sort. It is asked on every
+     * question in a protected round, and the field is the whole stage.
      *
      * @param array<Participant> $participants
-     * @return array<Participant>
+     * @return array<string, true>
      */
-    private function getTopSeeds(array $participants): array
+    private function topSeedIds(array $participants): array
     {
-        // Sort by seed (lower number = better seed)
-        $seededParticipants = array_filter($participants, fn($p) => $p->getSeed() !== null);
-        usort($seededParticipants, fn($a, $b) => $a->getSeed() <=> $b->getSeed());
+        /** @var list<array{int, string}> $best seed and ID, best first */
+        $best = [];
+        foreach ($participants as $participant) {
+            $seed = $participant->getSeed();
+            if ($seed === null) {
+                continue;
+            }
 
-        return array_slice($seededParticipants, 0, $this->topSeedsToProtect);
+            $count = count($best);
+            if ($count === $this->topSeedsToProtect && $seed >= $best[$count - 1][0]) {
+                continue;
+            }
+
+            $place = $count;
+            while ($place > 0 && $best[$place - 1][0] > $seed) {
+                --$place;
+            }
+            array_splice($best, $place, 0, [[$seed, $participant->getId()]]);
+            if ($count === $this->topSeedsToProtect) {
+                array_pop($best);
+            }
+        }
+
+        $ids = [];
+        foreach ($best as [, $id]) {
+            $ids[$id] = true;
+        }
+
+        return $ids;
     }
 }
