@@ -15,6 +15,91 @@ heading **Output change (fix)**.
 
 ### Output change (fix)
 
+- **A pre-drawn Swiss schedule of a field of odd size gives nobody a second
+  bye** (#150). At the largest round counts of a field of odd size the
+  engine gives a participant a second bye where a round has no pairing
+  otherwise, and `SwissScheduler` returned such a draw, although a schedule
+  in which a different participant sits out each round always exists (there
+  are fewer rounds than participants). It happened for about one seed in
+  five at the most rounds: of seeds 1 to 200, 17 at 7 participants and 6
+  rounds, 42 at 9 and 8, 39 at 11 and 10, 40 at 13 and 12, 46 at 15 and 14,
+  47 at 21 and 20, 49 at 23 and 22, 55 at 25 and 24; and without a source of
+  draws at 33 participants and 32 rounds. The scheduler now takes such a
+  draw as failed and draws again, as it does for a draw that cannot be
+  completed, and without constraints builds the rounds by rotation when
+  twenty draws are not enough (or, without a source of draws, at once). No
+  seed of those measured needs more than five draws. A schedule whose draws
+  gave nobody a second bye is unchanged; one that did is now another
+  schedule for the same seed, and without a source of draws the
+  33-participant, 32-round schedule is now the rotation, whose first round
+  is still the list as given. Under constraints the rotation is not tried,
+  since the constraints may reject it: where every complete draw gives a
+  participant a second bye, the first of them is still returned, and where
+  none is complete the failure of the last draw is still reported. An
+  application that stored a pre-drawn schedule keeps it; one that draws
+  again from a seed at those round counts may get another schedule.
+
+- **A `MinimumRestRule` no longer passes kickoffs that its rest wraps round
+  past.** The rule adds its rest to a kickoff, and where the sum passed the
+  end of the times PHP holds PHP returned a time before the kickoff, so no
+  later kickoff was too close. Now a rest that passes that end covers every
+  later kickoff of the participant, and `validate()` reports it. Only a
+  rest of billions of years from a kickoff billions of years out is
+  affected (#171).
+
+- **A kickoff with a fraction of a second is written with it
+  ([#148](https://github.com/mission-gaming/tactician/issues/148)).**
+  `ScheduledEvent::toArray()`, `ScheduledSchedule::toArray()` and
+  `SlotAssignment::toArray()` wrote a kickoff to the second, so a kickoff
+  assigned from a `TimelineDefinition` or a `SessionGrid` whose start has a
+  fraction of a second (which they have written and read back since
+  0.3.0) was read back a fraction of a second before its slot time. The
+  kickoff is now written with the six digits of its fraction after the
+  seconds when it has one (`2026-08-01T17:00:00.250000Z`), which
+  `ScheduledEvent::fromArray()` reads back as the same instant; a kickoff
+  on a whole second is written as before (`2026-08-01T17:00:00Z`), so
+  nothing changes for a start without a fraction. The forms keep
+  `format_version` 1 and `RepackOutcome::fingerprint()` keeps scheme `v1`,
+  whose kickoff is what `SlotAssignment::toArray()` writes: an outcome on a
+  grid whose session starts on a fraction of a second has a new
+  fingerprint, and every other outcome the one it had. A reader that
+  parses kickoffs with a fixed pattern of whole seconds has to accept the
+  fraction. ADR 0024
+  (`docs/adr/0024-a-kickoff-is-written-with-its-fraction-of-a-second.md`)
+  records the decision and why a start with a fraction is not refused
+  instead.
+
+- **`CompositionValidator` counts one knockout round with the byes of a
+  bracket** (#146). It read a `MatchOutcomeSelector` after one knockout
+  round as half the entrants of the stage before, rounded up for the
+  winners and down for the losers. The elimination engines fill the field
+  with byes up to the next power of two, so more go on: 5 entrants play 1
+  tie and have 3 byes, and 4 go on, where the validator counted 3 and
+  passed a next stage declared for 3. `SelectionYield::countFrom()` now
+  counts `WinnersOfLastRound` as half the next power of two of the
+  entrants and `LosersOfLastRound` as the ties of that round (the entrants
+  beyond that half): 9 entrants give 8 winners and 1 loser, where they gave
+  5 and 4. A field that is a power of two counts as before, and so does a
+  transition with `afterWholeBracket: true`. Who is affected: a chain
+  validated from a field that is not a power of two through a
+  match-outcome selector after one round. What to check: such a chain may
+  now report a violation it passed before, or pass one it reported. No
+  golden fixture changed.
+- **`SelectionYield::countFrom()` refuses a negative count of entrants**
+  (#229). It refused a pool count below 1 but took any entrant count, and
+  returned a negative yield for a negative one:
+  `SelectionYield::winnersOfLastRound()->countFrom(-3)` was -3. It now
+  throws `InvalidInputException` ("A stage has 0 entrants or more, -3
+  given") for a count below 0, whatever the kind. `CompositionValidator`
+  reported such a count for the opening stage and then reported a second
+  violation built on it ("its selection yields 0 from the previous
+  stage's -3"); it now computes no yield from a stage before it reported
+  for fewer than 2 entrants, so the mistake is reported once. Who is
+  affected: code that calls `countFrom()` with a negative count, and a
+  chain whose opening stage or a transition declares fewer than 2
+  entrants. What to check: such a chain reports one violation fewer. No
+  golden fixture changed.
+
 - **A season with its first rounds pinned in order is repacked without the
   gap slots 0.2.3 did not leave** (#238). The round layout of a repack
   counted the positions its pins fill among its rounds; where the rounds
@@ -65,7 +150,141 @@ heading **Output change (fix)**.
   of them with two events fewer placed (7 unplaced became 9, as many as
   with no objective).
 
+The next four entries of this section come from one decision: **a round drawn by
+hand is read as drawn** (ADR 0025,
+`docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). None of them raises
+the version of an engine fingerprint: the cases are narrow and were read
+wrongly, and a new version would refuse the stamps of every bracket.
+
+- **A withdrawn entrant a round drawn by hand leaves alone holds no place
+  in the next round** (#172). Sixteen entrants on a fixed path, the first
+  withdraws after round 1, and the quarterfinals are drawn by hand among
+  the seven left (three ties and a bye): the withdrawn entrant, in none of
+  the ties, kept an empty slot of the next round, and the engine paired a
+  quarterfinal of one tie, a semifinal of one tie and the final, five
+  rounds, with a finalist who never played. Now an entrant who had
+  withdrawn when the round was paired and stands alone beside an entrant
+  the round put in a tie goes out in that round and holds no place: the
+  next round pairs exactly the entrants the round sent on (two semifinals,
+  then the final). The bracket view shows the entrant in a `Void` node of
+  its own that fills no slot. In double elimination such a stage no longer
+  leaves one place too many, which the engine refused
+  (`RecordedRoundMismatch`); it is now read, and the withdrawn entrant goes
+  out with those the next losers round puts out, as the two of a void
+  winners tie do. A round the engines pair never holds such an entrant, so
+  no state paired by the engines alone reads otherwise. Who is affected: a bracket with a round drawn by hand after a
+  withdrawal. What to check: the round paired after it and the table.
+- **A last round drawn by hand across the final and the third-place tie
+  ends the bracket** (#183). With the third-place option, a last round that
+  put a semifinal winner in the third-place tie and a semifinal loser in
+  the final was read as a round before the last: the semifinal winner went
+  on alone, the engine paired a second final, and the bracket view showed
+  one entrant twice in a round. Now the tie the round marks as the
+  third-place tie (`BracketTie::ThirdPlace`) is that tie and the other tie
+  of the round is the final, whoever they hold (a tie marked
+  `BracketTie::Final` also where its two are the semifinal losers, who
+  stood in no slot of the final). The bracket is over when both are decided, placing the final's
+  two first and second and the third-place tie's third and fourth, and the
+  round is reported as manual. A last round whose events carry no mark is
+  read as before. Who is affected: a bracket with a third-place tie whose
+  last round was drawn by hand. What to check: `isComplete()`, the outcome
+  and the table of such a state.
+- **A round drawn by hand does not bring back an entrant who has gone
+  out** (#230). A recorded tie was read as a tie of the round where one of
+  its two was in the round, whoever the other was: eight entrants, round 2
+  drawn by hand as `p8 v p1` and `p2 v p3` after p1 beat p8 in round 1,
+  and p8 went on when it won and was paired again (`p8 v p4; byes p2`). A
+  tie marked `BracketTie::ThirdPlace` was the third-place tie whoever it
+  held, so two quarterfinal losers could be placed third and fourth. Now a
+  tie between an entrant of the round and one who went out earlier (in
+  double elimination, out of the stage) is given to the entrant of the
+  round, whatever its results: the next round there is `p1 v p4; byes p2`,
+  and p8 stays level with the others who went out in round 1. The bracket
+  view shows the tie as `Uncontested`, naming only the entrant of the round.
+  A tie marked as the third-place tie between two who went out earlier is
+  no tie of the bracket, as any such tie. In single elimination, one who
+  went out and is drawn in the place of an entrant who had withdrawn (a
+  lucky loser) is read in that place, as before, so a round 0.2.3 drew
+  again after a withdrawal reads as it did. Who is affected: a bracket with
+  a round drawn by hand that names an entrant who went out earlier. What to
+  check: the round paired after it, the bracket view and the table.
+- **A stage of double elimination drawn by hand brings in nobody from
+  another stage** (#236). A recorded tie of a stage was read as a tie of it
+  where one of its two was in the stage, also where the other was still in
+  the bracket, in another stage. Seven entrants, the first-named winning:
+  after three rounds p7 withdrew, and losers round 2 (`p3 v p5; byes p4`)
+  was recorded with `p1 v p4` beside it while p1 waited for the winners
+  final. p1 won, went on in the losers bracket, and was paired in both
+  brackets (`p3 v p1`, then the winners final); where both of its places
+  came to one tie, the engine paired it against itself. Now such a tie is
+  given to the entrant of the stage, whatever its results, as a tie with one
+  who has gone out is: the next losers round there is `p3 v p4`, and p1
+  plays on in the winners bracket only. The bracket view shows the tie as
+  `Uncontested`, naming only the entrant of the stage, and a winners tie
+  given so drops nobody. Who is affected: a double elimination bracket with
+  a stage drawn by hand that names an entrant of another stage. What to
+  check: the stages paired after it, the bracket view and the table.
+- **In double elimination, the withdrawn loser of a winners tie drops
+  nobody to the losers bracket** (#182). A winners tie given away because
+  one entrant withdrew used to drop that entrant, and the losers tie it
+  would have played was shown as uncontested; but where the other entrant
+  withdrew later as well (before its next winners tie, so the tie turned
+  void, ADR 0011) the same losers tie was shown as a bye. A later
+  withdrawal changed how an earlier recorded round looked. Now only a
+  winners tie its results decided drops its loser (ADR 0026,
+  `docs/adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md`):
+  the losers slot of a withdrawn loser is empty at every moment (the
+  placeholder `Void` in the bracket view), the entrant who would have met
+  it there has a bye, which `StandingEntry::getByes()` counts and a ranking
+  strategy with a bye value credits, and the withdrawn entrant goes out
+  with those the next losers round puts out, where it went out before. The
+  rounds paired, the placings and the fingerprint are unchanged. A dropper
+  who lost by its results and withdraws later still gives its losers tie
+  away. Who is affected: a double elimination bracket with a withdrawal
+  from a winners tie. What to check: the losers bracket of the view and
+  the bye counts of the table.
+
+No golden fixture changed.
+
 ### Added
+
+- **`TimelineDefinition::getRoundSlotTimes()` gives every slot of the
+  rounds asked for
+  ([#174](https://github.com/mission-gaming/tactician/issues/174)).**
+  `getRoundSlotTimes(int ...$rounds)` yields a list per round, keyed by
+  round number and in the order the rounds are given, of the times
+  `getSlotTime()` gives for its slots, in UTC; each round is computed
+  when its list is read. A round number below 1 is refused when it is
+  called (`PositionOutOfRange`), and a round too far from the start while
+  it is read (`ValueOutOfRange`). It replaces `roundSlotTimes()`, the one
+  public method in `src/` that was marked `@internal`: that method was
+  for the assigner alone and is removed; the new one is part of the
+  definition's experimental API, and the assigner uses it.
+
+- **`TimelineAssigner::assignRound()` can be told the round played before
+  ([#173](https://github.com/mission-gaming/tactician/issues/173)).** The
+  two assigning calls now apply one rule: each round is compared with the
+  round played before it. `assign()` reads that round from the schedule;
+  `assignRound()` keeps nothing between calls and takes it as a new
+  optional argument, `previousRound` (0 when no round was played before).
+  Told it for every round, the calls refuse exactly what `assign()`
+  refuses for the schedule of the same rounds, with the same two rounds
+  named. Without the argument nothing changes: the round compared is the
+  one numbered before, which is right for a stage state, whose rounds are
+  numbered 1, 2, 3. Before this, a caller whose rounds had a gap had a
+  round compared with one nobody played (231 such sets refused round by
+  round in the review's sweep that `assign()` accepted) and the two played
+  rounds either side of the gap compared by no call. A round named as
+  played before that is not below the round's number, or is below 0, is
+  refused (`InvalidConfigurationException`, `RoundOutOfSequence`).
+
+- **`MinimumRestRule::MAX_REST_DAYS`**, the longest rest the rule accepts:
+  100,000,000,000,000 days, some 270 billion years (#171).
+
+- **`InvalidConfigurationReason::TimezoneAbbreviation`** (`timezone_abbreviation`),
+  the reason a declared timezone that is an abbreviation is refused with
+  (below, under **Changed**). New cases may be added in any release, so a
+  `match` over the reason already has a `default` arm.
 
 - **Repack objectives ranked ahead of gap slots, opt-in** (#176, #209). A
   repack keeps every participant's events in a session back to back
@@ -114,6 +333,76 @@ heading **Output change (fix)**.
 
 ### Changed
 
+- The release checklist (`docs/RELEASING.md`) says what the notes of a GitHub
+  release hold when the changelog section is longer than GitHub accepts.
+  Documentation only; no output and no public signature changes.
+
+- **A round robin that fails under a factory-built `ConsecutiveRoleConstraint`
+  is analysed once** (#149). The constraints `ConsecutiveRoleConstraint::homeAway()`
+  and `position()` build now count among those the library knows to run no
+  code of the caller's, beside `NoRepeatPairings`,
+  `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+  `SeedProtectionConstraint`: a round robin that cannot be completed builds
+  its failure analysis for the order whose failure it reports, and not for
+  every rotated order it goes on from, and a Swiss round search skips the
+  branches that hold no pairing. The results are what they were, the
+  failure analysis included. Measured for 24 participants, three repeated
+  legs, `ConsecutiveRoleConstraint::homeAway(1)` and
+  `RoundParityRoleAssignment` named (no schedule exists): 43 to 128 s on
+  0.3.0, 2.0 to 2.3 s now; with mirrored legs 55 s and 4.6 s. Under the
+  default role assignment the failure was analysed once already. A
+  `ConsecutiveRoleConstraint` given a role extractor of the caller's is
+  asked as before, since the library cannot tell what the extractor
+  does. The factories now hand the constraint an extractor of an internal
+  class (`Constraints\PositionRole`) rather than a closure, which reads the
+  same roles.
+
+- **A session grid has at most 200,000 positions, up from 100,000** (#175).
+  A slot every five minutes, day and night, for a year is 105,120
+  positions (105,408 in a leap year), and `SessionGrid` refused it with
+  the reason `ValueOutOfRange`. `SessionGrid::MAX_POSITIONS` is now
+  200,000, and so are the most sessions a grid can have and the most slots
+  of one session. Every grid that loaded before loads as before and gives
+  the same positions and slot times; only a grid of 100,001 to 200,000
+  positions, refused before, now loads. Its cost rises in proportion to
+  its positions: some 80 MB for an instant-based grid at the limit, and
+  about 1.2 KB a position for a repack, so a repack of a grid of 100,000
+  positions or more needs a `memory_limit` above PHP's default of 128 MB
+  ("Schedule Repacking" in the usage guide). A session whose slot interval was
+  made by `DateInterval::createFromDateString()` is still held to the
+  limit on steps of such an interval, 100,001 slots.
+
+- **A declared timezone that is an abbreviation is refused** (#151, ADR
+  0023, `docs/adr/0023-a-declared-timezone-is-a-region-or-an-offset.md`).
+  The `timezone` of `TimelineDefinition::fromArray()`,
+  `SessionGrid::fromArray()` and each window of `BlackoutRule::fromArray()`
+  accepted any name PHP reads, and PHP reads an abbreviation as a fixed
+  offset all year: `'timezone' => 'BST'` was `+01:00` in January as well,
+  so a caller who meant London got kickoffs an hour out for half the year
+  and no error. The field is now a region identifier (`Europe/London`,
+  `UTC`) or an explicit offset (`+01:00`), and every abbreviation PHP
+  knows is refused with an `InvalidConfigurationException`, reason
+  `TimezoneAbbreviation`, before the datetime is read, `GMT` included
+  (London's winter time). The names of UTC itself, `Z`, `UTC` and `UCT`
+  in any case, are still read: they name no place, and `Z` ends every
+  kickoff the library writes. The context holds the offset the abbreviation
+  stood for under `fixed_offset`. Who is affected: a stored configuration
+  that declares an abbreviation, which was read before and is refused now.
+  To migrate, declare the region that was meant (`Europe/London` for `BST`
+  or `GMT` meant as London: the kickoffs of the half of the year the
+  abbreviation was wrong for move by the hour), or the offset itself
+  (`+01:00`), which keeps every kickoff as it was.
+- **`toArray()` refuses a start held in a timezone abbreviation.**
+  `TimelineDefinition::toArray()` and `SessionGrid::toArray()` wrote the
+  name of the start's timezone, and for a start built in code in an
+  abbreviation (`new DateTimeZone('BST')`, or a string that ends in one)
+  that is a name `fromArray()` now refuses. They refuse it instead, with
+  the reason `NotSerializable`, as they refuse an interval that would not
+  read back; the definition and the grid themselves work with such a start
+  as before. Build the start in a region identifier or an offset where the
+  configuration is stored. `BlackoutRule::toArray()` writes its bounds in
+  UTC and is not affected.
+
 - **Repack outcomes are format version 2.** `toArray()` writes
   `'format_version' => 2`, and `metrics` holds `lone_participant_sessions`
   after `lone_event_sessions`. An outcome's array has no `fromArray()`;
@@ -125,6 +414,65 @@ heading **Output change (fix)**.
   identifier (`InvalidConfigurationException`, reason `UnknownIdentifier`).
 
 ### Fixed
+
+- `SessionGrid::ordinalOf()`, `positionOf()` and `getPositionCount()` no
+  longer walk the grid on every call (#225). Each walked the sessions (and
+  `positionOf()` given an instant compared it with every slot time), so a
+  loop that converted every position of a grid took time in the square of
+  its size: some 96 seconds at 100,000 positions. The grid now keeps the
+  running totals of its slot counts from when it is built: `ordinalOf()` and
+  `getPositionCount()` read them, and `positionOf()` searches them, or the
+  session starts and then the slots of one session, by halves. The same
+  loop takes under a tenth of a second. The answers are the ones they were,
+  and so are the plain-data form and the exceptions; no output and no
+  public signature changes. `tests/Benchmark/SessionGridBench.php` times
+  both loops.
+- The `Benchmarks` job installs the benchmark runner again. Composer refused
+  the runner's lock file (`tools/phpbench/composer.lock`) over a security
+  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
+  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
+  pinned to. The library's own development lock file (`composer.lock`) takes
+  the same release, so the `Dependency audit` job passes again. Tooling and
+  development dependencies only; no output and no public signature changes.
+
+- **Assigning a schedule under a relative round interval is linear in its
+  rounds ([#170](https://github.com/mission-gaming/tactician/issues/170)).**
+  Under a round interval made by `DateInterval::createFromDateString()`
+  (`1 week`, `first monday of next month`), which is added one step at a
+  time, `TimelineAssigner::assign()` computed each round's start from the
+  timeline's start again, so the time it took rose with the square of the
+  rounds: 10,000 rounds took 33 seconds. Each round's start is now counted
+  on from the start of the round before it that the schedule holds, which
+  is the same time, and 10,000 rounds take some 50 milliseconds. The
+  kickoffs are the same; an interval written as an ISO 8601 duration was
+  linear already and is computed as before.
+
+- **A rest too long to add is refused when the rule is built.** A
+  `MinimumRestRule` given a rest of `PHP_INT_MAX` seconds was accepted,
+  because its constructor checked only that the rest moves 1970 forward,
+  and then enforced nothing: from any later kickoff the sum wrapped round.
+  A rest that reaches more than `MinimumRestRule::MAX_REST_DAYS` days, each
+  part counted as positive and a month as 31 days, is now refused by the
+  constructor and by `fromArray()` with `InvalidConfigurationException`
+  (reason `ValueOutOfRange`) (#171).
+- **An interval with a part of more than twelve digits is no longer written
+  as plain data that does not read back.** `TimelineDefinition::toArray()`
+  and `SessionGrid::toArray()` wrote a hand-built interval of 10^14 days as
+  `P100000000000000D`, which `fromArray()` refused: PHP reads at most twelve
+  digits for a part of a duration. `TimelineDefinition::writeInterval()`
+  now refuses such an interval with the reason `NotSerializable`, as it
+  refuses the others it cannot write, and `MinimumRestRule::toArray()`
+  refuses such a rest the same way. A timeline or a grid built with one
+  still gives its slot times (#171).
+- **A slot time past the end of PHP's timestamps is refused instead of
+  wrapping round.** `TimelineDefinition` and `SessionGrid` measured how far
+  the round or slot intervals reach and not where they start, so a start
+  far from 1970 with a span under the limit passed the end of the times PHP
+  holds and returned a date that had wrapped round (round 90,000,000,000,000
+  of a daily timeline from the year 95 billion was in the year −243
+  billion). Such a time is now refused with the reason `ValueOutOfRange`,
+  and so is a step of an interval made by
+  `DateInterval::createFromDateString()` that wraps round (#211).
 
 - **A repack no longer searches to its limit for fewer gap slots where no
   placement has fewer** (#169). The search for fewer gap slots now works
@@ -150,6 +498,47 @@ heading **Output change (fix)**.
   pinned to. The library's own development lock file (`composer.lock`) takes
   the same release, so the `Dependency audit` job passes again. Tooling and
   development dependencies only; no output and no public signature changes.
+
+- A warning PHP raises while it compiles a file now fails the suite. A
+  test file without a namespace imported `Override`, which PHP 8.4 and 8.5
+  warn has no effect; the warning is raised when Pest loads the file,
+  before the run's own handling of warnings is in place, so the run printed
+  it and passed. The import is gone, and
+  `tests/Feature/CompileTimeWarningsTest.php` compiles every PHP file of
+  `src/`, `tests/` and `examples/` with `php -l` under the PHP that runs
+  the suite and fails on anything it says besides "No syntax errors
+  detected" (#221). Test suite only; the library is unchanged.
+
+- The `Benchmarks` job installs the benchmark runner again. Composer refused
+  the runner's lock file (`tools/phpbench/composer.lock`) over a security
+  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
+  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
+  pinned to. The library's own development lock file (`composer.lock`) takes
+  the same release, so the `Dependency audit` job passes again. Tooling and
+  development dependencies only; no output and no public signature changes.
+
+- The `round robin` shard of the `Mutation testing` workflow is split by
+  mutator set into five shards (`round robin, numbers and returns`,
+  `round robin, removals and arrays`, `round robin, control structures and
+  strings`, `round robin, logic`, `round robin, equality and arithmetic`).
+  The round robin scheduler is one file with some 1,350 of the shard's
+  changes. After the round robin engine's tests joined the run and doubled
+  the time of each test process, the shard was stopped at its 170-minute
+  limit three weeks running, with no score. Each new shard makes the
+  changes of the sets it names, and the last makes the rest of Pest's
+  default set; together they make each change once, and
+  `tests/Feature/CiConfigurationTest.php` now checks that for every file
+  (#222). CI only; the library is unchanged.
+
+- The `repack recolouring` shard of the `Mutation testing` workflow is split
+  into four shards, so that each ends well inside its limit: it took 118 of
+  its 170 minutes, the longest job of the run, and the repack work of 0.4.0
+  adds to its files. The structural order and the gap search are a shard
+  each (`repack structural order`, `repack gap search`), and the leftover
+  recolourer and the round colouring are split by mutator set into two
+  (`repack recolouring, numbers, control structures and arithmetic` and
+  `repack recolouring, removals, logic and equality`), so that each change
+  is still made once (#243). CI only; the library is unchanged.
 
 ## [0.3.0] - 2026-11-03
 

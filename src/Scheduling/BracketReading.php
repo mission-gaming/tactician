@@ -30,7 +30,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  *
  * @internal Not public API: the working record of the two elimination engines.
  *
- * @phpstan-type WalkedNode array{entrants: list<Participant|null>, status: BracketNodeStatus, events: list<Event>, advancer: Participant|null, losers: list<Participant>}
+ * @phpstan-type WalkedNode array{entrants: list<Participant|null>, status: BracketNodeStatus, events: list<Event>, advancer: Participant|null, losers: list<Participant>, place: bool}
  * @phpstan-type WalkedRound array{side: BracketSide, round: int, slots: list<Participant|null>, number: int|null, manual: bool, next: bool, nodes: list<WalkedNode>, extra: WalkedNode|null}
  */
 final class BracketReading
@@ -155,6 +155,18 @@ final class BracketReading
      * @var list<array{winner: Participant|null, losers: list<Participant>}>
      */
     public array $decidingTies = [];
+
+    /**
+     * Who has gone out of the bracket in the rounds the walk has read, by
+     * ID: in single elimination everyone a round put out, and in double
+     * elimination everyone a stage put out of the stage, not those a
+     * winners tie dropped. An entrant read as going on after all (a void
+     * tie, docs/adr/0011) is not among them. A round drawn by hand does not
+     * bring one of them back (EliminationBracketSupport::readRound()).
+     *
+     * @var array<int|string, true>
+     */
+    public array $wentOut = [];
 
     /**
      * @param array<int, RoundPairing> $recorded The recorded rounds by round number

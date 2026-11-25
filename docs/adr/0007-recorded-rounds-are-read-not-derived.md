@@ -17,7 +17,14 @@ says of a participant who is not an entrant by
 [0021](0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md): the
 verbs and `fromArray()` refuse all three too, so none of the three rules of
 point 8 is `fromHistory()`'s own any more, and what it checks of a round
-that the verbs do not is one result for an event.
+that the verbs do not is one result for an event. What point 1 says of an entrant a recorded
+round leaves alone is narrowed by
+[0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md): one who had
+withdrawn when the round was paired holds no place in the next round. What
+point 2 reads of a round drawn by hand is narrowed by the same record: a tie
+with an entrant who has gone out of the bracket, or in double elimination
+with one who holds a place in another stage, is given to the other entrant,
+and does not bring the first into the round.
 
 ## Context
 

@@ -64,7 +64,9 @@ The benchmark suite (`tests/Benchmark/`, run by
 [phpbench](https://phpbench.readthedocs.io/)) times the operations whose
 cost has mattered: schedule repack at 24 and 40 participants, a round robin
 with no constraints, one that needs retries and one that cannot be
-completed, and Swiss pairing under a constraint. A timing depends on the
+completed, Swiss pairing under a constraint, and the conversion of every
+position of a session grid to its ordinal and of every slot time to its
+position. A timing depends on the
 machine, so the suite is not part of the gate.
 
 phpbench is not one of the library's development dependencies. It is
@@ -146,6 +148,13 @@ failed:
 ```bash
 vendor/bin/pest --order-by=random --random-order-seed=<seed>
 ```
+
+A warning or deprecation that PHP raises while it compiles a file, such as
+an import that has no effect, comes before PHPUnit handles warnings: a test
+file is compiled when Pest loads it. So the suite compiles every PHP file of
+`src/`, `tests/` and `examples/` with `php -l` under the PHP that runs it,
+and fails on anything PHP says besides "No syntax errors detected"
+(`tests/Feature/CompileTimeWarningsTest.php`).
 
 A run does not depend on the `memory_limit` PHP is configured with. A plain
 run needs about as much as PHP's default of 128M allows and a run with
@@ -259,10 +268,17 @@ for a pull request, and it is apart from the scheduled workflow above so
 that a slow run cannot hide what that one found. The source is mutated in
 shards, one `Mutation testing, <shard>` job each, so that every job ends
 well inside its limit on a standard runner. A shard is a list of files, and
-every PHP file of the two directories is in exactly one:
-`tests/Feature/CiConfigurationTest.php` fails when a file is in none or in
-two, so when you add a file to either directory, add it to a shard of that
-workflow. Each job publishes its shard's score, the counts and the first
+every PHP file of the two directories is in exactly one, or, where one file
+has more changes than a job gets through, split over several shards by the
+sets of mutators each one makes the changes of (`mutators:
+--mutator=SetNumber,SetReturn` in the workflow, and one shard with
+`--except=` and the sets the others name, for the rest of Pest's default
+set). The round robin scheduler is split over five shards that way, and
+the leftover recolourer with the round colouring over two.
+`tests/Feature/CiConfigurationTest.php` fails when a file is in no shard or
+when a change to it would be made by no shard or by two, so when you add a
+file to either directory, add it to a shard of that workflow, and to every
+shard of a split, if it is one of the split files. Each job publishes its shard's score, the counts and the first
 untested changes in its job summary. A job that is stopped at its time
 limit is red and has no score; its summary says how many changes it got
 through and what it found in them, and the shard is then to be split. Read
