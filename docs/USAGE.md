@@ -6414,7 +6414,13 @@ unplaced or a gap and some position is full of pins, the repacker lays
 the rounds out once more on the positions with room only, and returns
 that fourth schedule on the same terms: on 160 seasons of 20 to 40
 participants with a fifth or a half of their rounds pinned in order it
-takes the gap slots from 244 to 6. And where fewer events are still
+takes the gap slots from 244 to 6. A result that has late starts and
+nothing else to gain is offered that fourth schedule as well. With no
+objective, between two schedules as good by every other measure the one
+with fewer late starts is returned: on those seasons it takes the late
+starts reported to 6. With an objective, the fourth schedule is handed
+to the polish that moves single events, which takes it where it then
+ranks better. And where fewer events are still
 placed than could be, the events are planned once more in a fixed
 order scrambled from the order of the rounds, and that fifth schedule
 is returned on the same terms; it costs nothing on a request whose

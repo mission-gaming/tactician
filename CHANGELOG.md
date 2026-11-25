@@ -26,16 +26,33 @@ heading **Output change (fix)**.
   it. Wherever the whole search packed a session, the packing is the same;
   where it ran out, the session is now packed without a gap. On 160
   seasons of 20 to 40 participants with a fifth or a half of their rounds
-  pinned in order, a stopped budget is reported by 41 where it was by 83,
-  the median time falls from 94 ms to 50 ms (0.2.3 took 4), and 40
-  outcomes change, every one with as many events placed and as many gap
-  slots; the late starts reported rise in 21 of them and fall in 2. Who is
-  affected: callers who repack a season in progress at the default budget
-  or a larger one. Below the default budget nothing changes, and on #162's
-  200 round robins with scattered pins, the 63 round robins of #209, the
-  golden fixtures and the examples, nothing changes either; of 1,280
-  outcomes of requests with current positions under four settings of the
-  objectives, 3 are better by their own ranking and the rest the same.
+  pinned in order, a stopped budget is reported by 41 where it was by 83.
+  A schedule with late starts and nothing else to gain is now also
+  offered the rounds laid on the positions with room, which it was
+  offered only where it left an event or a gap: once the planned schedule
+  packed without a gap, it kept late starts the rounds did not have. With
+  no objective, late starts break the ties of events placed and gap slots
+  between the schedules a repack makes; with one, those rounds are handed
+  to the polish that moves single events, which takes them where they
+  then rank better. On those seasons at the default budget 67 outcomes
+  change, every one with as many events placed, as many gap slots and
+  fewer late starts (6 in all where there were 564), and the median time
+  is 88 ms where it was 97 ms (0.2.3 took 4). Who is affected: callers who
+  repack a season in progress. At 2,000 and 300 steps the packing is as
+  before, and 15 and 24 of the seasons have fewer late starts with as many
+  events placed and gap slots. On #162's 200 round robins with scattered
+  pins, 6 outcomes at the default budget and 3 at 300 steps change, each
+  with fewer late starts and nothing else different by events placed or
+  gap slots. With an objective, on 5,974 small repacks none is worse by
+  its own ranking at 200,000, 2,000 or 300 steps, and 226, 193 and 153 are
+  better. In
+  `examples/29-rescheduling-with-least-churn.php` the repack with no
+  objective moves 8 games where it moved 12, with the same figures
+  otherwise (its golden fixture changes with it); the 63 round robins of
+  #209 and the other golden fixtures and examples do not change; of
+  1,280 outcomes of requests with current positions under four settings
+  of the objectives, 39 are better by their own ranking and the rest the
+  same.
 
 - **A season with its first rounds pinned in order is repacked without the
   gap slots 0.2.3 did not leave** (#238). The round layout of a repack

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Repack\Internal\ContiguityTargets;
 use MissionGaming\Tactician\Repack\Internal\SessionPacker;
 use MissionGaming\Tactician\Repack\Internal\StepBudget;
 use Random\Engine\Xoshiro256StarStar;
@@ -58,6 +59,140 @@ function sessionOfParts(int $seed): array
     $order = $random->shuffleArray(range(0, $first - 1));
 
     return array_map(static fn(array $pair): array => [min($order[$pair[0]], $order[$pair[1]]), max($order[$pair[0]], $order[$pair[1]])], $edges);
+}
+
+/**
+ * A small session of two to four independent parts, on two to four
+ * slots, with some participants holding a pinned slot (an event against
+ * someone outside the session's events) and room for one to four events
+ * a slot beyond the pins: small enough that every assignment of its
+ * events to slots can be tried.
+ *
+ * @return array{array<int, array{int, int}>, array<int, list<int>>, array<int, int>, int, int}
+ *         The events, participant => pinned slots, slot => pinned events, the slots, the room
+ */
+function smallSessionOfParts(int $seed): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    while (true) {
+        $slots = $random->getInt(2, 4);
+        $most = [2 => 9, 3 => 8, 4 => 7][$slots];
+        $edges = [];
+        $first = 0;
+        for ($part = $random->getInt(2, 4); $part > 0 && count($edges) < $most; --$part) {
+            $size = $random->getInt(2, 4);
+            for ($event = $random->getInt(1, $size + 1); $event > 0 && count($edges) < $most; --$event) {
+                $a = $random->getInt(0, $size - 1);
+                $b = ($a + $random->getInt(1, $size - 1)) % $size;
+                $edges[] = [$first + min($a, $b), $first + max($a, $b)];
+            }
+            $first += $size;
+        }
+        $order = $random->shuffleArray(range(0, $first - 1));
+        $edges = array_map(static fn(array $pair): array => [min($order[$pair[0]], $order[$pair[1]]), max($order[$pair[0]], $order[$pair[1]])], $edges);
+
+        $loads = [];
+        foreach ($edges as [$a, $b]) {
+            $loads[$a] = ($loads[$a] ?? 0) + 1;
+            $loads[$b] = ($loads[$b] ?? 0) + 1;
+        }
+        $pinSlots = [];
+        $pinCounts = [];
+        foreach ($loads as $pid => $load) {
+            if ($load < $slots && $random->getInt(0, 3) === 0) {
+                $slot = $random->getInt(0, $slots - 1);
+                $pinSlots[$pid] = [$slot];
+                $pinCounts[$slot] = ($pinCounts[$slot] ?? 0) + 1;
+            }
+        }
+        if (max([0, ...$loads]) > $slots) {
+            continue;
+        }
+
+        return [$edges, $pinSlots, $pinCounts, $slots, $random->getInt(1, 4) + max([0, ...$pinCounts])];
+    }
+}
+
+/**
+ * The total late start of the unpinned participants under a packing
+ * that leaves every unpinned participant one run with no gap and every
+ * pinned one on its target (ContiguityTargets), with no participant
+ * twice in a slot, none on a slot it is pinned at, and no slot over its
+ * room; null when the packing is not one.
+ *
+ * @param array<int, array{int, int}> $edges
+ * @param array<int, list<int>> $pinSlots
+ * @param array<int, int> $pinCounts
+ * @param array<int, int> $assignments Event => slot
+ */
+function lateStartOfAGapFreePacking(array $edges, array $pinSlots, array $pinCounts, int $slots, int $capacity, array $assignments): ?int
+{
+    if (count($assignments) !== count($edges)) {
+        return null;
+    }
+    $slotsOf = [];
+    $used = [];
+    foreach ($assignments as $event => $slot) {
+        foreach ($edges[$event] as $pid) {
+            if (isset($slotsOf[$pid][$slot]) || in_array($slot, $pinSlots[$pid] ?? [], true)) {
+                return null;
+            }
+            $slotsOf[$pid][$slot] = true;
+        }
+        $used[$slot] = ($used[$slot] ?? 0) + 1;
+        if ($used[$slot] > $capacity - ($pinCounts[$slot] ?? 0)) {
+            return null;
+        }
+    }
+
+    $late = 0;
+    foreach ($slotsOf as $pid => $set) {
+        $held = array_keys($set);
+        sort($held);
+        if (($pinSlots[$pid] ?? []) !== []) {
+            $target = ContiguityTargets::movableTarget($pinSlots[$pid], count($held), $slots);
+            sort($target);
+            if ($held !== $target) {
+                return null;
+            }
+            continue;
+        }
+        if ($held[count($held) - 1] - $held[0] + 1 !== count($held)) {
+            return null;
+        }
+        $late += $held[0];
+    }
+
+    return $late;
+}
+
+/**
+ * The least total late start over every assignment of the events to
+ * slots that is a gap-free packing (lateStartOfAGapFreePacking()); null
+ * when none is.
+ *
+ * @param array<int, array{int, int}> $edges
+ * @param array<int, list<int>> $pinSlots
+ * @param array<int, int> $pinCounts
+ */
+function leastLateStartOfAGapFreePacking(array $edges, array $pinSlots, array $pinCounts, int $slots, int $capacity): ?int
+{
+    $least = null;
+    $events = array_keys($edges);
+    for ($code = 0, $all = $slots ** count($events); $code < $all; ++$code) {
+        $assignments = [];
+        $rest = $code;
+        foreach ($events as $event) {
+            $assignments[$event] = $rest % $slots;
+            $rest = intdiv($rest, $slots);
+        }
+        $late = lateStartOfAGapFreePacking($edges, $pinSlots, $pinCounts, $slots, $capacity, $assignments);
+        if ($late !== null && ($least === null || $late < $least)) {
+            $least = $late;
+        }
+    }
+
+    return $least;
 }
 
 describe('SessionPacker', function (): void {
@@ -129,12 +264,58 @@ describe('SessionPacker', function (): void {
         expect(count($whole['assignments']) + count($whole['leftovers']))->toBe(count($edges));
     })->with(range(1, 60));
 
+    it('packs a session of parts as the whole search does, at the least late start there is', function (int $seed): void {
+        // Small sessions of two to four parts, with pins and little room,
+        // so that the parts' own packings often overfill a slot. The
+        // search part by part (the default budget) and the session
+        // searched whole (a caller's budget below the default, with steps
+        // to spare) give the same packing; and where some placement of
+        // the events packs every participant on its target without a gap
+        // (tried here one assignment of events to slots at a time), the
+        // packing is one, with the least total late start
+        [$edges, $pinSlots, $pinCounts, $slots, $capacity] = smallSessionOfParts($seed);
+
+        $byParts = new StepBudget(10_000_000);
+        $packed = new SessionPacker($byParts)->pack($edges, $pinSlots, $pinCounts, $slots, $capacity);
+        $wholeBudget = new StepBudget(10_000_000, StepBudget::DEFAULT_STEPS - 1);
+        $whole = new SessionPacker($wholeBudget)->pack($edges, $pinSlots, $pinCounts, $slots, $capacity);
+
+        // The same events in the same slots: the part-by-part search
+        // lists them by event, the whole one in the order it matched them
+        ksort($packed['assignments']);
+        ksort($whole['assignments']);
+        expect($byParts->stoppedASearch())->toBeFalse()
+            ->and($wholeBudget->stoppedASearch())->toBeFalse()
+            ->and($packed)->toBe($whole);
+
+        $least = leastLateStartOfAGapFreePacking($edges, $pinSlots, $pinCounts, $slots, $capacity);
+        if ($least !== null) {
+            expect($packed['leftovers'])->toBe([])
+                ->and(lateStartOfAGapFreePacking($edges, $pinSlots, $pinCounts, $slots, $capacity, $packed['assignments']))
+                ->toBe($least);
+        }
+    })->with(range(1, 150));
+
+    it('searches the session whole where the parts packed alone would overfill a slot, and packs it there', function (): void {
+        // Two events with no participant in common, two slots of room for
+        // one event: each part packs alone at the top, and together they
+        // overfill it. Searched whole, the placement with the least late
+        // start that is first by participant puts the event of 1 and 3
+        // second
+        $edges = [[1, 3], [0, 2]];
+
+        $packed = new SessionPacker(new StepBudget(200_000))->pack($edges, [], [], 2, 1);
+        ksort($packed['assignments']);
+
+        expect($packed)->toBe(['assignments' => [0 => 1, 1 => 0], 'leftovers' => []]);
+    });
+
     it('searches the session whole where the parts packed alone would overfill a slot', function (): void {
-        // Two parts of three events each between the same two
-        // participants, in three slots of room for one event: each part
-        // packs alone at the top, but together they need six places in
-        // three slots. Whatever the packer makes of it, every event is
-        // either placed or left over
+        // Two parts, three events of 0 and 1 and three of 2, 3 and 4, in
+        // three slots of room for one event: each part packs alone at the
+        // top, but together they need six places in three slots. Whatever
+        // the packer makes of it, every event is either placed or left
+        // over
         $edges = [[0, 1], [2, 4], [0, 1], [3, 4], [0, 1], [3, 4]];
 
         $packed = new SessionPacker(new StepBudget(200_000))->pack($edges, [], [], 3, 1);

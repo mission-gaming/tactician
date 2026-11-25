@@ -53,7 +53,11 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * placed comes first. Where the result still leaves an event unplaced or
  * a gap and pins fill a position, the rounds are laid out once more on
  * the positions with room only, and that fourth schedule is returned on
- * the same terms. Where fewer events are still placed than the ceiling,
+ * the same terms. A result with late starts and nothing else to gain is
+ * offered the fourth schedule as well: where no objective acts, late
+ * starts break the ties of the later schedules, and where one does, the
+ * fourth is handed to the objectives' polish, which takes it where it
+ * then ranks better. Where fewer events are still placed than the ceiling,
  * they are planned once more in a fixed scrambled order, a fifth
  * schedule returned on the same terms. Below the default budget those two
  * are made on a work limit of their own (what the two budgets have left,
@@ -388,16 +392,24 @@ final readonly class ScheduleRepacker
         // With gap slots first, the objectives after them are what the
         // searches break their ties by, as they always were
         $objectives = $ranking->afterGapSlots();
-        $score = !$gapSlotsFirst || $objectives === []
+        // The fewest moved events with no event that says where it is ask
+        // for nothing: every event counts as staying
+        $acting = $current === []
+            ? array_values(array_filter($objectives, static fn(RepackObjective $objective): bool => $objective !== RepackObjective::LeastChurn))
+            : $objectives;
+        $score = !$gapSlotsFirst || $acting === []
             ? null
             : static fn(array $positions): array => $metrics->score($positions, $objectives);
+        // Where no objective acts, the schedule of the request is the
+        // outcome, and late starts break its ties
+        $lateStartsBreakTies = $gapSlotsFirst && $acting === [];
 
         // The schedule of the request as it stands. With no objective it is
         // the outcome; with one, it is the schedule no other may be worse
         // than on events placed, and, while gap slots rank first, on gap
         // slots. With an objective ahead of gap slots it is made exactly as
         // with no objective at all
-        [$positions, $unplaced, $capacityViolations] = $this->solve(
+        [$positions, $unplaced, $capacityViolations, , $floorTurnedDown] = $this->solve(
             array_keys($pairs),
             $pairs,
             $ids,
@@ -414,13 +426,16 @@ final readonly class ScheduleRepacker
             $layoutStopped,
             true,
             true,
-            $gapSlotsFirst
+            $gapSlotsFirst,
+            $lateStartsBreakTies
         );
 
         if ($score !== null || !$gapSlotsFirst) {
             // Schedules of every event that a choice turned down on the way
-            // and that the polish may still make better than the one kept
-            $turnedDown = [];
+            // and that the polish may still make better than the one kept:
+            // from the schedule of the request, the rounds laid on the
+            // positions with room where it had late starts alone
+            $turnedDown = $floorTurnedDown;
 
             // Where an objective about the shape of the sessions ranks ahead
             // of gap slots, the events are laid out again on the sessions
@@ -1220,13 +1235,18 @@ final readonly class ScheduleRepacker
      * @param bool $gapSlotsFirst Whether no objective ranks ahead of gap slots, for the floor:
      *                            where one does, below the default budget the fourth and the
      *                            fifth schedule are kept only where they place more events
+     * @param bool $lateStartsBreakTies Whether late starts break the ties of everything else between
+     *                                  the schedules made here, for the floor of a request whose
+     *                                  outcome it is: no objective acts after it
      *
      * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, int>, list<array<int, array{int, int}>>}
      *         The positions by index into $ids (ascending), the events of the subset with none and
      *         their reasons, the planner's capacity violations, the shortfall of every
-     *         over-capacity participant by its index, and, with $ranked, the schedules of every
-     *         event of the subset that a search for fewer gap slots had in hand and its choice by
-     *         the ranking turned down (by index into $ids, ascending)
+     *         over-capacity participant by its index, and the schedules of every event of the
+     *         subset turned down for the polish: with $ranked, those a search for fewer gap slots
+     *         had in hand and its choice by the ranking turned down, and, for the floor without
+     *         $lateStartsBreakTies, the rounds laid on the positions with room where the schedule
+     *         had late starts alone (by index into $ids, ascending)
      */
     private function solve(
         array $subset,
@@ -1245,7 +1265,8 @@ final readonly class ScheduleRepacker
         bool &$layoutStopped,
         bool $searchGaps = true,
         bool $floor = false,
-        bool $gapSlotsFirst = true
+        bool $gapSlotsFirst = true,
+        bool $lateStartsBreakTies = false
     ): array {
         // The events of the subset, still in the repacker's order
         $pairsInOrder = [];
@@ -1316,6 +1337,13 @@ final readonly class ScheduleRepacker
         // Where an objective ranks ahead of gap slots, every choice below is
         // made on the number of events placed and then on the ranking
         $keyOf = static fn(array $schedule, array $left): array => self::rankedKey($ranked, $asGiven($schedule), $left);
+        // Where the schedule of the request is the outcome (no objective
+        // acts after it), late starts break the ties of everything else
+        // between the schedules below. Elsewhere the steps of the
+        // objectives start from the schedule chosen here, and one chosen
+        // for fewer late starts can lead them to an outcome worse by its
+        // own ranking (decision 76 of the design note)
+        $lateOf = static fn(array $schedule): array => $lateStartsBreakTies ? [self::lateStarts($schedule, $edges, $pinSlots)] : [];
 
         // The planned schedule: sessions by the weights, then slots
         [$positions, $stillLeft, $dropped, $plan, $ceiling] = $this->planned(
@@ -1434,8 +1462,8 @@ final readonly class ScheduleRepacker
             if (
                 $ranked instanceof \Closure
                     ? $keyOf($otherPositions, $otherLeft) < $keyOf($positions, $stillLeft)
-                    : [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions)]
-                        < [count($stillLeft), $gapSlots, ...$scoreOf($positions)]
+                    : [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions), ...$lateOf($otherPositions)]
+                        < [count($stillLeft), $gapSlots, ...$scoreOf($positions), ...$lateOf($positions)]
             ) {
                 $positions = $otherPositions;
                 $stillLeft = $otherLeft;
@@ -1449,8 +1477,11 @@ final readonly class ScheduleRepacker
         // the positions they fill are the first ones, and the layout above
         // counts them among its rounds, so it has too few to hold the
         // events. It is a fourth schedule, made only where the schedule so
-        // far leaves an event unplaced or a gap and a position is full of
-        // its pins (elsewhere the two layouts are the same), on the layout's
+        // far leaves an event unplaced, a gap or a late start and a
+        // position is full of its pins (elsewhere the two layouts are the
+        // same; a late start counts since the exact search packs the
+        // planned schedule without a gap where the greedy packing did not,
+        // and the rounds laid here have fewer late starts), on the layout's
         // work limit and on what the second budget has left. The search for
         // fewer gap slots runs on it only where it is already better before
         // the search, and it is returned only where it is better on what
@@ -1479,9 +1510,12 @@ final readonly class ScheduleRepacker
         $extraOthers = [];
         $extraKept = false;
         $gapSlots = self::gapSlots($positions, $edges, $pinSlots);
+        /** @var array<int, array{int, int}>|null $freeLayout */
+        $freeLayout = null;
+        $freeLeft = [];
         if (
             $floor
-            && ($stillLeft !== [] || $gapSlots > 0)
+            && ($stillLeft !== [] || $gapSlots > 0 || self::lateStarts($positions, $edges, $pinSlots) > 0)
             && RoundColouring::fillsAPosition($pinCounts, $capacityPerSlot)
         ) {
             $localIndexOf = array_flip($byRound);
@@ -1499,10 +1533,21 @@ final readonly class ScheduleRepacker
             }
             ksort($freeLayout);
             $freeLeft = array_values(array_diff(array_keys($edges), array_keys($freeLayout)));
+        }
+        if ($freeLayout !== null && $stillLeft === [] && $gapSlots === 0 && !$lateStartsBreakTies) {
+            // Laid for late starts alone, where objectives act after this:
+            // it is not chosen here, since the steps of the objectives
+            // start from the schedule chosen here and could end worse from
+            // it, but handed to their polish as a schedule turned down,
+            // which takes it where it then ranks better
+            if ($freeLeft === []) {
+                $others[] = $asGiven($freeLayout);
+            }
+        } elseif ($freeLayout !== null) {
             $better = fn(array $schedule, array $left): bool => $ranked instanceof \Closure
                 ? $keyOf($schedule, $left) < $keyOf($positions, $stillLeft)
-                : [count($left), self::gapSlots($schedule, $edges, $pinSlots), ...$scoreOf($schedule)]
-                    < [count($stillLeft), $gapSlots, ...$scoreOf($positions)];
+                : [count($left), self::gapSlots($schedule, $edges, $pinSlots), ...$scoreOf($schedule), ...$lateOf($schedule)]
+                    < [count($stillLeft), $gapSlots, ...$scoreOf($positions), ...$lateOf($positions)];
             if ($searchGaps && $better($freeLayout, $freeLeft)) {
                 $other = null;
                 $freeLeft = $this->fewerGapSlots(
@@ -1563,8 +1608,8 @@ final readonly class ScheduleRepacker
                 $onlyMorePlaced ? count($otherLeft) < count($stillLeft) : (
                     $ranked instanceof \Closure
                         ? $keyOf($otherPositions, $otherLeft) < $keyOf($positions, $stillLeft)
-                        : [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions)]
-                            < [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots), ...$scoreOf($positions)]
+                        : [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions), ...$lateOf($otherPositions)]
+                            < [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots), ...$scoreOf($positions), ...$lateOf($positions)]
                 )
             ) {
                 $positions = $otherPositions;
@@ -1963,6 +2008,39 @@ final readonly class ScheduleRepacker
         }
 
         return $unplaced;
+    }
+
+    /**
+     * The late starts of a schedule, counted as the audit counts them: the
+     * participants and sessions where the participant has a movable event
+     * and its first slot there, pinned or movable, is not the session's
+     * first.
+     *
+     * @param array<int, array{int, int}> $positions Event index => [session, slot]
+     * @param array<int, array{int, int}> $edges
+     * @param array<int, array<int, array<int>>> $pinSlots
+     */
+    private static function lateStarts(array $positions, array $edges, array $pinSlots): int
+    {
+        /** @var array<int, array<int, int>> $first Participant => session => its first slot there */
+        $first = [];
+        foreach ($positions as $eventIndex => [$session, $slot]) {
+            foreach ($edges[$eventIndex] as $pid) {
+                $first[$pid][$session] = min($first[$pid][$session] ?? PHP_INT_MAX, $slot);
+            }
+        }
+
+        $lateStarts = 0;
+        foreach ($first as $pid => $bySession) {
+            foreach ($bySession as $session => $slot) {
+                $pinned = $pinSlots[$session][$pid] ?? [];
+                if (min([$slot, ...$pinned]) > 0) {
+                    ++$lateStarts;
+                }
+            }
+        }
+
+        return $lateStarts;
     }
 
     /**

@@ -2184,24 +2184,60 @@ with scattered pins were brought closer to the events 0.2.3 placed
     |---|---|---|---|---|---|---|
     | Seasons | 0.2.3 | 72,804 of 72,804 | 0 | 0 | 0 | 4 / 12 / 24 |
     | Seasons | before | 72,804 | 6 | 564 | 83 | 94 / 370 / 1,296 |
-    | Seasons | after | 72,804 | 6 | 680 | 41 | 50 / 346 / 1,313 |
+    | Seasons | after, part by part | 72,804 | 6 | 680 | 41 | 50 / 346 / 1,313 |
+    | Seasons | after, with late starts | 72,804 | 6 | 6 | 41 | 88 / 377 / 1,345 |
     | Scattered | before | 53,368 of 53,744 | 414 | 923 | 5 | 250 / 1,291 / 2,375 |
-    | Scattered | after | 53,368 | 414 | 923 | 2 | 255 / 1,280 / 2,351 |
+    | Scattered | after, part by part | 53,368 | 414 | 923 | 2 | 255 / 1,280 / 2,351 |
+    | Scattered | after, with late starts | 53,368 | 414 | 912 | 2 | 247 / 1,292 / 2,339 |
 
-    The scattered requests, the 63 round robins of decision 68 and the
-    settings with current positions of decision 74 come out the same, but
-    for two seasons in progress with fewer gap slots and one with one
-    event fewer moved. 40 of the 160 seasons change: the planned schedule
-    now packs without a gap where it did not, and the later schedules that
-    used to replace it are not made. Events placed and gap slots are the
-    same in every one; late starts, which no ranking counts, rise in 21
-    and fall in 2, because the later schedules happened to have none. A
-    season of 36 with half its rounds pinned (the benchmark
-    `bench36TwoLegsWithLeadingRoundsPinned`) takes 33 ms where it took
-    215 ms; 0.2.3 took 9.
+    With the search part by part alone, 40 of the 160 seasons changed: the
+    planned schedule packed without a gap where it had not, and the later
+    schedules that used to replace it were no longer made, because they
+    are made only where the schedule so far leaves an event or a gap.
+    Events placed and gap slots were the same in every one, but late
+    starts, which no ranking counts, rose in 21 and fell in 2: the later
+    schedules, the rounds laid on the positions with room above all, had
+    none. That is the shape of a season in progress, so late starts may
+    not rise there. So a schedule with late starts and nothing else to
+    gain (every event placed, no gap) is now offered the fourth schedule
+    too, at every budget. Where no objective acts after the schedule of
+    the request (no objective, `FewestGapSlots` alone, or `LeastChurn`
+    with no event that states a current position), late starts break the
+    ties of everything else between the schedules of `solve()`: the
+    third, the fourth and the fifth against the schedule so far. Where an
+    objective acts, the fourth, when it was laid for late starts alone,
+    is not chosen there but handed to the polish as a schedule turned
+    down, which takes it where it then ranks better. Chosen there, with
+    late starts breaking the ties, it gave the objectives' steps another
+    schedule to start from, and 17 of the 5,974 outcomes of the 1,200
+    small requests came out worse at the default budget by their own
+    ranking than the repacker of decision 73. The third schedule is not
+    offered for late starts: it took the median to 143 ms and gave the
+    seasons nothing the fourth does not. Nor is any of this limited to
+    the default budget: the fourth's layout spends no step, and an
+    outcome that differs by budget where no budget stopped a search
+    would make `isBudgetExhausted()` false where a larger budget changes
+    the outcome.
 
-    *Still short of 0.2.3* (#242). The seasons take some 12 times what
-    they took in 0.2.3 at the median (50 ms against 4). Of what is left, about a quarter is the
+    Against the search part by part alone: at the default budget, 86 of
+    the 160 seasons change (67 against the repacker before this
+    decision), every one with as many events placed and gap slots and
+    fewer late starts, and 6 of the scattered requests the same way; at
+    2,000 and 300 steps 15 and 24 seasons and 3 scattered requests (at
+    300) change the same way. In example 29 the repack with no objective
+    moves 8 games where it moved 12. With an objective, of the 5,974
+    outcomes none is worse by its own ranking at 200,000, 2,000 or 300
+    steps and 226, 193 and 153 are better; of the settings with current
+    positions of decision 74, 36 outcomes under the list ahead of gap
+    slots are better and the rest the same; and 20 of the 3,200 outcomes
+    whose digest pins decision 73's polish are better. The 63 round
+    robins of decision 68 come out the same. A season of 36 with half its
+    rounds pinned (the benchmark `bench36TwoLegsWithLeadingRoundsPinned`)
+    takes 33 ms where it took 215 ms; 0.2.3 took 9.
+
+    *Still short of 0.2.3* (#242). The seasons take some 20 times what
+    they took in 0.2.3 at the median (88 ms against 4; 50 ms with the
+    search part by part alone, which kept the late starts). Of what is left, about a quarter is the
     first round layout running to its work limit where pins fill its
     positions (#238), a sixth the second layout of decision 74, a third
     the exact search of sessions it still cannot pack in its share (one
