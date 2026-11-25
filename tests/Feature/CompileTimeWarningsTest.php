@@ -79,12 +79,16 @@ function phpFilesOfTheRepository(): array
 /**
  * Writes a PHP file to a directory of its own under the system's temporary directory and returns its path.
  *
+ * The directory's name has a space in it, so that every fixture also shows
+ * that a path with a space reaches PHP as one argument and is read back
+ * whole from the line PHP prints for it.
+ *
  * @throws PHPUnit\Framework\ExpectationFailedException
  * @throws Random\RandomException
  */
 function temporaryPhpFile(string $source): string
 {
-    $directory = sys_get_temp_dir() . '/tactician-compile-' . bin2hex(random_bytes(6));
+    $directory = sys_get_temp_dir() . '/tactician compile ' . bin2hex(random_bytes(6));
     Assert::assertTrue(mkdir($directory));
     $path = "{$directory}/Fixture.php";
     Assert::assertNotFalse(file_put_contents($path, $source));
@@ -154,6 +158,23 @@ describe('the compile check', function (): void {
         'a deprecation' => ["<?php\n\ndeclare(strict_types=1);\n\nfunction optionalFirst(int \$a = 1, int \$b): void {}\n", 'Deprecated: optionalFirst(): Optional parameter $a declared before required parameter $b'],
         'a parse error' => ["<?php\n\ndeclare(strict_types=1);\n\nfunction (\n", 'Parse error'],
     ]);
+
+    it('compiles every file of one command, also those after a file that does not parse', function (): void {
+        $broken = temporaryPhpFile("<?php\n\ndeclare(strict_types=1);\n\nfunction (\n");
+        $clean = temporaryPhpFile("<?php\n\ndeclare(strict_types=1);\n");
+        try {
+            [$status, $lines] = compileWithRunningPhp([$broken, $clean]);
+        } finally {
+            removeTemporaryPhpFile($broken);
+            removeTemporaryPhpFile($clean);
+        }
+
+        // The repository test reads one "No syntax errors" line per file, so
+        // it relies on PHP going on to the next file after a failure
+        expect($status)->not->toBe(0)
+            ->and($lines)->toContain("No syntax errors detected in {$clean}")
+            ->and($lines)->not->toContain("No syntax errors detected in {$broken}");
+    });
 
     it('passes a file that compiles cleanly', function (): void {
         $path = temporaryPhpFile("<?php\n\ndeclare(strict_types=1);\n\nnamespace Example;\n\nuse Override;\n");
