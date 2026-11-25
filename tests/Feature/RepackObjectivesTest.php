@@ -1047,7 +1047,7 @@ describe('The fewest moved events under other ids', function (): void {
         // figures under other ids
         [$movable, $pinned, $grid] = $seed % 2 === 0 ? seasonInProgress($seed) : roundRobinWithScatteredPins($seed);
 
-        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
+        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last'], settingsAheadOfGapSlots()['churn first'], settingsAheadOfGapSlots()['every figure ahead']] as $objectives) {
             $options = new RepackOptions(objectives: $objectives);
             $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
 
@@ -1067,7 +1067,7 @@ describe('The fewest moved events under other ids', function (): void {
         // of these requests) came back with other figures under other ids
         [$movable, $pinned, $grid] = doubleRoundRobinInRounds($seed);
 
-        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
+        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last'], settingsAheadOfGapSlots()['churn first'], settingsAheadOfGapSlots()['every figure ahead']] as $objectives) {
             $options = new RepackOptions(objectives: $objectives);
             $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
 
@@ -1169,6 +1169,51 @@ describe('Objectives ranked ahead of gap slots', function (): void {
         }
     })->with(range(1200, 1239));
 
+    it('keep that guarantee under a budget that runs out, for every list of two or three that names gap slots after an objective', function (int $seed, int $budget): void {
+        // A complete round robin with nothing pinned is where the shapes of
+        // the sessions are tried: every event placed, and rounds that do
+        // not divide into the sessions
+        $participants = 5 + $seed % 7;
+        [$movable, $pinned, $grid] = match ($seed % 4) {
+            0 => smallRequestWithCurrentPositions($seed),
+            1 => roundRobinWithScatteredPins($seed),
+            2 => seasonInProgress($seed),
+            default => [
+                completeRoundRobin($participants),
+                [],
+                SessionGrid::shapeOnly(2 + $seed % 3, 3 + $seed % 2, capacityPerSlot: $seed % 8 === 3 ? null : intdiv($participants, 2)),
+            ],
+        };
+        $plain = new ScheduleRepacker()->repack(
+            new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+        );
+
+        $objectives = array_values(array_filter(
+            RepackObjective::cases(),
+            static fn(RepackObjective $case): bool => $case !== RepackObjective::FewestGapSlots
+        ));
+        $lists = [];
+        foreach ($objectives as $first) {
+            $lists[] = [$first, RepackObjective::FewestGapSlots];
+            foreach ($objectives as $second) {
+                if ($second !== $first) {
+                    $lists[] = [$first, $second, RepackObjective::FewestGapSlots];
+                    $lists[] = [$first, RepackObjective::FewestGapSlots, $second];
+                }
+            }
+        }
+        // Four objectives: 4 lists of one ahead, 12 of two ahead, 12 of one ahead and one after
+        expect($lists)->toHaveCount(28);
+
+        foreach ($lists as $list) {
+            $outcome = new ScheduleRepacker()->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: $list))
+            );
+
+            expect(rankedBy($outcome, $list) <=> rankedBy($plain, $list))->toBeLessThanOrEqual(0);
+        }
+    })->with(range(1250, 1265))->with([1, 7, 60, 900, 200_000]);
+
     it('change nothing where gap slots are named first', function (int $seed): void {
         [$movable, $pinned, $grid] = $seed % 2 === 0 ? seasonInProgress($seed) : smallRequestWithCurrentPositions($seed);
 
@@ -1223,10 +1268,10 @@ describe('Objectives ranked ahead of gap slots', function (): void {
     ]);
 
     it('leave every event of a season in which nothing changed where it is, gaps and all', function (): void {
-        // A round robin of five laid out round by round on one session of
-        // three slots and one of two: a participant that sits out the
-        // middle round of the first session waits a slot. With gap slots
-        // first the events around the wait move to close it
+        // Three events of four participants on one session of three slots,
+        // as they stand: a and c play in the first slot and the last, and
+        // each waits the slot between. With gap slots first the event
+        // after the wait moves to close it
         $p = [];
         foreach (['a', 'b', 'c', 'd'] as $id) {
             $p[$id] = new Participant($id, strtoupper($id));
