@@ -1957,7 +1957,7 @@ it('shows the bracket as the engine reads it after every step, whatever happens 
     ['double, no reset'],
 ]);
 
-// A round drawn by hand is read as drawn (ADR 0023, issues #172 and #183).
+// A round drawn by hand is read as drawn (ADR 0025, issues #172 and #183).
 // Brackets are played with withdrawals, and now and then the round the
 // engine would pair is drawn again by hand among the entrants it names: they
 // are shuffled and paired in order, the odd one out given a bye, and a last

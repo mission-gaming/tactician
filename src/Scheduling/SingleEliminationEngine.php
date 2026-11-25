@@ -490,7 +490,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * the rounds after it are shaped from the nodes it has that hold a
      * place. An entrant who had withdrawn and was left alone beside an
      * entrant in a tie is a `Void` node that holds none: no slot of the
-     * next round is filled from it (docs/adr/0023).
+     * next round is filled from it (docs/adr/0025).
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */

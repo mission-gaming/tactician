@@ -20,7 +20,7 @@ use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\Withdrawal;
 
 // A round drawn by hand is read as drawn
-// (docs/adr/0023-a-round-drawn-by-hand-is-read-as-drawn.md).
+// (docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md).
 
 /**
  * @return array<string, Participant>

@@ -4588,7 +4588,7 @@ place in the next one: where the entrant beside it in the slots is in a
 tie, that tie holds the place of the pair. So a round drawn by hand among
 the entrants left after a withdrawal is followed by the round that pairs
 exactly the entrants it sent on
-([ADR 0023](adr/0023-a-round-drawn-by-hand-is-read-as-drawn.md)):
+([ADR 0025](adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md)):
 
 ```php
 // Sixteen entrants; the first round is played as the engine pairs it, the

@@ -19,7 +19,7 @@ verbs and `fromArray()` refuse all three too, so none of the three rules of
 point 8 is `fromHistory()`'s own any more, and what it checks of a round
 that the verbs do not is one result for an event. What point 1 says of an entrant a recorded
 round leaves alone is narrowed by
-[0023](0023-a-round-drawn-by-hand-is-read-as-drawn.md): one who had
+[0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md): one who had
 withdrawn when the round was paired holds no place in the next round.
 
 ## Context

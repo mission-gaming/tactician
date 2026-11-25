@@ -842,7 +842,7 @@ trait EliminationBracketSupport
      * otherwise: with nobody to meet, nobody is there to go through. One
      * who goes out so beside an entrant the round put in a tie is no unit:
      * it holds no place in the next round, which the tie holds, and is
-     * listed in `dropped` (docs/adr/0023-a-round-drawn-by-hand-is-read-as-drawn.md).
+     * listed in `dropped` (docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md).
      *
      * The tie a recorded round marks as the third-place tie is the extra
      * tie, whoever it holds, and its two are in a tie of the round: an
@@ -1067,7 +1067,7 @@ trait EliminationBracketSupport
                 // where the other is in a tie of the round
                 // One who had withdrawn beside an entrant the round put in a
                 // tie holds no place in the next round: that tie holds the
-                // place of the pair (docs/adr/0023).
+                // place of the pair (docs/adr/0025).
                 $held = true;
                 $besideATie = $first instanceof Participant && $second instanceof Participant;
                 $entrants = $besideATie ? [$occupant] : $pair;

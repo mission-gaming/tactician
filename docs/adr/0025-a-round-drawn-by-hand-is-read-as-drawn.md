@@ -1,4 +1,4 @@
-# 0023. A round drawn by hand is read as drawn
+# 0025. A round drawn by hand is read as drawn
 
 Status: accepted. Narrows, in
 [0007](0007-recorded-rounds-are-read-not-derived.md), what point 1 says of

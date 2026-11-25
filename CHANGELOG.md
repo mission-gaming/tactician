@@ -16,8 +16,8 @@ heading **Output change (fix)**.
 ### Output change (fix)
 
 Both entries of this section come from one decision: **a round drawn by
-hand is read as drawn** (ADR 0023,
-`docs/adr/0023-a-round-drawn-by-hand-is-read-as-drawn.md`). Neither raises
+hand is read as drawn** (ADR 0025,
+`docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). Neither raises
 the version of an engine fingerprint: the cases are narrow and were read
 wrongly, and a new version would refuse the stamps of every bracket.
 
