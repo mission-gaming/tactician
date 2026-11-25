@@ -69,6 +69,23 @@ heading **Output change (fix)**.
   records the decision and why a start with a fraction is not refused
   instead.
 
+- **`CompositionValidator` counts one knockout round with the byes of a
+  bracket** (#146). It read a `MatchOutcomeSelector` after one knockout
+  round as half the entrants of the stage before, rounded up for the
+  winners and down for the losers. The elimination engines fill the field
+  with byes up to the next power of two, so more go on: 5 entrants play 1
+  tie and have 3 byes, and 4 go on, where the validator counted 3 and
+  passed a next stage declared for 3. `SelectionYield::countFrom()` now
+  counts `WinnersOfLastRound` as half the next power of two of the
+  entrants and `LosersOfLastRound` as the ties of that round (the entrants
+  beyond that half): 9 entrants give 8 winners and 1 loser, where they gave
+  5 and 4. A field that is a power of two counts as before, and so does a
+  transition with `afterWholeBracket: true`. Who is affected: a chain
+  validated from a field that is not a power of two through a
+  match-outcome selector after one round. What to check: such a chain may
+  now report a violation it passed before, or pass one it reported. No
+  golden fixture changed.
+
 ### Added
 
 - **`TimelineDefinition::getRoundSlotTimes()` gives every slot of the
