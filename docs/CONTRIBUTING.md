@@ -64,7 +64,9 @@ The benchmark suite (`tests/Benchmark/`, run by
 [phpbench](https://phpbench.readthedocs.io/)) times the operations whose
 cost has mattered: schedule repack at 24 and 40 participants, a round robin
 with no constraints, one that needs retries and one that cannot be
-completed, and Swiss pairing under a constraint. A timing depends on the
+completed, Swiss pairing under a constraint, and the conversion of every
+position of a session grid to its ordinal and of every slot time to its
+position. A timing depends on the
 machine, so the suite is not part of the gate.
 
 phpbench is not one of the library's development dependencies. It is
