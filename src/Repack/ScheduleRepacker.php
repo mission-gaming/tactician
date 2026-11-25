@@ -50,7 +50,10 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * budgets have left, and that third schedule is returned when it places
  * more events, or as many with fewer gap slots: no single order of the
  * events is the best one for every request, and the number of events
- * placed comes first. Properness — no participant twice at one position,
+ * placed comes first. Where the result still leaves an event unplaced or
+ * a gap and pins fill a position, the rounds are laid out once more on
+ * the positions with room only, and that fourth schedule is returned on
+ * the same terms. Properness — no participant twice at one position,
  * pins immovable — is never traded; contiguity is satisfied or reported,
  * never silently relaxed.
  *
@@ -180,7 +183,13 @@ final readonly class ScheduleRepacker
      * hold, or has a gap, a third schedule is planned from the events in
      * the order of their participants, with the steps the two budgets
      * have left, and takes its place if it places more events, or as
-     * many with fewer gap slots.
+     * many with fewer gap slots. When the result then still leaves an
+     * event unplaced or has a gap, and pins fill a position of the grid,
+     * the rounds are laid out again on the positions with room only (the
+     * first layout counts the full ones among its rounds, which leaves a
+     * season with its first rounds pinned in order too few), searched for
+     * fewer gap slots where they are already better, and take its place on
+     * the same terms.
      *
      * @throws RepackViolationsException Only when the options opted into
      *                                   throwOnViolations and the outcome
@@ -393,7 +402,9 @@ final readonly class ScheduleRepacker
             $recolourBudget,
             $score,
             null,
-            $layoutStopped
+            $layoutStopped,
+            true,
+            true
         );
 
         if ($score !== null || !$gapSlotsFirst) {
@@ -1146,8 +1157,8 @@ final readonly class ScheduleRepacker
      * nothing that outranks them is at stake: between the planned
      * schedule and the rounds as they were laid out when both place as
      * many events and neither has a gap, and between the schedule so far
-     * and the third one when both place as many events with as many gap
-     * slots. Either way the schedule returned places as many events, with
+     * and the third or the fourth one when both place as many events with
+     * as many gap slots. Either way the schedule returned places as many events, with
      * as many gap slots, as it would with no score.
      *
      * @param list<int> $subset The events to place, as indexes into $allPairs and $ids, ascending
@@ -1171,6 +1182,10 @@ final readonly class ScheduleRepacker
      * @param bool $layoutStopped Set when the caller's budget cut the laying out of the rounds short
      * @param bool $searchGaps Whether the search for fewer gap slots is run on the schedules made
      *                         here; the reshaped layouts run it once, on the one chosen
+     * @param bool $roundsOnRoom Whether the rounds laid on the positions with room are offered as a
+     *                           fourth schedule: only for the schedule of the whole request that
+     *                           every outcome is held to, not for the schedules of the objectives
+     *                           made after it, whose later choices could then turn out worse
      *
      * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, int>, list<array<int, array{int, int}>>}
      *         The positions by index into $ids (ascending), the events of the subset with none and
@@ -1194,7 +1209,8 @@ final readonly class ScheduleRepacker
         ?\Closure $score,
         ?\Closure $ranked,
         bool &$layoutStopped,
-        bool $searchGaps = true
+        bool $searchGaps = true,
+        bool $roundsOnRoom = false
     ): array {
         // The events of the subset, still in the repacker's order
         $pairsInOrder = [];
@@ -1410,6 +1426,67 @@ final readonly class ScheduleRepacker
                 $stillLeft = $otherLeft;
                 $dropped = $otherDropped;
                 $plan = $otherPlan;
+            }
+        }
+
+        // The rounds laid out once more, on the positions with room only
+        // (RoundColouring). Where the first rounds are pinned in order,
+        // the positions they fill are the first ones, and the layout above
+        // counts them among its rounds, so it has too few to hold the
+        // events. It is a fourth schedule, made only where the schedule so
+        // far leaves an event unplaced or a gap and a position is full of
+        // its pins (elsewhere the two layouts are the same), on the layout's
+        // work limit and on what the second budget has left. The search for
+        // fewer gap slots runs on it only where it is already better before
+        // the search, and it is returned only where it is better on what
+        // every choice above is made on
+        $gapSlots = self::gapSlots($positions, $edges, $pinSlots);
+        if (
+            $roundsOnRoom
+            && ($stillLeft !== [] || $gapSlots > 0)
+            && RoundColouring::fillsAPosition($pinCounts, $capacityPerSlot)
+        ) {
+            $localIndexOf = array_flip($byRound);
+            $freeLayout = [];
+            foreach (RoundColouring::of(
+                $pairsInOrder,
+                $pinSlots,
+                $pinCounts,
+                $slotCounts,
+                $capacityPerSlot,
+                $layoutBudget,
+                true
+            ) as $at => $position) {
+                $freeLayout[$localIndexOf[$at]] = $position;
+            }
+            ksort($freeLayout);
+            $freeLeft = array_values(array_diff(array_keys($edges), array_keys($freeLayout)));
+            $better = fn(array $schedule, array $left): bool => $ranked instanceof \Closure
+                ? $keyOf($schedule, $left) < $keyOf($positions, $stillLeft)
+                : [count($left), self::gapSlots($schedule, $edges, $pinSlots), ...$scoreOf($schedule)]
+                    < [count($stillLeft), $gapSlots, ...$scoreOf($positions)];
+            if ($searchGaps && $better($freeLayout, $freeLeft)) {
+                $other = null;
+                $freeLeft = $this->fewerGapSlots(
+                    $edges,
+                    $freeLayout,
+                    $freeLeft,
+                    $pinSlots,
+                    $pinCounts,
+                    $slotCounts,
+                    $capacityPerSlot,
+                    $recolourBudget,
+                    $keyOf,
+                    $ranked instanceof \Closure,
+                    $other
+                );
+                if ($other !== null && $other[1] === []) {
+                    $others[] = $asGiven($other[0]);
+                }
+            }
+            if ($better($freeLayout, $freeLeft)) {
+                $positions = $freeLayout;
+                $stillLeft = $freeLeft;
             }
         }
 

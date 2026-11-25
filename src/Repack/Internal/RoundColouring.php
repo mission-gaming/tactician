@@ -55,6 +55,19 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * direct moves make of the events: still an order made from the request
  * alone.
  *
+ * Asked to lay the rounds on the positions with room only, it leaves out
+ * every position its pins fill (they hold no event of a round, so they
+ * are not counted among the rounds either), and the rounds are that many
+ * of the positions that have room, in grid order; what is left over is
+ * then searched for first on the grid up to the last of them. Where the
+ * first rounds of a season are pinned in order, the positions they fill
+ * are the first positions of the grid, and a layout that counts them
+ * among its rounds has too few rounds to hold the events. The repacker
+ * asks for both (see ScheduleRepacker::solve()): the order comes from the
+ * first, and the second is a schedule it may keep where it is better.
+ * Where no position is full of pins the two are the same
+ * (fillsAPosition()).
+ *
  * @internal
  */
 final class RoundColouring
@@ -68,6 +81,8 @@ final class RoundColouring
      * @param StepBudget $budget The steps of the search (the repacker gives it steps that do not run
      *                           out) and the share of its work limit; it records a search that a
      *                           smaller limit stopped
+     * @param bool $onPositionsWithRoom Lay the rounds on the positions that have room once the pins
+     *                                  are counted, and on no position its pins fill
      *
      * @return array<int, array{int, int}> Event index => [session, slot] of its round's position, in
      *                                     ascending event index order; an event the rounds could not
@@ -79,7 +94,8 @@ final class RoundColouring
         array $pinCounts,
         array $slotCounts,
         int $capacityPerSlot,
-        StepBudget $budget
+        StepBudget $budget,
+        bool $onPositionsWithRoom = false
     ): array {
         if ($edges === []) {
             return [];
@@ -116,8 +132,19 @@ final class RoundColouring
             $copy[$eventIndex] = $copies[$a][$b] ?? 0;
             $copies[$a][$b] = $copy[$eventIndex] + 1;
         }
+        /** @var list<int> $usable The positions the rounds may be laid on, in grid order */
+        $usable = [];
+        foreach ($room as $index => $places) {
+            if ($places > 0 || !$onPositionsWithRoom) {
+                $usable[] = $index;
+            }
+        }
+        // Where pins fill every position, no event has a place at all
+        if ($usable === []) {
+            return [];
+        }
         $rounds = min(
-            $positionCount,
+            count($usable),
             max(max($degree), intdiv(count($edges) + $capacityPerSlot - 1, $capacityPerSlot))
         );
         $block = intdiv($rounds + max($copy), max($copy) + 1);
@@ -128,7 +155,7 @@ final class RoundColouring
         foreach ($edges as $eventIndex => [$a, $b]) {
             $start = $copy[$eventIndex] * $block + ($a + $b) % $block;
             for ($turn = 0; $turn < $rounds; ++$turn) {
-                $index = ($start + $turn) % $rounds;
+                $index = $usable[($start + $turn) % $rounds];
                 if ($room[$index] > 0 && !isset($taken[$index][$a]) && !isset($taken[$index][$b])) {
                     $positions[$eventIndex] = $positionList[$index];
                     $taken[$index][$a] = true;
@@ -142,17 +169,19 @@ final class RoundColouring
 
         // What is left over is searched for first on those rounds alone,
         // so that an event goes to a later position only when the rounds
-        // cannot be made to hold it, and then on the whole grid
-        if ($left !== [] && $rounds < $positionCount) {
+        // cannot be made to hold it, and then on the whole grid. The rounds
+        // reach as far as the last position they are laid on
+        $through = $usable[$rounds - 1] + 1;
+        if ($left !== [] && $through < $positionCount) {
             $firstSlotCounts = [];
             $firstPinSlots = [];
             $firstPinCounts = [];
             $before = 0;
             foreach ($slotCounts as $session => $slotCount) {
-                if ($before >= $rounds) {
+                if ($before >= $through) {
                     break;
                 }
-                $kept = min($slotCount, $rounds - $before);
+                $kept = min($slotCount, $through - $before);
                 $firstSlotCounts[$session] = $kept;
                 foreach ($pinSlots[$session] ?? [] as $pid => $slots) {
                     $slots = array_values(array_filter($slots, static fn(int $slot): bool => $slot < $kept));
@@ -192,5 +221,25 @@ final class RoundColouring
         ksort($positions);
 
         return $positions;
+    }
+
+    /**
+     * Whether a position of the grid is full of its pins: the one case in
+     * which the rounds laid on the positions with room differ from the
+     * rounds laid on every position.
+     *
+     * @param array<int, array<int, int>> $pinCounts Session => slot => pinned event count
+     */
+    public static function fillsAPosition(array $pinCounts, int $capacityPerSlot): bool
+    {
+        foreach ($pinCounts as $bySlot) {
+            foreach ($bySlot as $count) {
+                if ($count >= $capacityPerSlot) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
