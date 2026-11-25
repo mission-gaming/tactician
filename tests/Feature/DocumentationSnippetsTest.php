@@ -215,6 +215,8 @@ describe('Documentation snippets', function () use ($extracted, $blocks, $skippe
 
     it('expects only the blocks listed here to throw', function () use ($extracted): void {
         expect(snippetsMarked($extracted, DocumentationSnippet::THROWS))->toBe([
+            // A timeline that declares the abbreviation BST as its timezone
+            'docs/USAGE.md / Timeline Assignment: ' . InvalidConfigurationException::class,
             // A timeline that starts "tomorrow", which is read from the clock
             'docs/USAGE.md / Timeline Assignment: ' . InvalidConfigurationException::class,
             // Asking a shape-only session grid for a slot time

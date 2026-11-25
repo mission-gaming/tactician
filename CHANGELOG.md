@@ -82,6 +82,11 @@ heading **Output change (fix)**.
 - **`MinimumRestRule::MAX_REST_DAYS`**, the longest rest the rule accepts:
   100,000,000,000,000 days, some 270 billion years (#171).
 
+- **`InvalidConfigurationReason::TimezoneAbbreviation`** (`timezone_abbreviation`),
+  the reason a declared timezone that is an abbreviation is refused with
+  (below, under **Changed**). New cases may be added in any release, so a
+  `match` over the reason already has a `default` arm.
+
 ### Changed
 
 - The release checklist (`docs/RELEASING.md`) says what the notes of a GitHub
@@ -122,6 +127,37 @@ heading **Output change (fix)**.
   ("Schedule Repacking" in the usage guide). A session whose slot interval was
   made by `DateInterval::createFromDateString()` is still held to the
   limit on steps of such an interval, 100,001 slots.
+
+- **A declared timezone that is an abbreviation is refused** (#151, ADR
+  0023, `docs/adr/0023-a-declared-timezone-is-a-region-or-an-offset.md`).
+  The `timezone` of `TimelineDefinition::fromArray()`,
+  `SessionGrid::fromArray()` and each window of `BlackoutRule::fromArray()`
+  accepted any name PHP reads, and PHP reads an abbreviation as a fixed
+  offset all year: `'timezone' => 'BST'` was `+01:00` in January as well,
+  so a caller who meant London got kickoffs an hour out for half the year
+  and no error. The field is now a region identifier (`Europe/London`,
+  `UTC`) or an explicit offset (`+01:00`), and every abbreviation PHP
+  knows is refused with an `InvalidConfigurationException`, reason
+  `TimezoneAbbreviation`, before the datetime is read, `GMT` included
+  (London's winter time). The names of UTC itself, `Z`, `UTC` and `UCT`
+  in any case, are still read: they name no place, and `Z` ends every
+  kickoff the library writes. The context holds the offset the abbreviation
+  stood for under `fixed_offset`. Who is affected: a stored configuration
+  that declares an abbreviation, which was read before and is refused now.
+  To migrate, declare the region that was meant (`Europe/London` for `BST`
+  or `GMT` meant as London: the kickoffs of the half of the year the
+  abbreviation was wrong for move by the hour), or the offset itself
+  (`+01:00`), which keeps every kickoff as it was.
+- **`toArray()` refuses a start held in a timezone abbreviation.**
+  `TimelineDefinition::toArray()` and `SessionGrid::toArray()` wrote the
+  name of the start's timezone, and for a start built in code in an
+  abbreviation (`new DateTimeZone('BST')`, or a string that ends in one)
+  that is a name `fromArray()` now refuses. They refuse it instead, with
+  the reason `NotSerializable`, as they refuse an interval that would not
+  read back; the definition and the grid themselves work with such a start
+  as before. Build the start in a region identifier or an offset where the
+  configuration is stored. `BlackoutRule::toArray()` writes its bounds in
+  UTC and is not affected.
 
 ### Fixed
 

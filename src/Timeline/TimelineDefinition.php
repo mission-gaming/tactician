@@ -248,8 +248,12 @@ final readonly class TimelineDefinition
      *  'round_interval' => 'P7D', 'slots_per_round' => 3, 'slot_interval' => 'PT1H'].
      *
      * The timezone is required — policy about times is only expressible
-     * against an explicit zone. The start states its date in full (year,
-     * month and day; the time of day is optional and defaults to midnight):
+     * against an explicit zone. It is a region identifier (`Europe/London`,
+     * `UTC`) or an offset (`+01:00`); an abbreviation (`BST`, `GMT`) is
+     * refused, because PHP reads one as a fixed offset all year, bar the
+     * names of UTC itself (`Z`, `UTC`, `UCT`). The start states its date in
+     * full (year, month and day; the time of day is optional and defaults to
+     * midnight):
      * `tomorrow`, `+1 week`, an empty string or a time of day without a
      * date is rejected, because PHP would resolve it against the clock, and
      * so is a date or a time that does not exist (`2026-02-30`, `24:00`). A
@@ -270,8 +274,9 @@ final readonly class TimelineDefinition
      * @throws InvalidConfigurationException When the format version is not one this release reads
      *                                       (reason `UnsupportedFormatVersion`), a key is unknown
      *                                       (`UnknownOptionKey`), a
-     *                                       value is missing or malformed, or the start does
-     *                                       not state an instant by itself
+     *                                       value is missing or malformed, the timezone is an
+     *                                       abbreviation (`TimezoneAbbreviation`), or the start
+     *                                       does not state an instant by itself
      */
     public static function fromArray(array $config): self
     {
@@ -325,19 +330,26 @@ final readonly class TimelineDefinition
      * same interval: a definition that is written reads back to the same
      * slot times.
      *
+     * The timezone is written as the start holds it: a region identifier
+     * or an offset. A start held in a timezone abbreviation
+     * (`new DateTimeZone('BST')`) is refused, because fromArray() refuses an
+     * abbreviation; the definition itself works with one, as a fixed
+     * offset.
+     *
      * The first key is `format_version`, the version of this form (1).
      *
      * @return array{format_version: int, start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string, resources?: array<string>}
      *
      * @throws InvalidConfigurationException When an interval has no ISO 8601 duration that reads
-     *                                       back as the same interval (reason `NotSerializable`);
-     *                                       writeInterval() lists which
+     *                                       back as the same interval, or the start is in a
+     *                                       timezone abbreviation (reason `NotSerializable`);
+     *                                       writeInterval() lists which intervals
      */
     public function toArray(): array
     {
         $data = [
             'start' => ZonedTime::write($this->start),
-            'timezone' => $this->start->getTimezone()->getName(),
+            'timezone' => ZonedTime::writeTimezone($this->start, 'timezone'),
             'round_interval' => self::writeInterval($this->roundInterval, 'round_interval'),
             'slots_per_round' => $this->slotsPerRound,
         ];

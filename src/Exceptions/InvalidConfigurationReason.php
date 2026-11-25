@@ -381,6 +381,16 @@ enum InvalidConfigurationReason: string
     case TimezoneMismatch = 'timezone_mismatch';
 
     /**
+     * A declared timezone in plain data is an abbreviation (`BST`, `EST`,
+     * `GMT`), which PHP reads as a fixed offset all year; the names of UTC
+     * itself (`Z`, `UTC`, `UCT`) are not refused. The context has
+     * that offset under `fixed_offset`; declare a region identifier
+     * (`Europe/London`) for a place or the offset itself for a fixed
+     * offset.
+     */
+    case TimezoneAbbreviation = 'timezone_abbreviation';
+
+    /**
      * Something that must move time forward does not: an interval of zero
      * or less, a window that ends before it starts, session starts that
      * are not ascending.
