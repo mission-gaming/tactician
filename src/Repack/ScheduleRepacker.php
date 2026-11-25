@@ -397,6 +397,10 @@ final readonly class ScheduleRepacker
         );
 
         if ($score !== null || !$gapSlotsFirst) {
+            // Schedules of every event that a choice turned down on the way
+            // and that the polish may still make better than the one kept
+            $turnedDown = [];
+
             // Where an objective about the shape of the sessions ranks ahead
             // of gap slots, the events are laid out again on the sessions
             // with their slots spread over fewer or more of them
@@ -405,7 +409,7 @@ final readonly class ScheduleRepacker
                 || $ranking->ranksAheadOfGapSlots(RepackObjective::FewestLoneEventSessions)
                 || $ranking->ranksAheadOfGapSlots(RepackObjective::FewestIdleSessions)
             ) {
-                [$positions, $unplaced, $capacityViolations] = $this->reshaped(
+                [$positions, $unplaced, $capacityViolations, $other] = $this->reshaped(
                     $positions,
                     $unplaced,
                     $capacityViolations,
@@ -422,10 +426,14 @@ final readonly class ScheduleRepacker
                     $recolourBudget,
                     $layoutStopped
                 );
+                if ($other !== null) {
+                    $turnedDown[] = $other;
+                }
             }
 
             if ($current !== [] && in_array(RepackObjective::LeastChurn, $options->objectives, true)) {
                 [$positions, $unplaced, $capacityViolations] = $this->keepingCurrentPositions(
+                    $turnedDown,
                     $positions,
                     $unplaced,
                     $capacityViolations,
@@ -448,9 +456,12 @@ final readonly class ScheduleRepacker
             }
 
             // And single events are moved where that serves an objective
-            // and costs nothing that outranks it
+            // and costs nothing that outranks it. A schedule turned down on
+            // the way is polished too, with what the budget has left, and
+            // taken where it then ranks better: the choice that turned it
+            // down was made before the polish
             $indexById = array_flip($ids);
-            $positions = new ObjectivePolish(
+            $polish = new ObjectivePolish(
                 $ranking,
                 $pairs,
                 $pinSlots,
@@ -459,10 +470,27 @@ final readonly class ScheduleRepacker
                 $capacityPerSlot,
                 $current,
                 $recolourBudget
-            )->improve(
+            );
+            $positions = $polish->improve(
                 $positions,
                 array_map(static fn(UnplacedEvent $event): int => $indexById[$event->getEventId()], $unplaced)
             );
+            $best = [count($unplaced), ...$ranking->key($positions)];
+            $tried = [];
+            foreach ($turnedDown as $schedule) {
+                if (in_array($schedule, $tried, true)) {
+                    continue;
+                }
+                $tried[] = $schedule;
+                $schedule = $polish->improve($schedule, []);
+                $key = [0, ...$ranking->key($schedule)];
+                if ($key < $best) {
+                    $best = $key;
+                    $positions = $schedule;
+                    $unplaced = [];
+                    $capacityViolations = [];
+                }
+            }
         }
 
         usort(
@@ -601,6 +629,8 @@ final readonly class ScheduleRepacker
      * the request once the staying events are added back to the demand
      * and to the capacity it was planned with.
      *
+     * @param list<array<int, array{int, int}>> $turnedDown Added to: the schedules of every event that
+     *        a choice between two schedules turned down on the way, for the polish to try as well
      * @param array<int, array{int, int}> $positions The schedule to improve on
      * @param list<UnplacedEvent> $unplaced Its unplaced events
      * @param array<RepackViolation> $capacityViolations Its capacity violations
@@ -617,6 +647,7 @@ final readonly class ScheduleRepacker
      *         The positions, the unplaced events and the capacity violations of the schedule chosen
      */
     private function keepingCurrentPositions(
+        array &$turnedDown,
         array $positions,
         array $unplaced,
         array $capacityViolations,
@@ -696,7 +727,7 @@ final readonly class ScheduleRepacker
             }
             unset($byParticipant);
 
-            [$placed, $left, $violations, $shortfalls] = $this->solve(
+            [$placed, $left, $violations, $shortfalls, $others] = $this->solve(
                 array_values(array_diff(array_keys($pairs), array_keys($kept))),
                 $pairs,
                 $ids,
@@ -714,6 +745,11 @@ final readonly class ScheduleRepacker
             );
             $placed += $kept;
             ksort($placed);
+            foreach ($others as $other) {
+                $other += $kept;
+                ksort($other);
+                $turnedDown[] = $other;
+            }
 
             $leftOut = array_map(static fn(UnplacedEvent $event): int => $indexById[$event->getEventId()], $left);
             sort($leftOut);
@@ -760,8 +796,13 @@ final readonly class ScheduleRepacker
                     $gapSlotsFirst
                     || [count($trialLeft), ...$ranking->keyOf($trial, $ahead)] < [count($leftOut), ...$ranking->keyOf($placed, $ahead)]
                 ) {
+                    if (!$gapSlotsFirst && $leftOut === [] && $placed !== $trial) {
+                        $turnedDown[] = $placed;
+                    }
                     $placed = $trial;
                     $leftOut = $trialLeft;
+                } elseif ($trialLeft === [] && $placed !== $trial) {
+                    $turnedDown[] = $trial;
                 }
             }
 
@@ -895,8 +936,10 @@ final readonly class ScheduleRepacker
      * @param array<int, array<int, int>> $pinCounts
      * @param array<int, int> $slotCounts
      *
-     * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>}
-     *         The positions, the unplaced events and the capacity violations of the schedule chosen
+     * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, array{int, int}>|null}
+     *         The positions, the unplaced events and the capacity violations of the schedule chosen,
+     *         and the other schedule the search for fewer gap slots had in hand when it made its
+     *         choice (every event placed in both), or null when there was none
      */
     private function reshaped(
         array $positions,
@@ -916,7 +959,7 @@ final readonly class ScheduleRepacker
         bool &$layoutStopped
     ): array {
         if ($unplaced !== [] || $capacityViolations !== [] || $pairs === []) {
-            return [$positions, $unplaced, $capacityViolations];
+            return [$positions, $unplaced, $capacityViolations, null];
         }
 
         $pinnedSessions = [];
@@ -994,6 +1037,7 @@ final readonly class ScheduleRepacker
         // schedule chosen, on the grid it was made on: it is the part of
         // making a schedule that costs the most where a gap cannot be
         // avoided, and it decides nothing about the shape of the sessions
+        $other = null;
         if ($bestShape !== null && $ranking->metrics()->gapSlots($positions) > 0) {
             $this->fewerGapSlots(
                 $pairs,
@@ -1011,12 +1055,19 @@ final readonly class ScheduleRepacker
                  * @return list<int>
                  */
                 static fn(array $schedule, array $left): array => [count($left), ...$ranking->key($schedule)],
-                true
+                true,
+                $other
             );
             ksort($positions);
         }
+        if ($other !== null && $other[1] === []) {
+            ksort($other[0]);
+            $other = $other[0];
+        } else {
+            $other = null;
+        }
 
-        return [$positions, $unplaced, $capacityViolations];
+        return [$positions, $unplaced, $capacityViolations, $other];
     }
 
     /**
@@ -1121,10 +1172,12 @@ final readonly class ScheduleRepacker
      * @param bool $searchGaps Whether the search for fewer gap slots is run on the schedules made
      *                         here; the reshaped layouts run it once, on the one chosen
      *
-     * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, int>}
+     * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, int>, list<array<int, array{int, int}>>}
      *         The positions by index into $ids (ascending), the events of the subset with none and
-     *         their reasons, the planner's capacity violations, and the shortfall of every
-     *         over-capacity participant by its index
+     *         their reasons, the planner's capacity violations, the shortfall of every
+     *         over-capacity participant by its index, and, with $ranked, the schedules of every
+     *         event of the subset that a search for fewer gap slots had in hand and its choice by
+     *         the ranking turned down (by index into $ids, ascending)
      */
     private function solve(
         array $subset,
@@ -1252,6 +1305,8 @@ final readonly class ScheduleRepacker
         // second budget, and a schedule with no gap never reaches it. Where
         // something ranks ahead of gap slots, what it finds is kept only
         // when it is better by the ranking
+        $others = [];
+        $other = null;
         $stillLeft = !$searchGaps ? $stillLeft : $this->fewerGapSlots(
             $edges,
             $positions,
@@ -1262,8 +1317,12 @@ final readonly class ScheduleRepacker
             $capacityPerSlot,
             $recolourBudget,
             $keyOf,
-            $ranked instanceof \Closure
+            $ranked instanceof \Closure,
+            $other
         );
+        if ($other !== null && $other[1] === []) {
+            $others[] = $asGiven($other[0]);
+        }
 
         // Both schedules so far come from the events taken round by round.
         // Where that still leaves something to gain (fewer events placed
@@ -1323,6 +1382,7 @@ final readonly class ScheduleRepacker
             sort($otherLeft);
 
             if (count($otherLeft) <= count($stillLeft)) {
+                $other = null;
                 $otherLeft = !$searchGaps ? $otherLeft : $this->fewerGapSlots(
                     $edges,
                     $otherPositions,
@@ -1333,8 +1393,12 @@ final readonly class ScheduleRepacker
                     $capacityPerSlot,
                     $recolourBudget,
                     $keyOf,
-                    $ranked instanceof \Closure
+                    $ranked instanceof \Closure,
+                    $other
                 );
+                if ($other !== null && $other[1] === []) {
+                    $others[] = $asGiven($other[0]);
+                }
             }
             if (
                 $ranked instanceof \Closure
@@ -1356,6 +1420,7 @@ final readonly class ScheduleRepacker
             $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants, $budget),
             $plan->violations,
             $plan->shortfalls,
+            $others,
         ];
     }
 
@@ -1391,6 +1456,9 @@ final readonly class ScheduleRepacker
      * @param array<int, array<int, int>> $pinCounts
      * @param array<int, int> $slotCounts
      * @param \Closure(array<int, array{int, int}>, list<int>): list<int> $keyOf
+     * @param array{array<int, array{int, int}>, list<int>}|null $other Set, with an objective ahead of
+     *        gap slots, to the schedule of the two that was not kept and its events with no position,
+     *        where the two differ; null otherwise
      *
      * @return list<int> The events with no position
      */
@@ -1404,8 +1472,10 @@ final readonly class ScheduleRepacker
         int $capacityPerSlot,
         StepBudget $recolourBudget,
         \Closure $keyOf,
-        bool $ranked
+        bool $ranked,
+        ?array &$other = null
     ): array {
+        $other = null;
         if (!$ranked) {
             return new GapSearch($recolourBudget)->improve(
                 $edges,
@@ -1428,11 +1498,16 @@ final readonly class ScheduleRepacker
             $slotCounts,
             $capacityPerSlot
         );
+        if ($trial === $positions && $trialLeft === $stillLeft) {
+            return $stillLeft;
+        }
         if ($keyOf($trial, $trialLeft) < $keyOf($positions, $stillLeft)) {
+            $other = [$positions, $stillLeft];
             $positions = $trial;
 
             return $trialLeft;
         }
+        $other = [$trial, $trialLeft];
 
         return $stillLeft;
     }

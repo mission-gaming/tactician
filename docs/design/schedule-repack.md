@@ -1867,6 +1867,76 @@ bound (#169).
     split over sessions it usually can be without a gap, and the search
     then finds a placement without one and stops there already.
 
+## Ranked choices (0.4.0)
+
+Decisions made when the choice by the ranking between the search for
+fewer gap slots and the schedule it started from was made to keep both
+sides (#231). They follow decisions 66 to 69.
+
+73. **What a ranked choice turns down is polished too.** With an
+    objective ahead of gap slots, the search for fewer gap slots is kept
+    only where its result ranks better (decision 67), and the polish then
+    works from the schedule kept. That choice is greedy: the polish can
+    make the schedule turned down the better of the two, and a repack
+    could return a schedule worse by its own ranking than one it had in
+    hand. In 4,000 small random requests, always keeping the search's
+    result changed five outcomes, three for the worse and two for the
+    better (#231). Where a ranked choice has both schedules in hand and
+    the one turned down places every event, that one is kept aside: the
+    other schedule of the search run on the reshaped layout (decision 68),
+    and, for the fewest moved events (decision 69), the other schedule of
+    each search for fewer gap slots inside an attempt and of the search
+    run on the attempt, each with the held events added. After the
+    schedule chosen is polished, each of those is polished in turn, with
+    what the second budget has left, and replaces it where it then ranks
+    better by events placed and then the ranking; on a tie the schedule
+    chosen stands, and a schedule already tried is not polished twice. So
+    the outcome is never worse than before by its own ranking, and the
+    schedule chosen and its polish are made exactly as before, which keeps
+    decision 66's guarantee as it was. With gap slots first nothing is
+    turned down (the search's result is always kept), so no outcome of a
+    list that ranks gap slots first, the default among them, changes.
+    The extra polishes spend steps of the second budget like the first,
+    so below the default budget one of them can be the search the budget
+    stops, and `isBudgetExhausted()` is then true where it was false
+    before (never the other way): a larger budget may let that polish
+    finish and give a schedule that ranks better.
+
+    Carried no further than the polish, and why. Each schedule kept aside
+    could also be carried through the steps between its choice and the
+    polish: the third schedule of `solve()`, the comparison of the
+    attempts for the fewest moved events, and the attempts after it. Each
+    of those makes its own choices by the ranking and would then have to
+    make them for two schedules, and the attempts let go of held events
+    by what the one before went wrong around, which has no meaning for
+    two; it would be a search over every combination of choices, not two
+    candidates. The polish is the last step and the one that can change
+    what the ranking says of a schedule without a search, so it is where
+    the two are compared.
+
+    *Measured*, with #169's bound in place on both sides (times as
+    proportions, as above):
+
+    | Requests | Ranking | Better | Worse | Median / 90th percentile / slowest, ms (before) |
+    |---|---|---|---|---|
+    | 3,583 small random requests | `[FewestLoneParticipantSessions, FewestGapSlots]`, `[FewestIdleSessions, FewestGapSlots]` | 25 of 7,166 | 0 | under 1 |
+    | 2,693 small random requests with current positions | three lists with `LeastChurn` and an objective ahead of gap slots | 173 of 8,079 | 0 | under 1 |
+    | The 63 round robins, no limit on a slot | Ahead | 0 | 0 | 6 / 231 / 383 (6 / 229 / 362) |
+    | The 63 round robins, half the participants to a slot | Ahead | 0 | 0 | 4 / 72 / 150 (5 / 64 / 150) |
+    | 200 seasons | Ahead | 5 | 0 | 35 / 261 / 2,375 (32 / 252 / 2,312) |
+    | 200 seasons | `[LeastChurn]`, `[LeastChurn, FewestGapSlots]` | 0 | 0 | 26 / 342 / 1,244 and 21 / 224 / 906 (25 / 309 / 1,217 and 23 / 213 / 1,078) |
+    | 120 round robins with scattered pins | Ahead, `[LeastChurn]`, `[LeastChurn, FewestGapSlots]` | 0 | 0 | 89 / 457 / 2,190, 128 / 615 / 2,225, 96 / 543 / 2,188 (88 / 456 / 2,596, 125 / 619 / 2,341, 95 / 594 / 2,397) |
+
+    "Ahead" is `[FewestLoneParticipantSessions, FewestIdleSessions,
+    FewestGapSlots]`; the lists with `LeastChurn` on the small requests
+    are `[FewestLoneParticipantSessions, FewestGapSlots, LeastChurn]`,
+    `[FewestIdleSessions, FewestGapSlots, LeastChurn]` and
+    `[FewestLoneParticipantSessions, LeastChurn, FewestGapSlots]`. With
+    no objective every outcome is the same. The gain is on small
+    requests, where the polish moves a large share of the events; on the
+    large ones the schedule turned down rarely polishes past the one
+    kept, and the extra polish costs a few per cent of the time.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,

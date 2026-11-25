@@ -260,7 +260,17 @@ No golden fixture changed.
   (406 and 91 with no objective), for 150 gap slots against 20. The usage
   guide ("Objectives Ahead of Gap Slots") and the design note
   (`docs/design/schedule-repack.md`, "Objectives ahead of gap slots") say
-  what is searched for and what it costs.
+  what is searched for and what it costs. Where the search for fewer gap
+  slots turns a schedule down by the ranking, or is turned down, the
+  schedule not kept is polished too and returned where it then ranks
+  better (#231). On 3,583 small random requests under
+  `[FewestLoneParticipantSessions, FewestGapSlots]` and
+  `[FewestIdleSessions, FewestGapSlots]`, 25 of the 7,166 outcomes rank
+  better by their list, and on 2,693 with current positions under three
+  lists that also name `LeastChurn`, 173 of 8,079; none ranks worse.
+  Those extra polishes spend the second budget, so below the default
+  `stepBudget` one of them can be cut short and `isBudgetExhausted()` is
+  then true on an outcome where it used to be false.
 - **Lone participant-sessions** (#209): the new objective
   `RepackObjective::FewestLoneParticipantSessions`
   (`fewest_lone_participant_sessions`) and the figure
