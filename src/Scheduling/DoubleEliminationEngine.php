@@ -810,7 +810,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $claimed ? $reading->number : $reading->number + 1,
             $this->options->legsPerTie,
             null,
-            $pairedAt
+            $pairedAt,
+            onlyTheStage: true
         );
         foreach ($read['byes'] as $advanced) {
             $reading->byes[$advanced->getId()] = ($reading->byes[$advanced->getId()] ?? 0) + 1;

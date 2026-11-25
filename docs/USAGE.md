@@ -4598,6 +4598,19 @@ tie and lists it among no byes. The round has then brought it in as a
 lucky loser, and the tie is read as any tie: the winner goes on
 ([ADR 0025](adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md)).
 
+**A stage of double elimination drawn by hand brings in nobody from another
+stage.** An entrant who is not in a stage of a double elimination bracket
+has gone out, or holds a place in another stage: one who waits in the
+winners bracket while a losers round is played, for example. A tie of the
+stage between one of its entrants and such an entrant is given to the
+entrant of the stage, whatever its results say, as a tie with one who has
+gone out is (`Uncontested` in the bracket view, a node that names only the
+entrant of the stage). The other keeps its place in its own stage and plays
+on there; a winners tie given so drops nobody to the losers bracket. So no
+entrant is in both brackets at once, or in two ties of one round. The
+results of the tie are recorded results all the same, and count in the
+table ([ADR 0025](adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md)).
+
 **Who a bracket round drawn by hand sends on.** Each tie of the round sends
 on the entrant who won it, and an entrant the round leaves out of its ties
 goes on alone, a bye, if it was still in the stage when the round was

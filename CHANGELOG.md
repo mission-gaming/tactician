@@ -15,7 +15,7 @@ heading **Output change (fix)**.
 
 ### Output change (fix)
 
-The first three entries of this section come from one decision: **a round drawn by
+The first four entries of this section come from one decision: **a round drawn by
 hand is read as drawn** (ADR 0025,
 `docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). None of them raises
 the version of an engine fingerprint: the cases are narrow and were read
@@ -73,6 +73,22 @@ wrongly, and a new version would refuse the stamps of every bracket.
   again after a withdrawal reads as it did. Who is affected: a bracket with
   a round drawn by hand that names an entrant who went out earlier. What to
   check: the round paired after it, the bracket view and the table.
+- **A stage of double elimination drawn by hand brings in nobody from
+  another stage** (#236). A recorded tie of a stage was read as a tie of it
+  where one of its two was in the stage, also where the other was still in
+  the bracket, in another stage. Seven entrants, the first-named winning:
+  after three rounds p7 withdrew, and losers round 2 (`p3 v p5; byes p4`)
+  was recorded with `p1 v p4` beside it while p1 waited for the winners
+  final. p1 won, went on in the losers bracket, and was paired in both
+  brackets (`p3 v p1`, then the winners final); where both of its places
+  came to one tie, the engine paired it against itself. Now such a tie is
+  given to the entrant of the stage, whatever its results, as a tie with one
+  who has gone out is: the next losers round there is `p3 v p4`, and p1
+  plays on in the winners bracket only. The bracket view shows the tie as
+  `Uncontested`, naming only the entrant of the stage, and a winners tie
+  given so drops nobody. Who is affected: a double elimination bracket with
+  a stage drawn by hand that names an entrant of another stage. What to
+  check: the stages paired after it, the bracket view and the table.
 - **In double elimination, the withdrawn loser of a winners tie drops
   nobody to the losers bracket** (#182). A winners tie given away because
   one entrant withdrew used to drop that entrant, and the losers tie it
