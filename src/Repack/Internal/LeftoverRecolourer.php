@@ -852,17 +852,51 @@ final class LeftoverRecolourer
 
         $order = $this->candidatePositions($fromSession);
 
+        // What blocking() answered at each position the first pass below
+        // checked, for the two passes after it. Each branch they try is
+        // rolled back before the next one, so the placed events, and with
+        // them the answers, are the same at the start of every pass and
+        // every branch. The first pass checks each position once, so it
+        // has no answer to read from here
+        /** @var array<int, list<int>|null> $checked */
+        $checked = [];
+
         // A position where it collides with nothing ends the path at once
         foreach ($order as $index) {
-            if ($this->room[$index] > 0 && $this->blocking($eventIndex, $index) === []) {
+            if ($this->room[$index] > 0 && ($checked[$index] = $this->blocking($eventIndex, $index)) === []) {
                 $this->put($eventIndex, $index);
 
                 return true;
             }
         }
 
-        foreach ($order as $index) {
-            $lift = $this->liftFor($eventIndex, $index);
+        // The first pass that lifts an event checks every position in
+        // order, one check each, reading the answer above where there is
+        // one, and notes where two events are in the way. The second
+        // goes only to those: a position does not come to qualify, the
+        // answers being fixed for the call, and passing over one costs
+        // nothing. The work limit counts a check at every position of every
+        // pass all the same: the count is advanced past each position
+        // passed over before the next one is tried, and to the end of the
+        // pass after it. A recursive insert() asks the limit when it
+        // starts, so the count must be exact at every one.
+        $twoInTheWay = [];
+        foreach ($order as $at => $index) {
+            ++$this->work;
+            $blocking = array_key_exists($index, $checked)
+                ? $checked[$index]
+                : $checked[$index] = $this->collisions($eventIndex, $index);
+            if ($blocking === null) {
+                continue;
+            }
+            if (count($blocking) > 1) {
+                if (count($blocking) === 2) {
+                    $twoInTheWay[$at] = $index;
+                }
+
+                continue;
+            }
+            $lift = $this->liftFor($index, $blocking);
             if ($lift === null) {
                 continue;
             }
@@ -876,17 +910,16 @@ final class LeftoverRecolourer
             }
             $this->rollBack($mark);
         }
+        $lastAt = count($order) - 1;
 
         // Where both participants are in the way, both events are lifted,
         // and the path branches: each of them needs a position of its own
-        foreach ($order as $index) {
-            $blocking = $this->blocking($eventIndex, $index);
-            if (
-                $blocking === null
-                || count($blocking) !== 2
-                || isset($this->lifted[$blocking[0]])
-                || isset($this->lifted[$blocking[1]])
-            ) {
+        $passedAt = -1;
+        foreach ($twoInTheWay as $at => $index) {
+            $this->work += $at - $passedAt;
+            $passedAt = $at;
+            $blocking = $checked[$index];
+            if ($blocking === null || isset($this->lifted[$blocking[0]]) || isset($this->lifted[$blocking[1]])) {
                 continue;
             }
 
@@ -902,6 +935,7 @@ final class LeftoverRecolourer
             }
             $this->rollBack($mark);
         }
+        $this->work += $lastAt - $passedAt;
 
         return false;
     }
@@ -927,10 +961,11 @@ final class LeftoverRecolourer
      * The one placed event to lift so that the event can take the
      * position, or null when that takes more than one, or one already
      * lifted, or a pin is in the way.
+     *
+     * @param list<int>|null $blocking What blocking() answers for the event at the position
      */
-    private function liftFor(int $eventIndex, int $index): ?int
+    private function liftFor(int $index, ?array $blocking): ?int
     {
-        $blocking = $this->blocking($eventIndex, $index);
         if ($blocking === null || count($blocking) > 1) {
             return null;
         }
@@ -962,6 +997,18 @@ final class LeftoverRecolourer
     private function blocking(int $eventIndex, int $index): ?array
     {
         ++$this->work;
+
+        return $this->collisions($eventIndex, $index);
+    }
+
+    /**
+     * What blocking() answers, without counting a check towards the work
+     * limit: for a caller that counts its checks itself.
+     *
+     * @return list<int>|null
+     */
+    private function collisions(int $eventIndex, int $index): ?array
+    {
         $blocking = [];
         foreach ($this->edges[$eventIndex] as $pid) {
             if (isset($this->pinned[$index][$pid])) {
