@@ -2010,6 +2010,21 @@ found to leave gap slots that 0.2.3 did not (#238).
     ahead); the 63 round robins of decision 68 have nothing pinned and
     are unchanged.
 
+    That holds at the default budget, not below it. On 1,200 small
+    seasons and round robins (4 to 14 participants, one or two legs,
+    sessions of two to four slots, some with positions full of pins and
+    half with current positions) under no objective and five lists, 5 of
+    the 5,974 outcomes at 2,000 steps are worse by their own ranking,
+    each by one to four of a figure and none by an event placed, and
+    each with the budget reported stopped, and all under a list with an
+    objective ahead of gap slots. The first schedule of such a list is
+    chosen on events placed and gap slots alone, so a fourth schedule
+    with fewer gap slots hands the steps of the ranking (the reshaped
+    layouts, the polish) another schedule to start from, and on what the
+    budget had left, part of it spent by the fourth schedule's search,
+    they did not get it as far. With no objective none is worse, and at
+    the default budget none of the 5,974 is.
+
     What this leaves: these seasons still take some 20 times what they
     took in 0.2.3, and the budget is still reported stopped on 83 of
     them, because the session packer of the planned schedule spends the
