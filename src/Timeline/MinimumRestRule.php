@@ -30,20 +30,52 @@ use Override;
 final readonly class MinimumRestRule implements TimelineRule
 {
     /**
+     * The longest rest, in days: some 270 billion years, the most a
+     * timeline's round may be from its start
+     * (IntervalArithmetic::MAX_DAYS). A longer rest added to a kickoff
+     * would pass the end of the times PHP holds from any kickoff after
+     * 1970.
+     */
+    public const int MAX_REST_DAYS = IntervalArithmetic::MAX_DAYS;
+
+    /**
      * @param DateInterval $minimumRest The smallest allowed gap between a
      *                                  participant's consecutive kickoffs
      *
+     * A rest reaches at most {@see self::MAX_REST_DAYS} days, each part
+     * counted as positive and a month as 31 days. PHP adds a longer rest to
+     * a kickoff without complaint and returns a time that has wrapped round
+     * to before it, and the rule would then find no kickoff too close.
+     *
      * @throws InvalidConfigurationException When the rest duration does not move time forward
+     *                                       (reason `NonAdvancingTime`), or reaches more than
+     *                                       MAX_REST_DAYS days (`ValueOutOfRange`)
      */
     public function __construct(
         private DateInterval $minimumRest
     ) {
+        // Measured by its parts before it is added anywhere: a rest that is
+        // too long can wrap round even from 1970
         $reference = new DateTimeImmutable('@0');
-        if ($reference->add($minimumRest) <= $reference) {
+        $tooLong = IntervalArithmetic::spanInDays($minimumRest) > self::MAX_REST_DAYS;
+        $end = $tooLong ? null : $reference->add($minimumRest);
+
+        if ($end instanceof DateTimeImmutable && $end <= $reference) {
             throw new InvalidConfigurationException(
                 'The minimum rest duration must move time forward',
                 [],
                 reason: InvalidConfigurationReason::NonAdvancingTime
+            );
+        }
+
+        // And by what it adds to 1970, for a relative date string whose
+        // parts PHP does not show
+        if ($tooLong || ($end instanceof DateTimeImmutable && $end->getTimestamp() / 86400 > self::MAX_REST_DAYS)) {
+            throw new InvalidConfigurationException(
+                'The minimum rest is too long to be added to a kickoff: it reaches more than '
+                    . number_format(self::MAX_REST_DAYS) . ' days',
+                ['rest' => TimelineDefinition::formatInterval($minimumRest), 'limit_days' => self::MAX_REST_DAYS],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
     }
@@ -75,7 +107,8 @@ final readonly class MinimumRestRule implements TimelineRule
      * A rest that has no such duration is refused, and never written as
      * text that fromArray() would refuse or read as another rest: one with
      * a fraction of a second, an inverted one or one with a negative part,
-     * and one made by `DateInterval::createFromDateString()` from anything
+     * one with a part of more than 12 digits (PHP reads no more), and one
+     * made by `DateInterval::createFromDateString()` from anything
      * but amounts of time (`next weekday`). The rule itself works with such
      * a rest. A rest of amounts of time from `createFromDateString()` (`48
      * hours`) or from `diff()` is written: the rule adds its rest once and
@@ -156,7 +189,19 @@ final readonly class MinimumRestRule implements TimelineRule
                 $earliestAllowed = $previous->add($this->minimumRest);
                 $current = $entries[$i]['kickoff'];
 
-                if ($current < $earliestAllowed) {
+                // A rest the constructor allows can still pass the end of
+                // the times PHP holds from a kickoff billions of years out,
+                // and PHP's sum then wraps round to before it. The rest ends
+                // later than any time PHP holds, so every later kickoff is
+                // inside it. The wrapped sum lands more than MAX_TIMESTAMP
+                // seconds before the kickoff, and no rest the constructor
+                // accepts moves a time that far: a rest that steps back from
+                // some dates (`+1 month -30 days` from 1 February) moves it
+                // by a day or so, and is no rest from those dates, as before
+                $restPassesTheEnd = (float) $previous->getTimestamp() - (float) $earliestAllowed->getTimestamp()
+                    > IntervalArithmetic::MAX_TIMESTAMP;
+
+                if ($restPassesTheEnd || $current < $earliestAllowed) {
                     $violations[] = sprintf(
                         '%s kicks off at %s and again at %s; the minimum rest is %s.',
                         $entries[$i]['label'],

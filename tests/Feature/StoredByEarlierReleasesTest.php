@@ -41,9 +41,10 @@ use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 // draw, the stamp, the replaced result and the shape-only grid), bar one:
 // round-robin options had no `role_assignment` before 0.2.2.
 //
-// Five of the lines are no longer read, each for a change 0.3.0 made on
-// purpose and its changelog states. They are listed below with the reason
-// they are refused with, so that a sixth cannot join them unnoticed.
+// Six of the lines are no longer read, each for a change made on purpose
+// that a changelog states: five by 0.3.0 and one by 0.4.0. They are listed
+// below with the reason they are refused with, so that a seventh cannot join
+// them unnoticed.
 
 /**
  * A payload stored by 0.2.x: one line of JSON.
@@ -119,7 +120,7 @@ function readStoredCase(array $case): object
 }
 
 /**
- * The cases 0.3.0 no longer reads, with the reason each is refused with.
+ * The cases 0.3.0 and 0.4.0 no longer read, with the reason each is refused with.
  *
  * @return array<string, InvalidConfigurationReason>
  */
@@ -140,6 +141,11 @@ function storedCasesNoLongerRead(): array
         // round is the first of the next (changelog: the slots of a round
         // come before the next round)
         'timeline slot interval P1Y' => InvalidConfigurationReason::OverlappingTime,
+        // A declared timezone that is an abbreviation, which PHP read as a
+        // fixed offset all year (0.4.0 changelog: "a declared timezone that
+        // is an abbreviation is refused"; ADR 0023). The rows that declare
+        // `Z`, a name of UTC itself, are still read
+        'timeline abbreviation zone' => InvalidConfigurationReason::TimezoneAbbreviation,
     ];
 }
 
@@ -187,7 +193,7 @@ describe('every form as 0.2.3 wrote it', function (): void {
         expect($written)->toBe('{"format_version":' . $version . ',' . substr($case['stored'], 1));
     })->with(fn(): array => array_values(array_diff(array_keys(formsWrittenByZeroTwoThree()), array_keys(storedCasesNoLongerRead()))));
 
-    it('is refused in the five cases the changelog of 0.3.0 states, and in no other', function (): void {
+    it('is refused in the cases the changelogs of 0.3.0 and 0.4.0 state, and in no other', function (): void {
         $refused = [];
         foreach (formsWrittenByZeroTwoThree() as $name => $case) {
             try {

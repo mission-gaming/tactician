@@ -47,7 +47,11 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  *
  * The steps multiplied out must stay in the range PHP's own arithmetic is
  * exact in ({@see self::MAX_DAYS}); past it the result would be a wrong
- * date and no error, so it is refused. A fraction of a second is
+ * date and no error, so it is refused. So is a result that would lie past
+ * either end of the times PHP holds ({@see self::MAX_TIMESTAMP}), which an
+ * anchor far from 1970 can reach with a span under that limit, and a step
+ * of an interval made from a relative string that wraps round past one of
+ * them. A fraction of a second is
  * multiplied as whole microseconds, which is how PHP holds it, and its
  * whole seconds are carried. An interval made from a relative string is
  * not under that limit, having no multiple to measure: it is added once per
@@ -80,15 +84,24 @@ final class IntervalArithmetic
     public const int MAX_RELATIVE_STEPS = 100_000;
 
     /**
+     * The furthest from 1970 a result may be, either way, in seconds: some
+     * 291 billion years, a little short of what a 64-bit count of seconds
+     * holds (about 9.22 × 10^18). PHP adds past that end without complaint
+     * and returns a date that has wrapped round to the other end.
+     */
+    public const float MAX_TIMESTAMP = 9.2e18;
+
+    /**
      * The anchor moved on by a number of steps of the interval, in the
      * anchor's timezone.
      *
      * @param int $steps How many intervals to add, 0 or more; 0 returns the anchor
      *
      * @throws InvalidConfigurationException When the steps multiplied out are further from the
-     *                                       anchor than MAX_DAYS, or there are more than
-     *                                       MAX_RELATIVE_STEPS of an interval made from a
-     *                                       relative date string
+     *                                       anchor than MAX_DAYS, the result may lie past the
+     *                                       times PHP holds (MAX_TIMESTAMP), or there are more
+     *                                       than MAX_RELATIVE_STEPS of an interval made from a
+     *                                       relative date string or one of its steps wraps round
      */
     public static function advance(DateTimeImmutable $anchor, DateInterval $interval, int $steps): DateTimeImmutable
     {
@@ -100,23 +113,13 @@ final class IntervalArithmetic
             self::refuseTooManyRelativeSteps($interval, $steps);
 
             for ($i = 0; $i < $steps; ++$i) {
-                $anchor = $anchor->add($interval);
+                $anchor = self::relativeStep($anchor, $interval, $i + 1);
             }
 
             return $anchor;
         }
 
-        // Measured in floating point, which does not overflow: every
-        // product below is a whole number of the size this allows
-        $span = (float) $steps * (
-            (abs($interval->y) * 12.0 + abs($interval->m)) * 31.0
-            + abs($interval->d)
-            + abs($interval->h) / 24.0
-            + abs($interval->i) / 1440.0
-            + abs($interval->s) / 86400.0
-            + abs($interval->f) / 86400.0
-        );
-        if ($span > self::MAX_DAYS) {
+        if (self::spanInDays($interval, $steps) > self::MAX_DAYS) {
             throw new InvalidConfigurationException(
                 "{$steps} steps of the interval are too far from the time they are counted from to be computed",
                 ['steps' => $steps, 'interval' => TimelineDefinition::formatInterval($interval)],
@@ -126,6 +129,7 @@ final class IntervalArithmetic
 
         // PHP negates every part of an inverted interval when it adds it
         $sign = $interval->invert === 1 ? -1 : 1;
+        self::refuseLeavingTimestampRange($anchor, $interval, $steps, $sign);
         $monthDays = self::daysToSameDayOfMonth($anchor, $sign * ($interval->y * 12 + $interval->m) * $steps);
 
         // A copy keeps what the interval does not show: whether PHP adds its
@@ -150,6 +154,51 @@ final class IntervalArithmetic
         }
 
         return self::firstOfRepeatedLocalTime($result);
+    }
+
+    /**
+     * What advance() gives for a number of steps, given what it gave for
+     * fewer steps of the same interval from the same anchor.
+     *
+     * For a run of results in rising steps, such as the first slots of the
+     * rounds a schedule holds. An interval made from a relative date string
+     * is added one step at a time, each from the one before, so its result
+     * is the known result moved on by the steps between: the additions rise
+     * with the steps between and not with the steps from the anchor, which
+     * makes a run of results cost the steps of its last and not their sum.
+     * The limit on the steps of such an interval is of the steps from the
+     * anchor, as in advance(). Any other interval is multiplied out from
+     * the anchor, as advance() does it, and the known result is not used:
+     * the result of a calendar step is not the result of fewer steps moved
+     * on (one month from 31 January is the end of February, and two months
+     * 31 March and not 28 March).
+     *
+     * @param int $steps How many intervals to add to the anchor, 0 or more
+     * @param DateTimeImmutable $reached What advance() gave for $reachedSteps of the same
+     *                                   interval from the same anchor
+     * @param int $reachedSteps 0 or more; when it is more than $steps, the known result is
+     *                          not used
+     *
+     * @throws InvalidConfigurationException As advance() throws
+     */
+    public static function advanceFrom(
+        DateTimeImmutable $anchor,
+        DateInterval $interval,
+        int $steps,
+        DateTimeImmutable $reached,
+        int $reachedSteps
+    ): DateTimeImmutable {
+        if (!self::isRelative($interval) || $reachedSteps < 0 || $reachedSteps > $steps) {
+            return self::advance($anchor, $interval, $steps);
+        }
+
+        self::refuseTooManyRelativeSteps($interval, $steps);
+
+        for ($i = $reachedSteps; $i < $steps; ++$i) {
+            $reached = $reached->add($interval);
+        }
+
+        return $reached;
     }
 
     /**
@@ -185,11 +234,105 @@ final class IntervalArithmetic
         for ($step = 0; $step < $count; ++$step) {
             if ($step > 0) {
                 self::refuseTooManyRelativeSteps($interval, $step);
-                $time = $time->add($interval);
+                $time = self::relativeStep($time, $interval, $step);
             }
 
             yield $step => $time;
         }
+    }
+
+    /**
+     * How far the steps of an interval reach, in days, at most: every part
+     * taken as positive, and a month as 31 days. Measured in floating
+     * point, which does not overflow: every product is a whole number of
+     * the size MAX_DAYS allows.
+     *
+     * For an interval made from a relative date string this is the reach of
+     * the amounts PHP shows for it (`48 hours` shows 48 hours), which is
+     * nothing for a string that is not amounts (`next weekday`).
+     *
+     * @param int $steps How many intervals, 0 or more
+     */
+    public static function spanInDays(DateInterval $interval, int $steps = 1): float
+    {
+        return (float) $steps * (
+            (abs($interval->y) * 12.0 + abs($interval->m)) * 31.0
+            + abs($interval->d)
+            + abs($interval->h) / 24.0
+            + abs($interval->i) / 1440.0
+            + abs($interval->s) / 86400.0
+            + abs($interval->f) / 86400.0
+        );
+    }
+
+    /**
+     * Refuse steps that could end past either end of the times PHP holds,
+     * {@see self::MAX_TIMESTAMP} seconds from 1970. PHP would add them
+     * without complaint and return a date that has wrapped round to the
+     * other end. The span is under MAX_DAYS already, but an anchor far from
+     * 1970 leaves less room on one side of it.
+     *
+     * The bounds are the furthest the steps can reach either way: a month
+     * of 28 to 31 days, and a day more on either side for local time and
+     * the offset from UTC. A time within a few days a month of the end can
+     * be refused where it would have fitted.
+     *
+     * @param int $sign -1 for an inverted interval, 1 otherwise
+     *
+     * @throws InvalidConfigurationException When the result may lie past the times PHP holds
+     */
+    private static function refuseLeavingTimestampRange(DateTimeImmutable $anchor, DateInterval $interval, int $steps, int $sign): void
+    {
+        $months = (float) ($sign * $steps) * ($interval->y * 12.0 + $interval->m);
+        $fixed = (float) ($sign * $steps) * (
+            $interval->d * 86400.0 + $interval->h * 3600.0 + $interval->i * 60.0 + $interval->s + $interval->f
+        );
+        $shortest = $months * ($months >= 0 ? 28.0 : 31.0) * 86400.0;
+        $longest = $months * ($months >= 0 ? 31.0 : 28.0) * 86400.0;
+        $from = (float) $anchor->getTimestamp() + $fixed;
+
+        if ($from + $shortest - 86400.0 < -self::MAX_TIMESTAMP || $from + $longest + 86400.0 > self::MAX_TIMESTAMP) {
+            throw new InvalidConfigurationException(
+                "{$steps} steps of the interval from " . $anchor->format('Y-m-d H:i:s T')
+                    . ' reach past the times PHP can hold, and cannot be computed',
+                [
+                    'steps' => $steps,
+                    'interval' => TimelineDefinition::formatInterval($interval),
+                    'from' => $anchor->format(DATE_ATOM),
+                ],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+    }
+
+    /**
+     * One step of an interval made from a relative date string, refused
+     * where PHP's addition wraps round past either end of the times it
+     * holds. Such an interval cannot be measured before it is added, so the
+     * step is measured after: one that moves the time by more than
+     * MAX_TIMESTAMP seconds, half the range PHP holds, has wrapped round.
+     *
+     * @param int $step Which step this is, from 1, for the error
+     *
+     * @throws InvalidConfigurationException When the step wraps round
+     */
+    private static function relativeStep(DateTimeImmutable $time, DateInterval $interval, int $step): DateTimeImmutable
+    {
+        $next = $time->add($interval);
+
+        if (abs((float) $next->getTimestamp() - (float) $time->getTimestamp()) > self::MAX_TIMESTAMP) {
+            throw new InvalidConfigurationException(
+                "Step {$step} of an interval made from a relative date string reaches past the times PHP can hold, and cannot be computed",
+                [
+                    'step' => $step,
+                    'interval' => self::relativeDateString($interval) ?? TimelineDefinition::formatInterval($interval),
+                    'from' => $time->format(DATE_ATOM),
+                ],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+
+        return $next;
     }
 
     /**
