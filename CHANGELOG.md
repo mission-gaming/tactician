@@ -306,6 +306,18 @@ No golden fixture changed.
 
 ### Fixed
 
+- `SessionGrid::ordinalOf()`, `positionOf()` and `getPositionCount()` no
+  longer walk the grid on every call (#225). Each walked the sessions (and
+  `positionOf()` given an instant compared it with every slot time), so a
+  loop that converted every position of a grid took time in the square of
+  its size: some 96 seconds at 100,000 positions. The grid now keeps the
+  running totals of its slot counts from when it is built: `ordinalOf()` and
+  `getPositionCount()` read them, and `positionOf()` searches them, or the
+  session starts and then the slots of one session, by halves. The same
+  loop takes under a tenth of a second. The answers are the ones they were,
+  and so are the plain-data form and the exceptions; no output and no
+  public signature changes. `tests/Benchmark/SessionGridBench.php` times
+  both loops.
 - The `Benchmarks` job installs the benchmark runner again. Composer refused
   the runner's lock file (`tools/phpbench/composer.lock`) over a security
   advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now

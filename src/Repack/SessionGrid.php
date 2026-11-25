@@ -146,6 +146,16 @@ final readonly class SessionGrid
     private array $slotCounts;
 
     /**
+     * @var array<int, int> The ordinal of slot 0 of each session, by session index, and
+     *                      after the last session the position count: the running totals
+     *                      of the slot counts, kept so that ordinalOf(), positionOf() and
+     *                      getPositionCount() add nothing up when called. Strictly rising,
+     *                      because every session has a slot. Derived from the slot counts
+     *                      alone, so two grids with the same counts have the same totals
+     */
+    private array $sessionOffsets;
+
+    /**
      * @var array<int, array<int, DateTimeImmutable>> The instant of every position, by session and
      *                                                slot, in the declared timezone; empty on a
      *                                                shape-only grid
@@ -429,6 +439,15 @@ final readonly class SessionGrid
         $this->slotInterval = $slotInterval;
         $this->slotCounts = $slotCounts;
         $this->slotTimes = $slotTimes;
+
+        $offsets = [];
+        $total = 0;
+        foreach ($slotCounts as $slots) {
+            $offsets[] = $total;
+            $total += $slots;
+        }
+        $offsets[] = $total;
+        $this->sessionOffsets = $offsets;
     }
 
     /**
@@ -820,7 +839,7 @@ final readonly class SessionGrid
      */
     public function getPositionCount(): int
     {
-        return array_sum($this->slotCounts);
+        return $this->sessionOffsets[count($this->slotCounts)];
     }
 
     /**
@@ -839,6 +858,9 @@ final readonly class SessionGrid
      * session. Session 0 slot 0 is 0; the last position is
      * getPositionCount() - 1.
      *
+     * It takes the same time whatever the size of the grid: the grid keeps
+     * the ordinal of each session's first slot from when it was built.
+     *
      * @param int $session 0-based session index
      * @param int $slot 0-based slot index within the session
      *
@@ -850,12 +872,7 @@ final readonly class SessionGrid
             throw self::positionNotOnGrid($session, $slot, $this->slotCounts);
         }
 
-        $ordinal = $slot;
-        for ($earlier = 0; $earlier < $session; ++$earlier) {
-            $ordinal += $this->slotCounts[$earlier];
-        }
-
-        return $ordinal;
+        return $this->sessionOffsets[$session] + $slot;
     }
 
     /**
@@ -867,6 +884,14 @@ final readonly class SessionGrid
      * comparison is of the instants, so the timezone the argument is
      * written in does not matter. No two positions share an instant: a
      * grid in which two would is rejected when it is built.
+     *
+     * Each call is a binary search, so a loop over every position of a grid
+     * costs time in proportion to the positions and not to their square:
+     * given an ordinal, over the sessions (the ordinal of each session's
+     * first slot is kept from when the grid was built); given an instant,
+     * over the session starts and then over the slots of the one session
+     * the instant can be in, since the positions are at rising instants in
+     * grid order.
      *
      * @param DateTimeImmutable|int $at A position's ordinal, or a slot's instant
      *
@@ -880,31 +905,59 @@ final readonly class SessionGrid
     public function positionOf(DateTimeImmutable|int $at): ?array
     {
         if (is_int($at)) {
-            if ($at < 0) {
+            if ($at < 0 || $at >= $this->getPositionCount()) {
                 return null;
             }
 
-            foreach ($this->slotCounts as $session => $slots) {
-                if ($at < $slots) {
-                    return ['session' => $session, 'slot' => $at];
-                }
-                $at -= $slots;
-            }
+            // The offsets after the last session hold the position count,
+            // which is above the ordinal, so the session found is a real one
+            $session = self::lastAtOrBefore($this->sessionOffsets, $at);
 
-            return null;
+            return ['session' => $session, 'slot' => $at - $this->sessionOffsets[$session]];
         }
 
         $this->requireInstants('the position of an instant');
 
-        foreach ($this->slotTimes as $session => $times) {
-            foreach ($times as $slot => $time) {
-                if (($time <=> $at) === 0) {
-                    return ['session' => $session, 'slot' => $slot];
-                }
+        // Every slot of a session is before the start of the next, so the
+        // only session the instant can be in is the last one to start at or
+        // before it; within it the slots are at rising instants
+        $session = self::lastAtOrBefore($this->sessionStarts, $at);
+        if ($session < 0) {
+            return null;
+        }
+
+        $slot = self::lastAtOrBefore($this->slotTimes[$session], $at);
+        if (($this->slotTimes[$session][$slot] <=> $at) !== 0) {
+            return null;
+        }
+
+        return ['session' => $session, 'slot' => $slot];
+    }
+
+    /**
+     * The index of the last value at or before the one given, by binary
+     * search, or -1 when every value is after it.
+     *
+     * @template T of int|DateTimeImmutable
+     *
+     * @param array<int, T> $ascending Values in strictly rising order, keyed 0 to count - 1;
+     *                                 not empty
+     * @param T $value
+     */
+    private static function lastAtOrBefore(array $ascending, int|DateTimeImmutable $value): int
+    {
+        $low = -1;
+        $high = count($ascending) - 1;
+        while ($low < $high) {
+            $middle = intdiv($low + $high + 1, 2);
+            if ($ascending[$middle] <= $value) {
+                $low = $middle;
+            } else {
+                $high = $middle - 1;
             }
         }
 
-        return null;
+        return $low;
     }
 
     /**
