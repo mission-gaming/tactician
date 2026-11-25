@@ -9,8 +9,9 @@ use MissionGaming\Tactician\Repack\RepackObjective;
 /**
  * The repair that follows the choice of a schedule when the options name
  * objectives: single events are moved to a free position where that
- * makes the schedule better by the objectives and worse by nothing that
- * outranks them.
+ * makes the schedule better by the ranking ({@see Ranking}: gap slots and
+ * the objectives, in their order) and worse by nothing that outranks the
+ * figure it improves.
  *
  * Only moves that an objective asks for are tried. For the fewest moved
  * events, an event that is not at its current position is tried there.
@@ -19,10 +20,14 @@ use MissionGaming\Tactician\Repack\RepackObjective;
  * every event of another session at every position of that one. For the
  * fewest idle sessions, each event of a participant that has an idle
  * session is tried at every position of the other sessions between that
- * participant's first and last. A move is made when the event fits there
- * (the position has room, and no participant of the event is in another
- * event or pinned there), the schedule is then strictly better on gap
- * slots followed by the objectives in their order, and no unplaced event
+ * participant's first and last. For the fewest lone participant-sessions,
+ * the one event of a participant in such a session is tried at every
+ * position of the other sessions that participant has an event in, and
+ * then every other event of the participant at every position of that
+ * session. Gap slots ask for no move of their own. A move is made when
+ * the event fits there (the position has room, and no participant of the
+ * event is in another event or pinned there), the schedule is then
+ * strictly better by the ranking, and no unplaced event
  * fits the position it left, so that an unplaced event stays one that no
  * position holds. The number of events placed never changes.
  *
@@ -52,8 +57,10 @@ final class ObjectivePolish
     /** @var array<int, array<int, array<int, true>>> Session => slot => participants of those events */
     private array $busy = [];
 
+    /** @var list<RepackObjective> Every figure ranked, gap slots included, in their order */
+    private readonly array $figures;
+
     /**
-     * @param list<RepackObjective> $objectives In their order
      * @param array<int, list<int>> $participantsOf Movable event index => its participant indexes
      * @param array<int, array<int, array<int>>> $pinSlots Session => participant => pinned slots
      * @param array<int, array<int, int>> $pinCounts Session => slot => pinned events there
@@ -61,8 +68,7 @@ final class ObjectivePolish
      * @param array<int, array{int, int}> $current Movable event index => its current [session, slot]
      */
     public function __construct(
-        private readonly PlacementMetrics $metrics,
-        private readonly array $objectives,
+        private readonly Ranking $ranking,
         private readonly array $participantsOf,
         private readonly array $pinSlots,
         private readonly array $pinCounts,
@@ -70,7 +76,9 @@ final class ObjectivePolish
         private readonly int $capacityPerSlot,
         private readonly array $current,
         private readonly StepBudget $budget
-    ) {}
+    ) {
+        $this->figures = $ranking->figures();
+    }
 
     /**
      * The schedule after every move that improves it, or the schedule
@@ -83,7 +91,7 @@ final class ObjectivePolish
      */
     public function improve(array $positions, array $unplaced): array
     {
-        if ($this->objectives === [] || $positions === []) {
+        if ($this->figures === [RepackObjective::FewestGapSlots] || $positions === []) {
             return $positions;
         }
 
@@ -95,7 +103,7 @@ final class ObjectivePolish
 
         $limit = $this->budget->workLimit(self::EVALUATION_LIMIT);
         $evaluations = 0;
-        $best = [$this->metrics->gapSlots($positions), ...$this->metrics->score($positions, $this->objectives)];
+        $best = $this->ranking->key($positions);
 
         do {
             $moved = false;
@@ -115,7 +123,7 @@ final class ObjectivePolish
 
                 $trial = $positions;
                 $trial[$eventIndex] = [$session, $slot];
-                $key = [$this->metrics->gapSlots($trial), ...$this->metrics->score($trial, $this->objectives)];
+                $key = $this->ranking->key($trial);
                 if ($key >= $best) {
                     continue;
                 }
@@ -150,11 +158,13 @@ final class ObjectivePolish
      */
     private function candidates(array $positions): \Generator
     {
-        foreach ($this->objectives as $objective) {
+        foreach ($this->figures as $objective) {
             yield from match ($objective) {
                 RepackObjective::LeastChurn => $this->backToCurrent($positions),
                 RepackObjective::FewestLoneEventSessions => $this->outOfLoneSessions($positions),
                 RepackObjective::FewestIdleSessions => $this->intoTheSpan($positions),
+                RepackObjective::FewestLoneParticipantSessions => $this->outOfLoneParticipantSessions($positions),
+                RepackObjective::FewestGapSlots => [],
             };
         }
     }
@@ -166,7 +176,7 @@ final class ObjectivePolish
      */
     private function backToCurrent(array $positions): \Generator
     {
-        foreach ($this->metrics->moved($positions) as $eventIndex) {
+        foreach ($this->ranking->metrics()->moved($positions) as $eventIndex) {
             [$session, $slot] = $this->current[$eventIndex];
             if ($slot < ($this->slotCounts[$session] ?? 0)) {
                 yield [$eventIndex, $session, $slot];
@@ -181,7 +191,7 @@ final class ObjectivePolish
      */
     private function outOfLoneSessions(array $positions): \Generator
     {
-        $lone = array_fill_keys($this->metrics->loneEventSessions($positions), true);
+        $lone = array_fill_keys($this->ranking->metrics()->loneEventSessions($positions), true);
         if ($lone === []) {
             return;
         }
@@ -221,7 +231,7 @@ final class ObjectivePolish
      */
     private function intoTheSpan(array $positions): \Generator
     {
-        $idle = $this->metrics->idleSessionsByParticipant($positions);
+        $idle = $this->ranking->metrics()->idleSessionsByParticipant($positions);
         if ($idle === []) {
             return;
         }
@@ -254,6 +264,58 @@ final class ObjectivePolish
                     }
                     for ($slot = 0; $slot < $this->slotCounts[$session]; ++$slot) {
                         yield [$eventIndex, $session, $slot];
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array<int, array{int, int}> $positions
+     *
+     * @return \Generator<int, array{int, int, int}>
+     */
+    private function outOfLoneParticipantSessions(array $positions): \Generator
+    {
+        $lone = $this->ranking->metrics()->loneParticipantSessionsByParticipant($positions);
+        if ($lone === []) {
+            return;
+        }
+        ksort($lone);
+
+        /** @var array<int, array<int, list<int>>> $eventsOf Participant with a lone session => session => its events */
+        $eventsOf = [];
+        foreach ($positions as $eventIndex => [$session]) {
+            foreach ($this->participantsOf[$eventIndex] as $pid) {
+                if (isset($lone[$pid])) {
+                    $eventsOf[$pid][$session][] = $eventIndex;
+                }
+            }
+        }
+
+        foreach ($lone as $pid => $bySession) {
+            ksort($bySession);
+            // The one event to another session the participant plays in
+            foreach ($bySession as $own => $eventIndex) {
+                foreach (array_keys($eventsOf[$pid]) as $session) {
+                    if ($session === $own) {
+                        continue;
+                    }
+                    for ($slot = 0; $slot < $this->slotCounts[$session]; ++$slot) {
+                        yield [$eventIndex, $session, $slot];
+                    }
+                }
+            }
+            // Or another event of the participant into that session
+            foreach (array_keys($bySession) as $own) {
+                foreach ($eventsOf[$pid] as $session => $events) {
+                    if ($session === $own) {
+                        continue;
+                    }
+                    foreach ($events as $eventIndex) {
+                        for ($slot = 0; $slot < $this->slotCounts[$own]; ++$slot) {
+                            yield [$eventIndex, $own, $slot];
+                        }
                     }
                 }
             }

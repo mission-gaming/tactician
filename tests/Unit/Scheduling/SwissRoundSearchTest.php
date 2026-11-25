@@ -136,9 +136,9 @@ function swissHistory(array $field, array $pairs): array
 /**
  * Constraint sets for the comparison. Some are sets ConstraintPurity
  * knows, for which the search may take its shortcut; the others hold a
- * callable or a role extractor, and must be searched plainly: verdicts that
- * depend on the pair alone, on the pair's history, and on the round's other
- * pairings.
+ * callable or a role extractor of the caller's, and must be searched
+ * plainly: verdicts that depend on the pair alone, on the pair's history,
+ * and on the round's other pairings.
  *
  * @return array<string, ConstraintSet|null>
  */
@@ -148,6 +148,10 @@ function swissSearchConstraints(): array
         'none' => null,
         'an empty set' => new ConstraintSet([]),
         'role streak of 1' => new ConstraintSet([ConsecutiveRoleConstraint::homeAway(1)]),
+        'role streak of 1 under an extractor of the caller\'s' => new ConstraintSet([new ConsecutiveRoleConstraint(
+            1,
+            static fn(Event $event, Participant $participant): bool => $event->getParticipants()[0]->getId() === $participant->getId()
+        )]),
         'role balance of 1 and no neighbours' => new ConstraintSet([
             RoleBalanceConstraint::homeAway(1),
             new CallableConstraint(
@@ -535,6 +539,14 @@ describe('The constraints the Swiss round search may take its shortcut for', fun
             SeedProtectionConstraint::class => [new SeedProtectionConstraint(2, 0.5), new SeedProtectionConstraint(4, 1.0)],
         ];
         expect(array_keys($instances))->toEqualCanonicalizing(ConstraintPurity::KNOWN);
+        // And the limits on streaks of one role that the factories build,
+        // which ConstraintPurity knows besides the listed classes
+        $instances[ConsecutiveRoleConstraint::class] = [ConsecutiveRoleConstraint::homeAway(1), ConsecutiveRoleConstraint::position(2)];
+        foreach ($instances as $constraintsOfClass) {
+            foreach ($constraintsOfClass as $constraint) {
+                expect(ConstraintPurity::constraintIsKnown($constraint))->toBeTrue($constraint->getName());
+            }
+        }
 
         $randomizer = new Randomizer(new Mt19937(99));
         $rejections = 0;

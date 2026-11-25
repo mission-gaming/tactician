@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Repack;
 
 use DateTimeImmutable;
-use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Serialization\PlainData;
+use MissionGaming\Tactician\Timeline\ZonedTime;
 
 /**
  * One movable event's assigned position: (session, slot) on the grid,
@@ -97,9 +97,11 @@ final readonly class SlotAssignment
 
     /**
      * Serialize to plain data; the kickoff as an ISO 8601 UTC string to the
-     * second (`2026-08-12T19:15:00Z`), or null when there is none. A
-     * kickoff given in another timezone is converted, so the string states
-     * the same instant: 20:15 in London in August is written
+     * second (`2026-08-12T19:15:00Z`), with the fraction of a second after
+     * the seconds when the kickoff has one (`2026-08-12T19:15:00.250000Z`,
+     * from a grid whose session starts on a fraction), or null when there
+     * is none. A kickoff given in another timezone is converted, so the
+     * string states the same instant: 20:15 in London in August is written
      * `...T19:15:00Z`.
      * The first key is `format_version`, the version of this form (1);
      * a repack outcome writes its records without it.
@@ -113,7 +115,7 @@ final readonly class SlotAssignment
             'event_id' => $this->eventId,
             'session' => $this->session,
             'slot' => $this->slot,
-            'kickoff' => $this->kickoff?->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z'),
+            'kickoff' => $this->kickoff instanceof DateTimeImmutable ? ZonedTime::writeUtc($this->kickoff) : null,
         ];
     }
 }

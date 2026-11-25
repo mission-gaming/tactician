@@ -5,6 +5,7 @@ declare(strict_types=1);
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\CompositionValidator;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
@@ -35,14 +36,47 @@ describe('CompositionValidator', function (): void {
     it('derives winners and losers yields from the source size, byes included', function (): void {
         $validator = new CompositionValidator();
 
-        // 9 entrants: 4 ties + 1 bye -> 5 winners forward, 4 losers to a repechage
+        // 9 entrants: the bracket has 16 slots, so 1 tie and 7 byes -> 8
+        // winners forward, 1 loser to a repechage
         expect($validator->validateChain(9, [
-            new StageTransition('winners route', 5, MatchOutcomeSelector::winners()),
+            new StageTransition('winners route', 8, MatchOutcomeSelector::winners()),
         ]))->toBe([]);
 
         expect($validator->validateChain(9, [
-            new StageTransition('repechage', 4, MatchOutcomeSelector::losers()),
-        ]))->toBe([]);
+            new StageTransition('repechage', 2, MatchOutcomeSelector::losers()),
+        ]))->toBe(["Stage 'repechage' expects 2 entrants but its selection yields 1 from the previous stage's 9."]);
+    });
+
+    // Issue #146: the validator counted half the field, rounded up for the
+    // winners and down for the losers, where the engines fill the field with
+    // byes up to the next power of two. 5 entrants play 1 tie and have 3
+    // byes, so 4 go on, and a next stage declared for 3 passed unchecked.
+    it('counts one knockout round as the elimination engines pair it, byes up to the next power of two', function (): void {
+        $validator = new CompositionValidator();
+
+        expect($validator->validateChain(5, [new StageTransition('next', 3, MatchOutcomeSelector::winners())]))
+            ->toBe(["Stage 'next' expects 3 entrants but its selection yields 4 from the previous stage's 5."])
+            ->and($validator->validateChain(5, [new StageTransition('next', 4, MatchOutcomeSelector::winners())]))->toBe([])
+            ->and($validator->validateChain(12, [new StageTransition('repechage', 4, MatchOutcomeSelector::losers())]))->toBe([])
+            ->and($validator->validateChain(12, [new StageTransition('next', 8, MatchOutcomeSelector::winners())]))->toBe([]);
+
+        // Each count is what the first round of either engine sends on and
+        // puts out, worked out from its pairing: a loser for each tie, and a
+        // winner for each tie and each bye
+        foreach (range(2, 40) as $size) {
+            $entrants = [];
+            for ($i = 1; $i <= $size; ++$i) {
+                $entrants[] = new Participant("p{$i}", "Participant {$i}");
+            }
+            foreach ([new SingleEliminationEngine(), new DoubleEliminationEngine()] as $engine) {
+                $round = $engine->pairNextRound(StageState::start($entrants));
+                $ties = count($round->getEvents());
+                $byes = count($round->getByes());
+
+                expect(MatchOutcomeSelector::winners()->getYield()->countFrom($size))->toBe($ties + $byes, "{$size} entrants")
+                    ->and(MatchOutcomeSelector::losers()->getYield()->countFrom($size))->toBe($ties, "{$size} entrants");
+            }
+        }
     });
 
     it('checks fixed-cardinality selectors against declared entrants', function (): void {
@@ -71,7 +105,7 @@ describe('CompositionValidator', function (): void {
 
         expect($validator->validateChain(16, [
             new StageTransition('consumer-derived stage', 6),
-            new StageTransition('next', 3, MatchOutcomeSelector::winners()),
+            new StageTransition('next', 4, MatchOutcomeSelector::winners()),
         ]))->toBe([]);
     });
 
@@ -84,6 +118,27 @@ describe('CompositionValidator', function (): void {
             new StageTransition('degenerate', 1, MatchOutcomeSelector::winners()),
         ]);
         expect($violations)->toHaveCount(2); // too small AND yields 2, not 1
+    });
+
+    // A negative opening count was reported, and then counted: the winners
+    // of a stage of -3 entrants came out at -3 and gave a second violation
+    // built on the first.
+    it('reports a count of entrants once, and computes no yield from it', function (): void {
+        $validator = new CompositionValidator();
+
+        expect($validator->validateChain(-3, [
+            new StageTransition('final', 2, MatchOutcomeSelector::winners()),
+        ]))->toBe(['The opening stage needs at least 2 entrants, -3 declared.'])
+            ->and($validator->validateChain(1, [
+                new StageTransition('final', 2, MatchOutcomeSelector::losers()),
+            ]))->toBe(['The opening stage needs at least 2 entrants, 1 declared.'])
+            ->and($validator->validateChain(8, [
+                new StageTransition('degenerate', -1, RankRangeSelector::overall(1, 4)),
+                new StageTransition('final', 2, MatchOutcomeSelector::winners()),
+            ]))->toBe([
+                "Stage 'degenerate' needs at least 2 entrants, -1 declared.",
+                "Stage 'degenerate' expects -1 entrants but its selection yields 4 from the previous stage's 8.",
+            ]);
     });
 
     // The validator runs nothing, so it cannot see that a stage plays a whole
