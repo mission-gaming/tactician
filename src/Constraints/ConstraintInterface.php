@@ -36,20 +36,25 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *
  * A constraint that keeps state between calls, reads a random source or
  * throws is not refused, and what it gets back then depends on how the
- * library happened to ask. No shortcut is taken for it. Two internal shortcuts
- * ask fewer questions: the round-robin scheduler builds no failure analysis
- * for an ordering it goes on from, and the Swiss round search skips
- * branches that hold no complete pairing. Both are taken only for a
- * `ConstraintSet` that holds nothing but `NoRepeatPairings`,
- * `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
- * `SeedProtectionConstraint` objects, which run no code of the caller's
- * and keep no state. Any
+ * library happened to ask. No shortcut is taken for it. Three internal
+ * shortcuts ask fewer questions: the round-robin scheduler builds no
+ * failure analysis for an ordering it goes on from; the analysis of a
+ * failure asks each constraint once about each role order of a missing
+ * pairing in a round, and once in all where the constraint reads no
+ * position, instead of asking the set and then each constraint again; and
+ * the Swiss round search skips branches that hold no complete pairing. All
+ * three are taken only for a `ConstraintSet` that holds nothing but
+ * `NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
+ * `RoleBalanceConstraint` and `SeedProtectionConstraint` objects and
+ * `ConsecutiveRoleConstraint` objects built by `homeAway()` or
+ * `position()`, which run no code of the caller's and keep no state. Any
  * other set, one that holds a `CallableConstraint`, a `MetadataConstraint`,
- * a `ConsecutiveRoleConstraint` or a class of your own included, is asked
- * every question it was asked before those shortcuts existed, so what such
- * a constraint sees and what the caller gets back did not change when they
- * were added. A third shortcut is taken for a set that holds nothing but
- * objects of those four classes and of `ConsecutiveRoleConstraint`: where
+ * a `ConsecutiveRoleConstraint` given a role extractor of your own or a
+ * class of your own included, is asked every question it was asked before
+ * those shortcuts existed, so what such a constraint sees and what the
+ * caller gets back did not change when they were added. A fourth shortcut
+ * is taken for a set that holds nothing but objects of those four classes
+ * and of `ConsecutiveRoleConstraint`, whatever its role extractor: where
  * the round-robin scheduler goes on from the failed orderings to a search
  * of roles (the role assignment states a rule, as the balanced one of the
  * default does), it builds the failure analysis once, after the search,

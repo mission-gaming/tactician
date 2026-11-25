@@ -478,6 +478,36 @@ none.
   unused parameter of a test helper that Rector 2.8 reports removed.
   Development dependencies only; no output and no public signature changes.
 
+- **A round robin spends less time on its own bookkeeping** (#250, #251,
+  #252). A profile of the benchmarks found that three costs around the
+  generation outweighed much of the generation:
+  - `SeedProtectionConstraint` sorted the whole field on every question in
+    a protected round (#250). It now picks the top seeds in one pass, ties
+    in list order as before.
+  - `RoundRobinPlan::validateIntegrity()`, which checks every generated
+    schedule, built a string key for every event and every pairing of the
+    field (#251). It now counts in arrays keyed by id: 0.22 ms where it
+    took 1.41 for a schedule of 32 participants.
+  - The analysis of a failed round robin asked the set about each role
+    order of a missing pairing in every round, then every constraint about
+    both again (#252). For a set of the library's own constraints, each
+    one is now asked once per role order, and once in all where it reads
+    no position (`NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
+    `SeedProtectionConstraint`). A set that holds a constraint of the
+    caller's is asked exactly as before, as `ConstraintInterface` promises.
+    That docblock now names the `ConsecutiveRoleConstraint` objects built
+    by `homeAway()` or `position()` among the constraints the shortcuts are
+    taken for; since #149 it had listed them among those asked every
+    question as before.
+
+  Measured with `composer bench-compare` (fastest of five rounds, 0.4.0's
+  release preparation against the change): 32 participants unconstrained,
+  20.1 ms to 12.6; 32 with seed protection, 24.1 ms to 13.4; 24 that cannot
+  be completed, 77.1 ms to 56.3.
+
+  No output changes: the schedules, the violations and the failure
+  analysis are what they were. No public signature changes.
+
 - **A Swiss round and a role streak limit cost less to check** (#253,
   #254). The Swiss round search built a string key from two ids every
   time it asked whether a pair had played; it now remembers the answer
