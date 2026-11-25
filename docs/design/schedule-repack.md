@@ -2083,6 +2083,19 @@ with scattered pins were brought closer to the events 0.2.3 placed
     round robin with scattered pins places two more events with no
     objective and one ahead.
 
+    Below the default budget an outcome with an objective can be worse
+    than before by its own ranking, as with the fourth schedule. On the
+    1,200 small requests of decision 74 at 2,000 steps, 5 of the 5,974
+    outcomes are worse than with the fourth schedule alone, all with the
+    budget reported stopped and all under a list with `LeastChurn`: in
+    four the schedule every outcome is held to places one to two more
+    events, and the fewest moved events, held to it, then move 1 to 21
+    more; in one the fifth schedule, made and not kept, spent the steps
+    with which the attempts of the fewest moved events had placed two
+    events more than that schedule, and they now place as many as it
+    (9 events unplaced where 7 were). With no objective none is worse,
+    and at the default budget none is.
+
     *Still short* (#162). At the default budget, 4 requests place fewer
     events than 0.2.3 did: seeds 47 (414 against 415), 64 (260 against
     261), 77 (152 against 153) and 161 (361 against 363). More orders do

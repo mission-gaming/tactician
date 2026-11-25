@@ -58,7 +58,12 @@ heading **Output change (fix)**.
   requests that leave events unplaced where more could be placed; a
   request whose events are all placed comes out as before, and so do the
   golden fixtures and examples. The slowest of those requests took 2.3
-  seconds where it took 1.8.
+  seconds where it took 1.8. Below the default budget the fifth schedule
+  spends steps that the objectives' later steps can then lack: on 5,974
+  small repacks at 2,000 steps, 5 under a list with `LeastChurn` came out
+  worse by their own ranking, each with the budget reported stopped, one
+  of them with two events fewer placed (7 unplaced became 9, as many as
+  with no objective).
 
 ### Added
 
