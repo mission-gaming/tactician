@@ -64,8 +64,19 @@ describe('SelectionYield', function (): void {
         'fixed, whatever the shape' => [SelectionYield::fixed(6), 20, 4, true, 6],
         'per pool, with the pools' => [SelectionYield::perPool(2), 16, 4, false, 8],
         'per pool, without the pools' => [SelectionYield::perPool(2), 16, null, false, null],
-        'winners of 9, one round: the bye goes on' => [SelectionYield::winnersOfLastRound(), 9, null, false, 5],
-        'losers of 9, one round' => [SelectionYield::losersOfLastRound(), 9, null, false, 4],
+        'winners of 9, one round: 1 tie and 7 byes' => [SelectionYield::winnersOfLastRound(), 9, null, false, 8],
+        'losers of 9, one round: 1 tie' => [SelectionYield::losersOfLastRound(), 9, null, false, 1],
+        'winners of 6, one round: 2 ties and 2 byes' => [SelectionYield::winnersOfLastRound(), 6, null, false, 4],
+        'losers of 6, one round' => [SelectionYield::losersOfLastRound(), 6, null, false, 2],
+        'winners of 16, one round' => [SelectionYield::winnersOfLastRound(), 16, null, false, 8],
+        'losers of 16, one round' => [SelectionYield::losersOfLastRound(), 16, null, false, 8],
+        'winners of 1: nobody to meet' => [SelectionYield::winnersOfLastRound(), 1, null, false, 1],
+        'losers of 1: no tie' => [SelectionYield::losersOfLastRound(), 1, null, false, 0],
+        // The next power of two of a field this large is beyond the
+        // integers; the count is still half of it
+        'winners of the largest field an integer holds' => [SelectionYield::winnersOfLastRound(), PHP_INT_MAX, null, false, 2 ** 62],
+        'losers of the largest field an integer holds' => [SelectionYield::losersOfLastRound(), PHP_INT_MAX, null, false, PHP_INT_MAX - 2 ** 62],
+        'winners of 2^62 + 1: 1 tie' => [SelectionYield::winnersOfLastRound(), 2 ** 62 + 1, null, false, 2 ** 62],
         'winners after a whole bracket' => [SelectionYield::winnersOfLastRound(), 16, null, true, 1],
         'losers after a whole bracket' => [SelectionYield::losersOfLastRound(), 16, null, true, 1],
         'depends on the outcome' => [SelectionYield::dependsOnOutcome(), 16, 4, false, null],
@@ -207,10 +218,10 @@ describe('CompositionValidator reads the declared yield', function (): void {
         $selector = new DeclaredYieldSelector($yield);
         $validator = new CompositionValidator();
 
-        expect($validator->validateChain(9, [new StageTransition('next', $expected, $selector, sourcePools: 3)]))->toBe([])
-            ->and($validator->validateChain(9, [new StageTransition('next', $expected + 1, $selector, sourcePools: 3)]))
+        expect($validator->validateChain(12, [new StageTransition('next', $expected, $selector, sourcePools: 3)]))->toBe([])
+            ->and($validator->validateChain(12, [new StageTransition('next', $expected + 1, $selector, sourcePools: 3)]))
             ->toBe([sprintf(
-                "Stage 'next' expects %d entrants but its selection yields %d from the previous stage's 9.",
+                "Stage 'next' expects %d entrants but its selection yields %d from the previous stage's 12.",
                 $expected + 1,
                 $expected
             )]);
@@ -218,7 +229,7 @@ describe('CompositionValidator reads the declared yield', function (): void {
         'fixed' => [SelectionYield::fixed(4), 4],
         'per pool' => [SelectionYield::perPool(2), 6],
         'per pool plus a count across them' => [SelectionYield::perPoolPlus(2, 1, 3), 7],
-        'winners of the last round' => [SelectionYield::winnersOfLastRound(), 5],
+        'winners of the last round' => [SelectionYield::winnersOfLastRound(), 8],
         'losers of the last round' => [SelectionYield::losersOfLastRound(), 4],
     ]);
 

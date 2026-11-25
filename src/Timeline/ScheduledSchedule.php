@@ -207,7 +207,9 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
      * Convert to a serializable array: participants listed once, in the
      * order they first appear, then any entrant that appears in no event,
      * and referenced by ID; kickoffs as ISO 8601 UTC strings to the second
-     * (`2026-08-01T18:00:00Z`); each event's resource, or null. The first
+     * (`2026-08-01T18:00:00Z`), with the fraction of a second when a
+     * kickoff has one (`2026-08-01T18:00:00.250000Z`), as
+     * ScheduledEvent::toArray() writes them; each event's resource, or null. The first
      * key is `format_version`, the version of this form (1); the
      * participants and the events inside carry none. The key `entrants`,
      * the IDs of the entrant list in its order, is written only for a

@@ -141,9 +141,14 @@ final readonly class SelectionYield
      *   null when the pools are not given, or are fewer than the minimum
      *   (getMinimumPools()), from which the selection is not made.
      * - WinnersOfLastRound and LosersOfLastRound: after one knockout round
-     *   of all the entrants, half of them, rounded up for the winners (the
-     *   bye goes on) and down for the losers; after a whole bracket, whose
-     *   last round is the final, 1, whatever the size of the field.
+     *   of all the entrants, as the elimination engines pair the first
+     *   round of a bracket: the field is filled with byes up to the next
+     *   power of two, so the winners are half of that power (the winner of
+     *   each tie and every entrant with a bye) and the losers are the
+     *   entrants beyond that half (one for each tie). 5 entrants play 1 tie
+     *   and have 3 byes: 4 winners and 1 loser. Where the field is a power
+     *   of two, that is half of it each. After a whole bracket, whose last
+     *   round is the final, 1, whatever the size of the field.
      * - DependsOnOutcome: null.
      *
      * @param int $sourceEntrants The number of entrants of the stage before
@@ -170,10 +175,32 @@ final readonly class SelectionYield
             SelectionYieldKind::PerPoolPlusFixed => $sourcePools === null || $sourcePools < $this->minimumPools || $this->count === null
                 ? null
                 : $this->count * $sourcePools + (int) $this->addedCount,
-            SelectionYieldKind::WinnersOfLastRound => $afterWholeBracket ? 1 : intdiv($sourceEntrants + 1, 2),
-            SelectionYieldKind::LosersOfLastRound => $afterWholeBracket ? 1 : intdiv($sourceEntrants, 2),
+            SelectionYieldKind::WinnersOfLastRound => $afterWholeBracket ? 1 : $sourceEntrants - self::tiesOfFirstRound($sourceEntrants),
+            SelectionYieldKind::LosersOfLastRound => $afterWholeBracket ? 1 : self::tiesOfFirstRound($sourceEntrants),
             SelectionYieldKind::DependsOnOutcome => null,
         };
+    }
+
+    /**
+     * The ties of the first round of a bracket of this many entrants, as
+     * the elimination engines pair it: the entrants beyond the half of the
+     * next power of two meet as many of the others, and the rest have a
+     * bye. A field of fewer than 2 has no tie.
+     */
+    private static function tiesOfFirstRound(int $entrants): int
+    {
+        if ($entrants < 2) {
+            return 0;
+        }
+
+        // Half the next power of two, found without forming that power,
+        // which is beyond the integers for a field of more than 2^62
+        $half = 1;
+        while ($half < $entrants - $half) {
+            $half *= 2;
+        }
+
+        return $entrants - $half;
     }
 
     /**
