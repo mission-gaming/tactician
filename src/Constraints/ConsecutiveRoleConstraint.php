@@ -87,8 +87,12 @@ final readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         $participantEvents = $context->getEventsForParticipant($participant);
 
-        // Add the new event to get the full sequence
-        $allEvents = [...$participantEvents, $newEvent];
+        // Add the new event to get the full sequence. The context keeps the
+        // keys of the events it was given, which may be strings, and the
+        // streak is read by list position: the list is renumbered here, as
+        // the sort renumbers it when it runs.
+        $allEvents = array_values($participantEvents);
+        $allEvents[] = $newEvent;
 
         // Sort by round number, stably. The events nearly always come in
         // round order already, the candidate last, and a stable sort leaves

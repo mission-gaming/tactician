@@ -213,6 +213,26 @@ describe('ConsecutiveRoleConstraint', function (): void {
         expect($rejected)->toBeGreaterThan(100)->toBeLessThan(400);
     });
 
+    // SchedulingContext accepts events under any keys and keeps them, so a
+    // participant's history can come with string keys, in round order and
+    // so not re-sorted. The streak is the same as for the same events in a
+    // list.
+    it('counts the streak of a history the context holds under string keys', function (): void {
+        $carol = new Participant('p3', 'Carol');
+        $dave = new Participant('p4', 'Dave');
+        $field = [$this->alice, $this->bob, $carol, $dave];
+        $history = [
+            'first' => new Event([$this->alice, $this->bob], new Round(1)),
+            'second' => new Event([$this->alice, $carol], new Round(2)),
+        ];
+        $candidate = new Event([$this->alice, $dave], new Round(3));
+        $constraint = ConsecutiveRoleConstraint::homeAway(2);
+
+        expect($constraint->isSatisfied($candidate, roundRobinContext($field, $history)))->toBeFalse()
+            ->and($constraint->isSatisfied($candidate, roundRobinContext($field, array_values($history))))->toBeFalse()
+            ->and(ConsecutiveRoleConstraint::homeAway(3)->isSatisfied($candidate, roundRobinContext($field, $history)))->toBeTrue();
+    });
+
     // An event with no round sorts as round 0, before every numbered round
     it('is satisfied when the history is empty and the event has no round', function (): void {
         $constraint = new ConsecutiveRoleConstraint(1, 'consecutiveRoleProbe');
