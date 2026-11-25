@@ -5,7 +5,10 @@ the rule that the first of two entrants to withdraw from a tie gave it to the
 other. What it says of the last tie of a bracket is replaced by
 [0013](0013-a-finished-bracket-keeps-its-winner.md): a last tie goes to the
 entrant still in the stage when the other left, and a finished bracket keeps
-its winner.
+its winner. What it says of the dropper of a winners tie in double
+elimination is narrowed by
+[0026](0026-only-a-winners-tie-its-results-decided-drops-its-loser.md): only
+a winners tie its results decided drops its loser.
 
 ## Context
 

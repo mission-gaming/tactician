@@ -207,7 +207,7 @@ describe('a timeline or a grid read back from its array', function (): void {
 });
 
 describe('the format version of an array that is written', function (): void {
-    it('is the first key, is 1, and is written once however much the array holds', function (string $name, array $field): void {
+    it('is the first key, is the newest version of the form, and is written once however much the array holds', function (string $name, array $field): void {
         $generate = PlainDataForms::all()[$name]['generate'] ?? PlainDataForms::writtenOnly()[$name]['generate'];
         $random = new Randomizer(new Xoshiro256StarStar(crc32($name)));
 
@@ -215,7 +215,7 @@ describe('the format version of an array that is written', function (): void {
             $written = plainDataOf($generate($random, $field));
 
             expect(array_key_first($written))->toBe('format_version', "{$name}, instance {$i}")
-                ->and($written['format_version'])->toBe(1)
+                ->and($written['format_version'])->toBe(PlainDataForms::versionOf($name))
                 ->and(versionKeys($written))->toBe(1, "{$name}, instance {$i}");
         }
     })->with(fn(): array => [

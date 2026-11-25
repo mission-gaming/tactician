@@ -17,9 +17,9 @@ use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 
 /*
- * The figures of an outcome (events moved, lone-event sessions, idle
- * sessions, gap slots, unplaced events) and the objectives that rank by
- * them.
+ * The figures of an outcome (events moved, lone-event sessions, lone
+ * participant-sessions, idle sessions, gap slots, unplaced events) and
+ * the objectives that rank by them, after gap slots and ahead of them.
  *
  * The sweeps here are narrowed to what a suite can run in seconds. The
  * wider ones were run once, outside the suite, with a reference written
@@ -597,15 +597,23 @@ describe('A repack with objectives', function (): void {
                 }
             }
         }
-        expect($lists)->toHaveCount(15);
+        // Five cases: 5 lists of one, 20 of two, 60 of three
+        expect($lists)->toHaveCount(85);
 
         foreach ($lists as $objectives) {
             $outcome = new ScheduleRepacker()->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: $objectives))
             );
 
-            expect([$outcome->getUnplacedCount(), $outcome->getGapSlotCount()] <=> [$plain->getUnplacedCount(), $plain->getGapSlotCount()])
-                ->toBeLessThanOrEqual(0);
+            // Events placed come first under every list. Gap slots come
+            // next unless the list names an objective before them
+            $gapSlotsFirst = !in_array(RepackObjective::FewestGapSlots, $objectives, true)
+                || $objectives[0] === RepackObjective::FewestGapSlots;
+            expect($outcome->getUnplacedCount())->toBeLessThanOrEqual($plain->getUnplacedCount());
+            if ($gapSlotsFirst) {
+                expect([$outcome->getUnplacedCount(), $outcome->getGapSlotCount()] <=> [$plain->getUnplacedCount(), $plain->getGapSlotCount()])
+                    ->toBeLessThanOrEqual(0);
+            }
         }
     })->with(range(800, 811))->with([1, 7, 60, 900]);
 
@@ -1039,7 +1047,7 @@ describe('The fewest moved events under other ids', function (): void {
         // figures under other ids
         [$movable, $pinned, $grid] = $seed % 2 === 0 ? seasonInProgress($seed) : roundRobinWithScatteredPins($seed);
 
-        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
+        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last'], settingsAheadOfGapSlots()['churn first'], settingsAheadOfGapSlots()['every figure ahead']] as $objectives) {
             $options = new RepackOptions(objectives: $objectives);
             $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
 
@@ -1059,7 +1067,7 @@ describe('The fewest moved events under other ids', function (): void {
         // of these requests) came back with other figures under other ids
         [$movable, $pinned, $grid] = doubleRoundRobinInRounds($seed);
 
-        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
+        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last'], settingsAheadOfGapSlots()['churn first'], settingsAheadOfGapSlots()['every figure ahead']] as $objectives) {
             $options = new RepackOptions(objectives: $objectives);
             $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, $options));
 
@@ -1070,6 +1078,299 @@ describe('The fewest moved events under other ids', function (): void {
             }
         }
     })->with([...range(1, 20), 173, 195, 238, 366]);
+});
+
+/**
+ * The settings that rank an objective ahead of gap slots.
+ *
+ * @return array<string, list<RepackObjective>>
+ */
+function settingsAheadOfGapSlots(): array
+{
+    return [
+        'lone participants first' => [RepackObjective::FewestLoneParticipantSessions, RepackObjective::FewestIdleSessions, RepackObjective::FewestGapSlots],
+        'churn first' => [RepackObjective::LeastChurn, RepackObjective::FewestGapSlots],
+        'lone events first' => [RepackObjective::FewestLoneEventSessions, RepackObjective::FewestGapSlots],
+        'idle first, churn after gaps' => [RepackObjective::FewestIdleSessions, RepackObjective::FewestGapSlots, RepackObjective::LeastChurn],
+        'every figure ahead' => [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::LeastChurn,
+            RepackObjective::FewestLoneEventSessions,
+            RepackObjective::FewestIdleSessions,
+            RepackObjective::FewestGapSlots,
+        ],
+    ];
+}
+
+/**
+ * An outcome's unplaced events, then its figures in the order a list of
+ * objectives ranks them: gap slots first where the list does not name
+ * them.
+ *
+ * @param list<RepackObjective> $objectives
+ *
+ * @return list<int>
+ */
+function rankedBy(RepackOutcome $outcome, array $objectives): array
+{
+    if (!in_array(RepackObjective::FewestGapSlots, $objectives, true)) {
+        $objectives = [RepackObjective::FewestGapSlots, ...$objectives];
+    }
+
+    return [$outcome->getUnplacedCount(), ...array_map(static fn(RepackObjective $objective): int => match ($objective) {
+        RepackObjective::FewestGapSlots => $outcome->getGapSlotCount(),
+        RepackObjective::LeastChurn => $outcome->getMovedCount(),
+        RepackObjective::FewestLoneEventSessions => $outcome->getLoneEventSessionCount(),
+        RepackObjective::FewestLoneParticipantSessions => $outcome->getLoneParticipantSessionCount(),
+        RepackObjective::FewestIdleSessions => $outcome->getIdleSessionCount(),
+    }, $objectives)];
+}
+
+/**
+ * A complete single round robin with nothing pinned and nothing placed.
+ *
+ * @return list<MovableEvent>
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function completeRoundRobin(int $participants): array
+{
+    $entrants = [];
+    for ($i = 0; $i < $participants; ++$i) {
+        $entrants[] = new Participant(sprintf('p%02d', $i), "P{$i}");
+    }
+    $events = [];
+    foreach ($entrants as $i => $a) {
+        foreach (array_slice($entrants, $i + 1) as $b) {
+            $events[] = new MovableEvent("{$a->getId()}-{$b->getId()}", $a, $b);
+        }
+    }
+
+    return $events;
+}
+
+describe('Objectives ranked ahead of gap slots', function (): void {
+    it('never place fewer events than the repack with no objective, and are never worse by the ranking they ask for', function (int $seed): void {
+        [$movable, $pinned, $grid] = match ($seed % 4) {
+            0 => seasonInProgress($seed),
+            1 => smallRequestWithCurrentPositions($seed),
+            2 => roundRobinWithScatteredPins($seed),
+            default => doubleRoundRobinInRounds($seed),
+        };
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+
+        foreach (settingsAheadOfGapSlots() as $objectives) {
+            $outcome = new ScheduleRepacker()->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: $objectives))
+            );
+
+            expect($outcome->getUnplacedCount())->toBeLessThanOrEqual($plain->getUnplacedCount())
+                ->and(rankedBy($outcome, $objectives) <=> rankedBy($plain, $objectives))->toBeLessThanOrEqual(0);
+        }
+    })->with(range(1200, 1239));
+
+    it('keep that guarantee under a budget that runs out, for every list of two or three that names gap slots after an objective', function (int $seed, int $budget): void {
+        // A complete round robin with nothing pinned is where the shapes of
+        // the sessions are tried: every event placed, and rounds that do
+        // not divide into the sessions
+        $participants = 5 + $seed % 7;
+        [$movable, $pinned, $grid] = match ($seed % 4) {
+            0 => smallRequestWithCurrentPositions($seed),
+            1 => roundRobinWithScatteredPins($seed),
+            2 => seasonInProgress($seed),
+            default => [
+                completeRoundRobin($participants),
+                [],
+                SessionGrid::shapeOnly(2 + $seed % 3, 3 + $seed % 2, capacityPerSlot: $seed % 8 === 3 ? null : intdiv($participants, 2)),
+            ],
+        };
+        $plain = new ScheduleRepacker()->repack(
+            new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+        );
+
+        $objectives = array_values(array_filter(
+            RepackObjective::cases(),
+            static fn(RepackObjective $case): bool => $case !== RepackObjective::FewestGapSlots
+        ));
+        $lists = [];
+        foreach ($objectives as $first) {
+            $lists[] = [$first, RepackObjective::FewestGapSlots];
+            foreach ($objectives as $second) {
+                if ($second !== $first) {
+                    $lists[] = [$first, $second, RepackObjective::FewestGapSlots];
+                    $lists[] = [$first, RepackObjective::FewestGapSlots, $second];
+                }
+            }
+        }
+        // Four objectives: 4 lists of one ahead, 12 of two ahead, 12 of one ahead and one after
+        expect($lists)->toHaveCount(28);
+
+        foreach ($lists as $list) {
+            $outcome = new ScheduleRepacker()->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: $list))
+            );
+
+            expect(rankedBy($outcome, $list) <=> rankedBy($plain, $list))->toBeLessThanOrEqual(0);
+        }
+    })->with(range(1250, 1265))->with([1, 7, 60, 900, 200_000]);
+
+    it('keep a schedule the search for fewer gap slots would give a lone participant-session', function (): void {
+        // Two sessions of four slots, one event to a slot. a plays b at the
+        // last slot of the first session and c plays b at its first, both
+        // pinned. The one movable event, a against c, closes no gap where
+        // it shares a session with them: at slot 1, c's events run back to
+        // back and a waits a slot before its pin. The search for fewer gap
+        // slots moves it to the empty second session, where a and c each
+        // turn up for one event. Ranked ahead of gap slots, the lone
+        // participant-sessions keep it in the first
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $c = new Participant('c', 'C');
+        $grid = SessionGrid::shapeOnly(2, 4, capacityPerSlot: 1);
+        $pinned = [new PinnedEvent('x1', $b, $a, 0, 3), new PinnedEvent('x2', $c, $b, 0, 0)];
+        $movable = [new MovableEvent('m1', $c, $a)];
+
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+        $ahead = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::FewestGapSlots,
+        ])));
+
+        expect($plain->getAssignmentFor('m1')?->getSession())->toBe(1)
+            ->and($plain->getLoneParticipantSessionCount())->toBe(2)
+            ->and($plain->getGapSlotCount())->toBe(0)
+            ->and($ahead->getAssignmentFor('m1')?->getSession())->toBe(0)
+            ->and($ahead->getLoneParticipantSessionCount())->toBe(0)
+            ->and($ahead->getGapSlotCount())->toBe(1);
+    });
+
+    it('change nothing where gap slots are named first', function (int $seed): void {
+        [$movable, $pinned, $grid] = $seed % 2 === 0 ? seasonInProgress($seed) : smallRequestWithCurrentPositions($seed);
+
+        foreach ([...array_values(objectiveSettings()), [RepackObjective::FewestLoneParticipantSessions]] as $objectives) {
+            $without = new ScheduleRepacker()->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: $objectives))
+            );
+            $first = new ScheduleRepacker()->repack(new RepackRequest(
+                $movable,
+                $pinned,
+                $grid,
+                new RepackOptions(objectives: [RepackObjective::FewestGapSlots, ...$objectives])
+            ));
+
+            expect($first->toArray())->toBe($without->toArray())
+                ->and($first->isBudgetExhausted())->toBe($without->isBudgetExhausted());
+        }
+    })->with(range(1300, 1315));
+
+    it('leave no lone participant-session on a round robin whose rounds do not divide into the sessions', function (int $participants, int $sessions): void {
+        // Four slots a session and no limit on the events of a slot: with
+        // gap slots first the rounds fill the first sessions and the last
+        // has a single round, in which every participant has one event
+        $movable = completeRoundRobin($participants);
+        $grid = SessionGrid::shapeOnly($sessions, 4, capacityPerSlot: null);
+
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid));
+        $ahead = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid, new RepackOptions(objectives: [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::FewestIdleSessions,
+            RepackObjective::FewestGapSlots,
+        ])));
+        $after = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid, new RepackOptions(objectives: [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::FewestIdleSessions,
+        ])));
+
+        expect($plain->getLoneParticipantSessionCount())->toBeGreaterThan(0)
+            ->and($ahead->getUnplacedCount())->toBe(0)
+            ->and($ahead->getLoneParticipantSessionCount())->toBe(0)
+            ->and($ahead->getIdleSessionCount())->toBe(0)
+            // Ranked after gap slots, the same objectives cost no gap slot,
+            // and the gap slots they leave are no more than the repack
+            // with no objective leaves
+            ->and($after->getGapSlotCount())->toBeLessThanOrEqual($plain->getGapSlotCount())
+            ->and($after->getGapSlotCount())->toBeLessThanOrEqual($ahead->getGapSlotCount());
+    })->with([
+        'five on two sessions' => [5, 2],
+        'ten on three sessions' => [10, 3],
+        'fourteen on four sessions' => [14, 4],
+        'nine on four sessions, two more than it needs' => [9, 4],
+    ]);
+
+    it('leave every event of a season in which nothing changed where it is, gaps and all', function (): void {
+        // Three events of four participants on one session of three slots,
+        // as they stand: a and c play in the first slot and the last, and
+        // each waits the slot between. With gap slots first the event
+        // after the wait moves to close it
+        $p = [];
+        foreach (['a', 'b', 'c', 'd'] as $id) {
+            $p[$id] = new Participant($id, strtoupper($id));
+        }
+        $grid = SessionGrid::shapeOnly(1, 3, capacityPerSlot: 2);
+        $movable = [
+            new MovableEvent('m1', $p['a'], $p['b'], 0, 0),
+            new MovableEvent('m2', $p['c'], $p['d'], 0, 0),
+            new MovableEvent('m3', $p['a'], $p['c'], 0, 2),
+        ];
+
+        $churn = new ScheduleRepacker()->repack(
+            new RepackRequest($movable, [], $grid, new RepackOptions(objectives: [RepackObjective::LeastChurn]))
+        );
+        $ahead = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid, new RepackOptions(objectives: [
+            RepackObjective::LeastChurn,
+            RepackObjective::FewestGapSlots,
+        ])));
+
+        expect($churn->getMovedEventIds())->toBe(['m3'])
+            ->and($churn->getGapSlotCount())->toBe(0)
+            ->and($ahead->getMovedEventIds())->toBe([])
+            ->and($ahead->getGapSlotCount())->toBe(2);
+    });
+
+    it('move no event of a season in progress in which nothing changed', function (int $participants, int $slots): void {
+        // A round robin of an odd number laid out round by round, three
+        // rounds played: every participant sits out one round, and where
+        // that round is between two of its own in a session it waits
+        $entrants = [];
+        for ($i = 0; $i < $participants; ++$i) {
+            $entrants[] = new Participant(sprintf('p%02d', $i), "P{$i}");
+        }
+        $seats = range(0, $participants);
+        $movable = [];
+        $pinned = [];
+        for ($round = 0; $round < $participants; ++$round) {
+            for ($i = 0; $i < intdiv($participants + 1, 2); ++$i) {
+                $a = $seats[$i];
+                $b = $seats[$participants - $i];
+                if ($a === $participants || $b === $participants) {
+                    continue;
+                }
+                $id = "r{$round}-{$i}";
+                $session = intdiv($round, $slots);
+                if ($round < 3) {
+                    $pinned[] = new PinnedEvent($id, $entrants[$a], $entrants[$b], $session, $round % $slots);
+                } else {
+                    $movable[] = new MovableEvent($id, $entrants[$a], $entrants[$b], $session, $round % $slots);
+                }
+            }
+            array_splice($seats, 1, 0, [array_pop($seats)]);
+        }
+        $grid = SessionGrid::shapeOnly(intdiv($participants + $slots - 1, $slots), $slots, capacityPerSlot: intdiv($participants, 2));
+
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [
+            RepackObjective::LeastChurn,
+            RepackObjective::FewestGapSlots,
+        ])));
+
+        expect($plain->getMovedCount())->toBeGreaterThan(0)
+            ->and($outcome->getUnplacedCount())->toBe(0)
+            ->and($outcome->getMovedEventIds())->toBe([]);
+    })->with([
+        'nine on sessions of three slots' => [9, 3],
+        'eleven on sessions of four slots' => [11, 4],
+        'fifteen on sessions of three slots' => [15, 3],
+    ]);
 });
 
 describe('The pairwise limit of a repack', function (): void {

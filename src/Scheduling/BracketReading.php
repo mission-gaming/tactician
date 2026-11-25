@@ -30,7 +30,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  *
  * @internal Not public API: the working record of the two elimination engines.
  *
- * @phpstan-type WalkedNode array{entrants: list<Participant|null>, status: BracketNodeStatus, events: list<Event>, advancer: Participant|null, losers: list<Participant>}
+ * @phpstan-type WalkedNode array{entrants: list<Participant|null>, status: BracketNodeStatus, events: list<Event>, advancer: Participant|null, losers: list<Participant>, place: bool}
  * @phpstan-type WalkedRound array{side: BracketSide, round: int, slots: list<Participant|null>, number: int|null, manual: bool, next: bool, nodes: list<WalkedNode>, extra: WalkedNode|null}
  */
 final class BracketReading

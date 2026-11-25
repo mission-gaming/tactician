@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\Repack\Internal\ObjectivePolish;
 use MissionGaming\Tactician\Repack\Internal\PlacementMetrics;
+use MissionGaming\Tactician\Repack\Internal\Ranking;
 use MissionGaming\Tactician\Repack\Internal\StepBudget;
 use MissionGaming\Tactician\Repack\RepackObjective;
 
@@ -36,8 +37,7 @@ function objectivePolish(
     }
 
     return new ObjectivePolish(
-        new PlacementMetrics($participantsOf, $pins, $current),
-        $objectives,
+        new Ranking(new PlacementMetrics($participantsOf, $pins, $current), $objectives),
         $participantsOf,
         $pinSlots,
         $pinCounts,
@@ -241,6 +241,41 @@ describe('ObjectivePolish', function (): void {
         expect($polish->improve([0 => [0, 0]], []))->toBe([0 => [1, 0]]);
     });
 
+    it('moves the one event of a participant alone in a session into another session the participant plays in', function (): void {
+        // Participant 0 plays event 0 alone in session 0, and events 1 and
+        // 2 in session 1, where slot 2 is free. Four participant-sessions
+        // have one event before (0 and 1 in session 0, 2 and 3 in session
+        // 1), three after (1, 2 and 3 in session 1), with no gap
+        $polish = objectivePolish(
+            [RepackObjective::FewestLoneParticipantSessions],
+            [0 => [0, 1], 1 => [0, 2], 2 => [0, 3]],
+            [],
+            [0 => 1, 1 => 3],
+            1,
+            [],
+            new StepBudget(100)
+        );
+
+        expect($polish->improve([0 => [0, 0], 1 => [1, 0], 2 => [1, 1]], []))
+            ->toBe([0 => [1, 2], 1 => [1, 0], 2 => [1, 1]]);
+    });
+
+    it('opens a gap for a lone participant-session only when the objective ranks ahead of gap slots', function (): void {
+        // As above, but slot 2 of session 1 is full of a pin: event 0 can
+        // join participant 0's events only at slot 3, after a wait
+        $state = [[0 => [0, 1], 1 => [0, 2], 2 => [0, 3]], [[[5, 6], 1, 2]], [0 => 1, 1 => 4], 1, []];
+        $positions = [0 => [0, 0], 1 => [1, 0], 2 => [1, 1]];
+
+        $gapSlotsFirst = objectivePolish([RepackObjective::FewestLoneParticipantSessions], ...[...$state, new StepBudget(100)]);
+        $loneFirst = objectivePolish(
+            [RepackObjective::FewestLoneParticipantSessions, RepackObjective::FewestGapSlots],
+            ...[...$state, new StepBudget(100)]
+        );
+
+        expect($gapSlotsFirst->improve($positions, []))->toBe($positions)
+            ->and($loneFirst->improve($positions, []))->toBe([0 => [1, 3], 1 => [1, 0], 2 => [1, 1]]);
+    });
+
     it('never trades an earlier objective for a later one', function (): void {
         // Event 0 is at its current position, alone in session 0. Joining
         // session 1 ends a lone-event session and moves an event
@@ -254,11 +289,12 @@ describe('ObjectivePolish', function (): void {
             ->and($loneFirst->improve($positions, []))->toBe([0 => [1, 0], 1 => [1, 0], 2 => [1, 0]]);
     });
 
-    it('does nothing without an objective, and nothing to an empty schedule', function (): void {
+    it('does nothing without an objective, with gap slots alone, and nothing to an empty schedule', function (): void {
         $budget = new StepBudget(100);
         $positions = [0 => [0, 1]];
 
         expect(objectivePolish([], [0 => [0, 1]], [], [0 => 2], 1, [0 => [0, 0]], $budget)->improve($positions, []))->toBe($positions)
+            ->and(objectivePolish([RepackObjective::FewestGapSlots], [0 => [0, 1]], [], [0 => 2], 1, [0 => [0, 0]], $budget)->improve($positions, []))->toBe($positions)
             ->and(objectivePolish([RepackObjective::LeastChurn], [0 => [0, 1]], [], [0 => 2], 1, [0 => [0, 0]], $budget)->improve([], [0]))->toBe([])
             ->and($budget->stepsLeft())->toBe(100);
     });

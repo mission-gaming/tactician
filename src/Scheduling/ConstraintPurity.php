@@ -26,13 +26,15 @@ use MissionGaming\Tactician\RoleAssignment\LegBalanceRule;
  * only for a set this class knows; for any other set the constraints are
  * asked exactly as they were before those shortcuts existed.
  *
- * A set is known when it holds only objects of the classes in KNOWN. Each
- * of those classes:
+ * A set is known when it holds only objects of the classes in KNOWN, and
+ * ConsecutiveRoleConstraint objects built by one of its factories
+ * (homeAway(), position()), whose role extractor is the library's own
+ * (ConsecutiveRoleConstraint::extractsRolesByPosition()). Each of those:
  *
  * - runs no code of the caller's. That is what keeps out
- *   ConsecutiveRoleConstraint, MetadataConstraint and CallableConstraint,
- *   which hold a callable they were given, and every class this library did
- *   not write;
+ *   MetadataConstraint and CallableConstraint, which hold a callable they
+ *   were given, a ConsecutiveRoleConstraint given a role extractor of the
+ *   caller's, and every class this library did not write;
  * - keeps no state, so the same event and context give the same verdict
  *   however often they are asked;
  * - reads, besides the candidate event, the plan and the participant list,
@@ -44,7 +46,12 @@ use MissionGaming\Tactician\RoleAssignment\LegBalanceRule;
  *   `tests/Unit/Scheduling/SwissRoundSearchTest.php` checks this for each
  *   class.
  *
- * Adding a class to KNOWN is a claim that all three hold for it.
+ * Adding a class to KNOWN is a claim that all three hold for it. For a
+ * ConsecutiveRoleConstraint the first two hold for the extractor of its
+ * factories, which reads the position of the participant in the event it
+ * is given, and the third holds for the class whatever its extractor (see
+ * readsOwnEventsOnly()); `tests/Unit/Scheduling/SwissRoundSearchTest.php`
+ * checks the third for the factory-built limits as well.
  *
  * @internal Not public API.
  */
@@ -80,7 +87,22 @@ final class ConstraintPurity
             return true;
         }
 
-        return array_all($constraints->getConstraints(), fn($constraint) => in_array($constraint::class, self::KNOWN, true));
+        return array_all($constraints->getConstraints(), fn($constraint) => self::constraintIsKnown($constraint));
+    }
+
+    /**
+     * Whether this one constraint is known in the sense of the class
+     * comment: an object of exactly one of the classes in KNOWN, or a
+     * ConsecutiveRoleConstraint whose role extractor is the one its
+     * factories give.
+     */
+    public static function constraintIsKnown(ConstraintInterface $constraint): bool
+    {
+        if ($constraint instanceof ConsecutiveRoleConstraint) {
+            return $constraint->extractsRolesByPosition();
+        }
+
+        return in_array($constraint::class, self::KNOWN, true);
     }
 
     /**
@@ -94,7 +116,8 @@ final class ConstraintPurity
      * shares a participant with the one the constraints rejected
      * (LegRoleSearch): no other event can change the verdict. It holds
      * for a known set, and for one that also holds
-     * ConsecutiveRoleConstraint objects. That class reads the events of the
+     * ConsecutiveRoleConstraint objects given a role extractor of the
+     * caller's. That class reads the events of the
      * candidate's own participants and nothing else, and hands each of them
      * to the caller's role extractor with the participant; an extractor
      * that answers from anything but its two arguments breaks the rule

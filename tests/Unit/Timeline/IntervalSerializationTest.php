@@ -58,6 +58,26 @@ function alteredInterval(string $duration, float $fraction = 0.0, bool $inverted
 }
 
 /**
+ * Set one part of an interval by hand, by its property name.
+ *
+ * @param string $part One of y, m, d, h, i and s
+ *
+ * @throws InvalidArgumentException When the part is none of them
+ */
+function setIntervalPart(DateInterval $interval, string $part, int $value): void
+{
+    match ($part) {
+        'y' => $interval->y = $value,
+        'm' => $interval->m = $value,
+        'd' => $interval->d = $value,
+        'h' => $interval->h = $value,
+        'i' => $interval->i = $value,
+        's' => $interval->s = $value,
+        default => throw new InvalidArgumentException("No interval part {$part}"),
+    };
+}
+
+/**
  * The configuration error a call raises.
  *
  * @param Closure(): mixed $call
@@ -323,6 +343,82 @@ describe('a timeline definition written as plain data', function (): void {
         expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
             ->and($exception->getContext())->toBe(['round_interval' => 'P8DT-1H']);
     });
+
+    // PHP reads at most twelve digits for a part of a duration. A day count
+    // set by hand to 10^14 is in range for a round or two and was written
+    // `P100000000000000D`, which fromArray() then refused (#171)
+    it('is refused when an interval of it has a part PHP cannot read back', function (string $part, int $value, string $shown): void {
+        $interval = new DateInterval('PT0S');
+        setIntervalPart($interval, $part, $value);
+        $definition = new TimelineDefinition(new DateTimeImmutable('2026-01-01 00:00:00', new DateTimeZone('UTC')), $interval);
+
+        $exception = intervalError(fn() => $definition->toArray());
+
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
+            ->and($exception->getConfigurationIssue())->toBe('round_interval cannot be written as an ISO 8601 duration: it has a part of more than 12 digits, which a duration PHP reads cannot hold')
+            ->and($exception->getContext())->toBe(['round_interval' => $shown])
+            // Refusing to write it does not refuse to use it
+            ->and($definition->getSlotTime(2)->getTimestamp())->toBeGreaterThan($definition->getSlotTime(1)->getTimestamp());
+    })->with([
+        'days' => ['d', 100_000_000_000_000, 'P100000000000000D'],
+        'days, one past twelve digits' => ['d', 1_000_000_000_000, 'P1000000000000D'],
+        'hours' => ['h', 1_000_000_000_000, 'PT1000000000000H'],
+        'minutes' => ['i', 1_000_000_000_000, 'PT1000000000000M'],
+        'seconds' => ['s', 1_000_000_000_000, 'PT1000000000000S'],
+    ]);
+
+    it('writes a part of twelve digits, and reads it back', function (): void {
+        $interval = new DateInterval('PT0S');
+        $interval->h = 999_999_999_999;
+        $definition = new TimelineDefinition(new DateTimeImmutable('2026-01-01 00:00:00', new DateTimeZone('UTC')), $interval);
+
+        $data = $definition->toArray();
+
+        expect($data['round_interval'])->toBe('PT999999999999H')
+            ->and(TimelineDefinition::fromArray($data)->getSlotTime(2)->format('c'))->toBe($definition->getSlotTime(2)->format('c'));
+    });
+
+    // The rule for every interval, not for the ones above: what toArray()
+    // writes, fromArray() reads, to the same slot times; or toArray()
+    // refuses it as not serializable. Never a form fromArray() refuses, and
+    // never one that reads back as another timeline
+    it('writes only what fromArray() reads back to the same slot times', function (): void {
+        $randomizer = new Random\Randomizer(new Random\Engine\Xoshiro256StarStar(171));
+        $start = new DateTimeImmutable('2026-10-10 19:00:00', new DateTimeZone('Europe/London'));
+        $written = 0;
+
+        for ($case = 0; $case < 400; ++$case) {
+            $interval = new DateInterval('PT0S');
+            foreach (['y', 'm', 'd', 'h', 'i', 's'] as $part) {
+                if ($randomizer->getInt(0, 2) === 0) {
+                    // From one digit to fifteen
+                    setIntervalPart($interval, $part, $randomizer->getInt(1, 9) * 10 ** $randomizer->getInt(0, 14));
+                }
+            }
+
+            try {
+                $definition = new TimelineDefinition($start, $interval);
+            } catch (InvalidConfigurationException) {
+                // Out of range for one round, and refused where it is given
+                continue;
+            }
+
+            try {
+                $data = $definition->toArray();
+            } catch (InvalidConfigurationException $exception) {
+                expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable);
+
+                continue;
+            }
+
+            $readBack = TimelineDefinition::fromArray($data);
+            expect($readBack->getSlotTime(2)->format('c'))->toBe($definition->getSlotTime(2)->format('c'));
+            ++$written;
+        }
+
+        // The sweep wrote some and refused some
+        expect($written)->toBeGreaterThan(10);
+    });
 });
 
 describe('a session grid written as plain data', function (): void {
@@ -349,6 +445,17 @@ describe('a session grid written as plain data', function (): void {
         );
 
         expect(intervalError(fn() => $grid->toArray())->getReason())->toBe(InvalidConfigurationReason::NotSerializable);
+    });
+
+    it('is refused when its slot interval has a part PHP cannot read back', function (): void {
+        $interval = new DateInterval('PT0S');
+        $interval->s = 10_000_000_000_000;
+        $grid = new SessionGrid([new DateTimeImmutable('2026-08-12 20:00:00', new DateTimeZone('UTC'))], $interval, 2);
+
+        $exception = intervalError(fn() => $grid->toArray());
+
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
+            ->and($exception->getContext())->toBe(['slot_interval' => 'PT10000000000000S']);
     });
 
     it('keeps a fraction of a second of a session start', function (): void {

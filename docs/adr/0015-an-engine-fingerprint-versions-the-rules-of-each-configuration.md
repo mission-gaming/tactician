@@ -96,7 +96,10 @@ paired from them by the rules of 0.3.0, which can give another round than
 0.2.x would have paired next. That is the price of keeping the
 stamps of every other bracket valid: a version raised for the whole
 configuration would refuse all of them, to protect stages that 0.2.x had
-already paired against its own bracket.
+already paired against its own bracket. A round drawn by hand after a
+withdrawal, or across the final and the third-place tie, is read otherwise
+from 0.4.0 and keeps the version for the same reason
+([0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md)).
 
 When the options of two fingerprints differ, the error names the options
 (the version may differ with them, as fixed and re-seeded single
