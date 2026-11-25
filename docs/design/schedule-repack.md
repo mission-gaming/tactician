@@ -1771,7 +1771,101 @@ the 90th percentile of the round robins (210 ms for 126), where the
 median, a few milliseconds either way, is mostly the shapes themselves. A lower
 bound on the gap slots a session can reach, from the parity of each
 participant's events in it, would let both stop early; it was not
-needed for this change and is left to #169.
+needed for this change and is left to #169 (decision 72 takes such a
+bound, of the whole request).
+
+## Hard requests (0.4.0)
+
+Decisions made when the search for fewer gap slots was given a lower
+bound (#169).
+
+72. **The search for fewer gap slots stops at a lower bound.** It ran to
+    its limit wherever no placement without a gap exists: three events
+    among three participants on one session (each plays two of them, and
+    no three slots are each next to the other two) took half a second on
+    1,000 slots and a second on 100,000, where 0.2.3 took milliseconds,
+    and below the default the time followed `stepBudget`. `GapLowerBound`
+    works out, from the request alone, a number of gap slots that no
+    placement of every event goes below; the search does not start where
+    the schedule it is given has no more, and stops at the first
+    placement it finds with that few. The bound is a sum over sessions.
+    The events that can be played in one session alone (a slot of it has
+    room once the pins are counted and neither participant is pinned
+    there, and no slot of another session has) are split into groups that
+    share participants, and a group counts where its participants have
+    nothing else in the session (no pin, no event that could go there or
+    elsewhere), so that their events there are the group's whatever the
+    rest of the schedule is. Of such a group three things are known.
+    *Parity*: a participant whose slots in a session are one run plays as
+    many even slots as odd ones, give or take one, and each gap slot can
+    change that by one more; a group in which every participant has an
+    even number of events and the group an odd number has no colouring of
+    its events by the parity of their slots that balances every
+    participant, so it has a gap slot, and every other group has such a
+    colouring, so parity gives it nothing. *One event to a slot*: a
+    session is then a sequence, a participant is without a gap only where
+    its events follow each other, and two events in a row share one
+    participant (two when they are between the same two), so m events
+    among v participants with p repeated pairings leave at least
+    m - v + 1 - p gap slots. *Exactly*, for a group of up to 12 events:
+    the fewest gap slots of the group alone on a session of its length,
+    by a search that leaves out the slots none of its events plays (such
+    a slot inside a participant's run is a gap slot of that participant,
+    so a placement without them is never worse) and cuts a branch on the
+    gap slots it can no longer close. It has a limit of 20,000 slot checks
+    for all the groups of one bound, and a group it does not finish gets
+    the larger of the other two. Leaving out the room the group shares
+    with other events and pins makes the bound smaller, never wrong. A
+    placement that may leave events out has no bound here (leaving one
+    out can break a group), so the search asks for one only when every
+    event is placed.
+
+    *What it changes.* Nothing the search returns: it took a placement
+    only with strictly fewer gap slots, and none has fewer than the
+    bound, so stopping there drops only the part of the search that could
+    find nothing. It spends fewer steps, which leaves more to the steps
+    after it and could in principle change what they do; on 6,000 small
+    random requests (up to seven participants and ten events on one to
+    three sessions) at 100 steps, at 2,000 and at the default, on 200
+    round robins of 16 to 40 with an eighth to a half of their events
+    pinned at random, and on 160 seasons of 20 to 40 with their first
+    rounds pinned in order, every assignment came back the same as
+    without the bound. The budget flag did not: 19 of the small requests
+    at 100 steps and 3 at 2,000 are now false where the budget stopped the
+    search before (never the other way), which is what the flag promises,
+    since a larger budget gives them the same outcome. The large requests
+    never reach the bound (on them the search stops at its limit without
+    a better placement, and the bound is 0), so their time is what it was.
+
+    *Measured* (milliseconds, one event to a slot, one session; before /
+    after / 0.2.3):
+
+    | Request | Slots | 2,000 steps | 20,000 | 200,000 (default) |
+    |---|---|---|---|---|
+    | Three who all meet | 100 | 6 / 0.3 / 0.1 | 53 / 0.3 / 0.1 | 79 / 0.2 / 0.1 |
+    | Three who all meet | 1,000 | 10 / 1.7 / 0.8 | 54 / 1.7 / 0.8 | 527 / 1.7 / 0.8 |
+    | Three who all meet | 100,000 | 453 / 166 / 80 | 448 / 164 / 73 | 970 / 167 / 81 |
+    | A ring of five | 100 | 6 / 1.1 / 0.3 | 56 / 1.1 / 0.3 | 540 / 1.1 / 0.3 |
+    | A ring of five | 1,000 | 13 / 4.8 / 2.2 | 60 / 4.7 / 2.2 | 570 / 4.9 / 2.2 |
+    | Four who all meet | 1,000 | 10 / 18 / 2.6 | 64 / 12 / 3.2 | 578 / 7.6 / 2.2 |
+    | Four who all meet | 100,000 | 1,002 / 622 / 287 | 1,008 / 590 / 304 | 1,008 / 522 / 268 |
+
+    The ring needs three gap slots and the four who all meet five, both
+    found by the exact bound. Before, the search reported a stopped
+    budget at 2,000 and 20,000 steps on all of these, and now on none.
+    What is left at 100,000 slots is the work of the other phases, which
+    look at every position once or a few times, and not this search.
+
+    Considered and not taken: cutting the search where a session with no
+    pin has its events anywhere but in its first slots (every placement
+    there has one as good that starts at the first slot and leaves no
+    slot empty). It would end the search on wide sessions without a
+    bound, but it drops branches the search takes today in its order, so
+    it would change which of several placements with as many gap slots is
+    returned, where the bound changes nothing. A bound for events that can
+    go to more than one session was not attempted: where a group can be
+    split over sessions it usually can be without a gap, and the search
+    then finds a placement without one and stops there already.
 
 ## Testing
 
@@ -1942,6 +2036,21 @@ events on one session of three slots, five of them of one participant,
 at 100 steps, where every search ends by 75 steps and a needless
 exchange search keeps the flag true up to 160. It fails with the count
 not passed.
+
+The lower bound of decision 72 has a unit test of its own
+(`tests/Unit/Repack/GapLowerBoundTest.php`): each of its three bounds on a
+group a reader can check (three who all meet, a ring of five, four who all
+meet, with one and two events to a slot), the bounds that need no search
+when the exact one is given a limit of one check, a group that is split or
+has something else in its session, and 300 random requests of one or two
+sessions on which the bound must never be more than the exhaustive search
+(`RepackBruteForce::fewestGapSlots()`) finds, and must be reached on some.
+The search itself is tested on a schedule at the bound (it spends no step)
+and on one above it (it stops at the bound in under 100 steps); both tests
+fail with the bound taken out. A feature test repacks three who all meet
+and a ring of five on sessions of 100 and 1,000 slots at three budgets,
+where the budget flag must be false; before the bound it was true at 2,000
+and 20,000 steps.
 
 One thing has no test: that the search for shared events follows the
 budget when the unplaced events are given their reasons, as it does in

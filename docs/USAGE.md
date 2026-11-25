@@ -6663,7 +6663,12 @@ one the weights chose, or as many with fewer gap slots. A schedule that
 still has a gap is then searched for another placement of as many
 events with fewer gap slots; on a small request that search tries every
 placement, so a gap it reports is one no placement of as many events
-avoids, and on a large one it stops at a limit of its own.
+avoids, and on a large one it stops at a limit of its own. Where every
+event is placed it also stops as soon as it holds a schedule with as
+few gap slots as the request makes unavoidable: three participants who
+all meet in the one session there is, for example, cannot do without
+one of them waiting a slot, and a schedule with that one gap slot is
+returned at once, however wide the session.
 
 Both of those schedules come from the events taken set by set, and no
 one order of the events is the best for every request. So where the

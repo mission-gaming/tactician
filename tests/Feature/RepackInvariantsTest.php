@@ -2307,4 +2307,44 @@ describe('Repacking without an avoidable gap', function (): void {
         expect($outcome->isClean())->toBeTrue()
             ->and($outcome->getAssignments())->toHaveCount(15);
     })->with([5, 6, 10, 20, 21, 22, 30]);
+
+    it('stops looking for fewer gap slots where no placement has fewer, whatever the budget', function (int $slots, int $stepBudget): void {
+        // Three participants who all meet, and a ring of five, one event to
+        // a slot on one wide session: one of the three waits a slot
+        // whatever the placement, and the ring needs three gap slots. The
+        // search for fewer gap slots used to look through every slot for
+        // them until a budget below the default stopped it (and said so),
+        // or its own limit did, which took most of a second at 1,000 slots
+        $participants = [];
+        for ($i = 1; $i <= 5; ++$i) {
+            $participants[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $requests = [
+            1 => [[1, 2], [2, 3], [1, 3]],
+            3 => [[1, 2], [2, 3], [3, 4], [4, 5], [1, 5]],
+        ];
+        foreach ($requests as $fewest => $pairs) {
+            $movable = [];
+            foreach ($pairs as $index => [$a, $b]) {
+                $movable[] = new MovableEvent("e{$index}", $participants[$a], $participants[$b]);
+            }
+
+            $outcome = new ScheduleRepacker()->repack(new RepackRequest(
+                $movable,
+                [],
+                SessionGrid::shapeOnly(1, $slots),
+                new RepackOptions(stepBudget: $stepBudget)
+            ));
+
+            expect($outcome->getAssignments())->toHaveCount(count($pairs))
+                ->and($outcome->getGapSlotCount())->toBe($fewest)
+                ->and($outcome->isBudgetExhausted())->toBeFalse();
+            assertProperness($outcome, $movable, []);
+        }
+    })->with([
+        'a session of 100 slots, 2,000 steps' => [100, 2_000],
+        'a session of 1,000 slots, 2,000 steps' => [1_000, 2_000],
+        'a session of 1,000 slots, 20,000 steps' => [1_000, 20_000],
+        'a session of 1,000 slots, the default budget' => [1_000, 200_000],
+    ]);
 });
