@@ -712,7 +712,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * (`$contended`), and puts the one still in the stage when it was
      * paired there (wentOnFrom()). That one is in `revived`, by its slot
      * here. The slots the stage was entered with, after that, are
-     * `entered`.
+     * `entered`. An entrant who had withdrawn and that a round drawn by
+     * hand left alone beside a tie holds no place, and is in `out` and in
+     * `void` as the two of a void tie are.
      *
      * @param array<Participant|null> $slots
      * @param array<int, list<Participant>> $contended The two entrants of a tie of an earlier stage
@@ -865,6 +867,14 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             if ($isVoid) {
                 $nextContended[$place] = $unit['losers'];
             }
+        }
+        // An entrant who had withdrawn and that a round drawn by hand left
+        // alone beside a tie holds no place (docs/adr/0025): it drops
+        // nobody, and goes out as the two of a void tie do, with those the
+        // next stage that puts an entrant out puts out
+        foreach ($read['dropped'] as $wentOut) {
+            $out[] = $wentOut;
+            $void[] = $wentOut;
         }
 
         // The stage read last is the one that decided a finished bracket:
