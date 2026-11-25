@@ -59,11 +59,12 @@ final readonly class CompositionValidator
      *   bracket: byes fill the field up to the next power of two, so half
      *   of that power goes on (the winners of the ties and the entrants
      *   with a bye) and one loser of each tie goes out. 5 entrants give 4
-     *   winners and 1 loser, 16 give 8 and 8. A transition built with `afterWholeBracket: true` says that
-     *   the stage plays a whole bracket, whose last round is the final: the
-     *   selection is 1 participant, winner or loser, whatever the size of
-     *   the field, and also where that round holds a third-place tie, which
-     *   the selector does not read. A stage needs 2 entrants, so such a
+     *   winners and 1 loser, 16 give 8 and 8. A transition built with
+     *   `afterWholeBracket: true` says that the stage plays a whole
+     *   bracket, whose last round is the final: the selection is 1
+     *   participant, winner or loser, whatever the size of the field, and
+     *   also where that round holds a third-place tie, which the selector
+     *   does not read. A stage needs 2 entrants, so such a
      *   transition is always reported: one match-outcome selection cannot
      *   fill the stage after a whole bracket;
      * - a yield that depends on the outcome passes unchecked, and so does a
