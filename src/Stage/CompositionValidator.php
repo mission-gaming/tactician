@@ -68,7 +68,11 @@ final readonly class CompositionValidator
      *   transition is always reported: one match-outcome selection cannot
      *   fill the stage after a whole bracket;
      * - a yield that depends on the outcome passes unchecked, and so does a
-     *   transition with no selector, apart from its declared entrant count.
+     *   transition with no selector, apart from its declared entrant count;
+     * - a transition whose stage before declares fewer than 2 entrants,
+     *   which is reported for that stage, is not counted: no yield is
+     *   computed from a count already reported, so the one mistake is
+     *   reported once.
      *
      * @param int $initialEntrants Entrants of the first stage
      * @param array<StageTransition> $transitions Each subsequent stage, in order
@@ -106,7 +110,9 @@ final readonly class CompositionValidator
                 );
             }
 
-            $yield = $transition->selector?->getYield()->countFrom($entrants, $pools, $transition->afterWholeBracket);
+            $yield = $entrants < 2
+                ? null
+                : $transition->selector?->getYield()->countFrom($entrants, $pools, $transition->afterWholeBracket);
             if ($yield !== null && $yield !== $transition->expectedEntrants) {
                 $violations[] = sprintf(
                     "Stage '%s' expects %d entrants but its selection yields %d from the previous stage's %d.",

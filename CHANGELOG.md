@@ -31,6 +31,20 @@ heading **Output change (fix)**.
   match-outcome selector after one round. What to check: such a chain may
   now report a violation it passed before, or pass one it reported. No
   golden fixture changed.
+- **`SelectionYield::countFrom()` refuses a negative count of entrants**
+  (#229). It refused a pool count below 1 but took any entrant count, and
+  returned a negative yield for a negative one:
+  `SelectionYield::winnersOfLastRound()->countFrom(-3)` was -3. It now
+  throws `InvalidInputException` ("A stage has 0 entrants or more, -3
+  given") for a count below 0, whatever the kind. `CompositionValidator`
+  reported such a count for the opening stage and then reported a second
+  violation built on it ("its selection yields 0 from the previous
+  stage's -3"); it now computes no yield from a stage before it reported
+  for fewer than 2 entrants, so the mistake is reported once. Who is
+  affected: code that calls `countFrom()` with a negative count, and a
+  chain whose opening stage or a transition declares fewer than 2
+  entrants. What to check: such a chain reports one violation fewer. No
+  golden fixture changed.
 
 ## [0.3.0] - 2026-11-03
 
