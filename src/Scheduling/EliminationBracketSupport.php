@@ -856,12 +856,12 @@ trait EliminationBracketSupport
      *
      * The tie a recorded round marks as the third-place tie is the extra
      * tie where one of its two is in the round, whoever they are (so marked
-     * between two who are not, it is read by nothing), and its two are in a tie of the round: an
-     * entrant of the slots in it does not go on alone. Where the round has
-     * an extra tie (the last round with a third-place tie), a tie it marks
-     * as the final is read as a tie of the round also where neither of its
-     * entrants stood in a slot, as long as both are in the round (in its
-     * slots or in the extra tie).
+     * between two who are not, it is read by nothing), and its two are in a
+     * tie of the round: an entrant of the slots in it does not go on alone.
+     * Where the round has an extra tie (the last round with a third-place
+     * tie), a tie it marks as the final is read as a tie of the round also
+     * where neither of its entrants stood in a slot, as long as both are in
+     * the round (in its slots or in the extra tie).
      *
      * @param list<Participant|null> $slots The slots the round is entered with, in bracket order
      * @param RoundPairing|null $recorded The recorded round, or null where the round is not recorded
@@ -1017,12 +1017,13 @@ trait EliminationBracketSupport
             }
 
             // An entrant of the tie who is not in the round and went out of
-            // the bracket before it: the round does not bring it back. The tie is given to the entrant who is in
-            // the round, whatever its results say, as a tie is given away
-            // that the other entrant has withdrawn from, and the one who is
-            // not in the round goes out nowhere here: it went out where it
-            // did. Only one of the two can be such an entrant, as a tie of
-            // the round has the other in it (docs/adr/0025).
+            // the bracket before it: the round does not bring it back. The
+            // tie is given to the entrant who is in the round, whatever its
+            // results say, as a tie is given away that the other entrant has
+            // withdrawn from, and the one who is not in the round goes out
+            // nowhere here: it went out where it did. Only one of the two can
+            // be such an entrant, as a tie of the round has the other in it
+            // (docs/adr/0025).
             // In single elimination it can take the place of the entrant
             // the other was to meet, where that entrant had withdrawn when
             // the round was paired and the round puts it in no tie and lists
