@@ -481,7 +481,7 @@ none.
 - **A Swiss round and a role streak limit cost less to check** (#253,
   #254). The Swiss round search built a string key from two ids every
   time it asked whether a pair had played; it now remembers the answer
-  for the round it is pairing. `ConsecutiveRoleConstraint` sorted each
+  for each list of participants it pairs. `ConsecutiveRoleConstraint` sorted each
   participant's whole history by round on every question; it now sorts
   only a history that is out of round order, and asks the role extractor
   about the same events in the same order as before. Measured with
