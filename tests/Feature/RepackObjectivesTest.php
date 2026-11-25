@@ -1214,6 +1214,36 @@ describe('Objectives ranked ahead of gap slots', function (): void {
         }
     })->with(range(1250, 1265))->with([1, 7, 60, 900, 200_000]);
 
+    it('keep a schedule the search for fewer gap slots would give a lone participant-session', function (): void {
+        // Two sessions of four slots, one event to a slot. a plays b at the
+        // last slot of the first session and c plays b at its first, both
+        // pinned. The one movable event, a against c, closes no gap where
+        // it shares a session with them: at slot 1, c's events run back to
+        // back and a waits a slot before its pin. The search for fewer gap
+        // slots moves it to the empty second session, where a and c each
+        // turn up for one event. Ranked ahead of gap slots, the lone
+        // participant-sessions keep it in the first
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $c = new Participant('c', 'C');
+        $grid = SessionGrid::shapeOnly(2, 4, capacityPerSlot: 1);
+        $pinned = [new PinnedEvent('x1', $b, $a, 0, 3), new PinnedEvent('x2', $c, $b, 0, 0)];
+        $movable = [new MovableEvent('m1', $c, $a)];
+
+        $plain = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+        $ahead = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::FewestGapSlots,
+        ])));
+
+        expect($plain->getAssignmentFor('m1')?->getSession())->toBe(1)
+            ->and($plain->getLoneParticipantSessionCount())->toBe(2)
+            ->and($plain->getGapSlotCount())->toBe(0)
+            ->and($ahead->getAssignmentFor('m1')?->getSession())->toBe(0)
+            ->and($ahead->getLoneParticipantSessionCount())->toBe(0)
+            ->and($ahead->getGapSlotCount())->toBe(1);
+    });
+
     it('change nothing where gap slots are named first', function (int $seed): void {
         [$movable, $pinned, $grid] = $seed % 2 === 0 ? seasonInProgress($seed) : smallRequestWithCurrentPositions($seed);
 
