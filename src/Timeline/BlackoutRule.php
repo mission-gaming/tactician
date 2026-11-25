@@ -96,8 +96,9 @@ final readonly class BlackoutRule implements TimelineRule
      * @throws InvalidConfigurationException When the format version is not one this release reads
      *                                       (reason `UnsupportedFormatVersion`), a key is unknown
      *                                       (`UnknownOptionKey`), the
-     *                                       windows are malformed, or a bound does not state an
-     *                                       instant by itself
+     *                                       windows are malformed, a window's timezone is an
+     *                                       abbreviation (`TimezoneAbbreviation`), or a bound
+     *                                       does not state an instant by itself
      */
     public static function fromArray(array $config): self
     {

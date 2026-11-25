@@ -33,6 +33,13 @@ final readonly class RepackOutcome
      */
     public const string FINGERPRINT_SCHEME = 'v1';
 
+    /**
+     * The version of the form toArray() writes. Version 2 added
+     * `lone_participant_sessions` to the metrics; version 1 is what 0.3.x
+     * wrote.
+     */
+    private const int FORMAT_VERSION = 2;
+
     /*
      * The keys of each record in the canonical document of scheme v1. They
      * are written out, and not read from toArray(), so that a key added to
@@ -61,12 +68,12 @@ final readonly class RepackOutcome
      * constructor neither sorts nor checks them, nor that the lists agree
      * with each other.
      *
-     * The last three arguments are figures the repacker works out from
+     * The last four arguments are figures the repacker works out from
      * the request, which an outcome does not hold (it has neither the
      * participants of an event nor the pinned events). An outcome built
      * by hand states them, as it states its lists, and one that states
      * none has none: no lone-event session, no idle session, no moved
-     * event.
+     * event, no lone participant-session.
      *
      * @param array<SlotAssignment> $assignments Sorted by event id; when two carry
      *                                           the same id, getAssignmentFor()
@@ -83,10 +90,13 @@ final readonly class RepackOutcome
      * @param list<string> $movedEventIds The ids of the events placed somewhere
      *                                    other than their current position, sorted
      *                                    as the assignments are
+     * @param int $loneParticipantSessions How many times a participant has exactly
+     *                                     one event in a session, that event a
+     *                                     movable one, counted over the participants
      *
      * @throws InvalidInputException When a list holds anything other than the
      *                               objects or values it is declared to hold, or
-     *                               the count of idle sessions is negative
+     *                               a count of sessions is negative
      */
     public function __construct(
         private array $assignments,
@@ -95,7 +105,8 @@ final readonly class RepackOutcome
         private bool $budgetExhausted = false,
         private array $loneEventSessions = [],
         private int $idleSessions = 0,
-        private array $movedEventIds = []
+        private array $movedEventIds = [],
+        private int $loneParticipantSessions = 0
     ) {
         self::requireInstances($assignments, SlotAssignment::class, 'assignment');
         self::requireInstances($unplaced, UnplacedEvent::class, 'unplaced event');
@@ -115,6 +126,13 @@ final readonly class RepackOutcome
             throw new InvalidInputException(sprintf(
                 'The idle sessions of a repack outcome are a count of 0 or more, %d given',
                 $idleSessions
+            ));
+        }
+
+        if ($loneParticipantSessions < 0) {
+            throw new InvalidInputException(sprintf(
+                'The lone participant-sessions of a repack outcome are a count of 0 or more, %d given',
+                $loneParticipantSessions
             ));
         }
 
@@ -329,6 +347,27 @@ final readonly class RepackOutcome
     }
 
     /**
+     * How many lone participant-sessions the schedule has: a participant
+     * and a session in which the participant has exactly one event, pinned
+     * events counted, where that one event is a movable one. A
+     * participant that turns up for a single event in a session.
+     *
+     * It is a figure of the participants, where getLoneEventSessionCount()
+     * is one of the grid: a session of two events between four
+     * participants is four lone participant-sessions and no lone-event
+     * session, and a session of one event is two lone participant-sessions
+     * and one lone-event session. A participant whose one event in a
+     * session is pinned is not counted: it is history the repack did not
+     * arrange, and so is a participant with a pinned event and a movable
+     * one in a session, which has two events there. Each participant of
+     * an event is counted, however many an event has.
+     */
+    public function getLoneParticipantSessionCount(): int
+    {
+        return $this->loneParticipantSessions;
+    }
+
+    /**
      * How many idle sessions the schedule has, summed over the
      * participants. A session is idle for a participant when the
      * participant has no event in it and has one both in an earlier
@@ -376,8 +415,9 @@ final readonly class RepackOutcome
 
     /**
      * Whether every event was placed with no compromises at all. The
-     * lone-event sessions, the idle sessions and the moved events are
-     * figures, not compromises, and do not make an outcome unclean.
+     * lone-event sessions, the lone participant-sessions, the idle
+     * sessions and the moved events are figures, not compromises, and do
+     * not make an outcome unclean.
      */
     public function isClean(): bool
     {
@@ -455,7 +495,8 @@ final readonly class RepackOutcome
      * id as a string, a session, a slot and a count as integers, a
      * participant as its id or null, a kind and a reason as their backing
      * strings, the lists as lists, and a kickoff as the string
-     * `2026-08-12T19:00:00Z` or null. The keys are named here because
+     * `2026-08-12T19:00:00Z`, or `2026-08-12T19:00:00.250000Z` when it has
+     * a fraction of a second, or null. The keys are named here because
      * they are the scheme: a key that toArray() gains in a later version
      * is not part of scheme v1 and does not change a v1 fingerprint. A
      * violation of any other class is the whole of what its toArray()
@@ -490,9 +531,12 @@ final readonly class RepackOutcome
      * - Every field the records have today is covered, so a change to any
      *   field of any assignment, unplaced event or violation changes the
      *   fingerprint. A participant is covered by its id and by nothing
-     *   else of it. The kickoff is covered to the second, and is null for
-     *   a shape-only grid, so the same positions on a shape-only grid and
-     *   on an instant-based one have different fingerprints.
+     *   else of it. The kickoff is covered to the microsecond (to the
+     *   second for a kickoff on a whole second, which is written as it
+     *   always was), and is null for a shape-only grid, so the same
+     *   positions on a shape-only grid and on an instant-based one have
+     *   different fingerprints, and so do two grids whose starts are a
+     *   fraction of a second apart.
      * - isBudgetExhausted() is not covered. Two outcomes holding the same
      *   plan are the same plan, however each search ended.
      * - Nothing in it depends on the PHP version, the platform, the
@@ -550,7 +594,9 @@ final readonly class RepackOutcome
      * always produces the same array, whatever order its lists were in.
      * isBudgetExhausted() is not part of it.
      *
-     * The first key is `format_version`, the version of this form (1). It
+     * The first key is `format_version`, the version of this form (2;
+     * version 1, which 0.3.x wrote, has no `lone_participant_sessions`
+     * among the metrics). It
      * is written once, here: the records inside are written without the
      * one their own toArray() carries. It is another thing than the `v1`
      * of fingerprint(), which is the version of the fingerprint scheme;
@@ -559,13 +605,14 @@ final readonly class RepackOutcome
      *
      * The last key is `metrics`, the figures an outcome is ranked by:
      * `unplaced` and `gap_slots` (two counts, which the lists above also
-     * give), `lone_event_sessions` (the session indexes), `idle_sessions`
-     * (a count) and `moved` (the event ids). The last three cannot be
-     * worked out from the lists, which is why they are written. The
+     * give), `lone_event_sessions` (the session indexes),
+     * `lone_participant_sessions` (a count), `idle_sessions` (a count) and
+     * `moved` (the event ids). The last four cannot be worked out from the
+     * lists, which is why they are written. The
      * fingerprint does not cover them: they follow from the request and
      * the assignments, which it does cover.
      *
-     * @return array{format_version: int, assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>, metrics: array{unplaced: int, gap_slots: int, lone_event_sessions: list<int>, idle_sessions: int, moved: list<string>}}
+     * @return array{format_version: int, assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>, metrics: array{unplaced: int, gap_slots: int, lone_event_sessions: list<int>, lone_participant_sessions: int, idle_sessions: int, moved: list<string>}}
      */
     public function toArray(): array
     {
@@ -591,7 +638,7 @@ final readonly class RepackOutcome
         }
 
         return [
-            PlainData::VERSION_KEY => PlainData::VERSION,
+            PlainData::VERSION_KEY => self::FORMAT_VERSION,
             'assignments' => $assignments,
             'unplaced' => $unplaced,
             'violations' => $violations,
@@ -599,6 +646,7 @@ final readonly class RepackOutcome
                 'unplaced' => $this->getUnplacedCount(),
                 'gap_slots' => $this->getGapSlotCount(),
                 'lone_event_sessions' => array_values($this->loneEventSessions),
+                'lone_participant_sessions' => $this->loneParticipantSessions,
                 'idle_sessions' => $this->idleSessions,
                 'moved' => array_values($this->movedEventIds),
             ],

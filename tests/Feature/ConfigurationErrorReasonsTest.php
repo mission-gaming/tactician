@@ -280,6 +280,7 @@ describe('the reason of a configuration error', function (): void {
             'PositionOutOfRange' => 'position_out_of_range',
             'UnparseableTime' => 'unparseable_time',
             'TimezoneMismatch' => 'timezone_mismatch',
+            'TimezoneAbbreviation' => 'timezone_abbreviation',
             'NonAdvancingTime' => 'non_advancing_time',
             'OverlappingTime' => 'overlapping_time',
             'TimeRuleViolation' => 'time_rule_violation',
@@ -464,6 +465,14 @@ describe('the reason of a configuration error', function (): void {
                 'round_interval' => 'P7D',
             ]),
             InvalidConfigurationReason::TimezoneMismatch,
+        ],
+        'a timezone given as an abbreviation' => [
+            fn() => TimelineDefinition::fromArray([
+                'start' => '2026-08-01 19:00:00',
+                'timezone' => 'BST',
+                'round_interval' => 'P7D',
+            ]),
+            InvalidConfigurationReason::TimezoneAbbreviation,
         ],
         'a grid with an empty session list' => [
             fn() => SessionGrid::fromArray(['sessions' => [], 'timezone' => 'UTC', 'slot_interval' => 'PT25M']),
