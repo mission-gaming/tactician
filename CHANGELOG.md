@@ -13,6 +13,32 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **A pre-drawn Swiss schedule of a field of odd size gives nobody a second
+  bye** (#150). At the largest round counts of a field of odd size the
+  engine gives a participant a second bye where a round has no pairing
+  otherwise, and `SwissScheduler` returned such a draw, although a schedule
+  in which a different participant sits out each round always exists (there
+  are fewer rounds than participants). It happened for about one seed in
+  five at the most rounds: of seeds 1 to 200, 17 at 7 participants and 6
+  rounds, 42 at 9 and 8, 39 at 11 and 10, 40 at 13 and 12, 46 at 15 and 14,
+  47 at 21 and 20, 49 at 23 and 22, 55 at 25 and 24; and without a source of
+  draws at 33 participants and 32 rounds. The scheduler now takes such a
+  draw as failed and draws again, as it does for a draw that cannot be
+  completed, and without constraints builds the rounds by rotation when
+  twenty draws are not enough (or, without a source of draws, at once). No
+  seed of those measured needs more than five draws. A schedule whose draws
+  gave nobody a second bye is unchanged; one that did is now another
+  schedule for the same seed, and without a source of draws the
+  33-participant, 32-round schedule is now the rotation, whose first round
+  is still the list as given. Under constraints the rotation is not tried,
+  since the constraints may reject it: where every complete draw gives a
+  participant a second bye, the first of them is still returned, and where
+  none is complete the failure of the last draw is still reported. An
+  application that stored a pre-drawn schedule keeps it; one that draws
+  again from a seed at those round counts may get another schedule.
+
 ### Changed
 
 - The release checklist (`docs/RELEASING.md`) says what the notes of a GitHub
