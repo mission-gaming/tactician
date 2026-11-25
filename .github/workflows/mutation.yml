@@ -28,9 +28,31 @@ permissions:
 
 jobs:
   # One job per shard. A shard is a list of source files, and every PHP file
-  # of the two directories is in exactly one shard:
-  # tests/Feature/CiConfigurationTest.php fails when a file is in none or in
-  # two, so a new file cannot fall outside mutation testing unseen.
+  # of the two directories is in exactly one shard, or split over several by
+  # the sets of mutators each makes the changes of:
+  # tests/Feature/CiConfigurationTest.php fails when a change to a file would
+  # be made by no shard or by two, so a new file cannot fall outside mutation
+  # testing unseen.
+  #
+  # A shard with no `mutators` makes every change of Pest's default set. One
+  # with `mutators: --mutator=<sets>` makes the changes of those sets only,
+  # and one with `mutators: --except=<sets>` those of the default set less
+  # those sets (the default set holds a part of the equality and visibility
+  # sets only, so the rest of the default set is named with `--except`, not
+  # by name). The sets are spelt as Pest's option reads them: `SetNumber`
+  # for Pest\Mutate\Mutators\Sets\NumberSet.
+  #
+  # The round robin scheduler is split that way. It is one file, and with
+  # its options it gives some 1,470 changes; as one shard it ran past the
+  # step's 170 minutes every week from the week the engine's tests joined
+  # the run, which cover most of its lines and doubled the time of every
+  # test process (#222). Before that the same shard took 99 minutes for
+  # 1,387 changes, 4.3 seconds a change; the test processes now take about
+  # twice as long, some 8 to 9 seconds a change. Its five shards hold 250 to
+  # 340 changes each (counted with Pest's generator, before the covered-only
+  # filter), some 50 minutes at that rate and under 80 at half as much again,
+  # with about 18 minutes before the first change for the suite's own run
+  # and the generation of the changes.
   #
   # The size of a shard follows from the one measurement there is: 907
   # changes took 35 minutes on twelve cores, which is about 0.12 minutes a
@@ -38,10 +60,19 @@ jobs:
   # src/Scheduling hold about 650 to 700 changes each (some 80 minutes at
   # that rate), the first two of src/Repack/Internal about 440 each (the
   # second of them before the two files of the outcome's figures joined it,
-  # which have not been measured), and the
-  # recolouring shard, five files, not yet measured. The limit is
+  # which have not been measured). The limit is
   # more than twice the estimate, because the rate is not even: a change that
   # makes a search run for ever costs its whole time limit.
+  #
+  # The four files of the recolouring were one shard, and it took 118 of its
+  # 170 minutes (#243): 1,382 changes in 105 minutes, about 4.6 seconds a
+  # change, after 13 minutes for the suite's own run and the generation of
+  # the changes. They are now four shards. The structural order (some 460
+  # changes, counted with Pest's generator) and the gap search (some 300)
+  # are a shard each; the leftover recolourer (some 570) and the round
+  # colouring (some 120) are split by mutator set into two shards of some
+  # 330 and 360 changes. At that rate the largest is some 35 minutes of
+  # changes, under 70 for the job at half as much again.
   #
   # A change can also make the code allocate without end: a loop that counts
   # the wrong way and adds to an array on every pass. The runner stops a
@@ -71,8 +102,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - shard: round robin
+          # The five shards of the round robin scheduler: see the comment
+          # above on mutator sets
+          - shard: round robin, numbers and returns
             path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php,src/Scheduling/ConstraintPurity.php
+            mutators: --mutator=SetNumber,SetReturn,SetMath,SetAssignment
+          - shard: round robin, removals and arrays
+            path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php,src/Scheduling/ConstraintPurity.php
+            mutators: --mutator=SetRemoval,SetArray
+          - shard: round robin, control structures and strings
+            path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php,src/Scheduling/ConstraintPurity.php
+            mutators: --mutator=SetControlStructures,SetString,SetCasting
+          - shard: round robin, logic
+            path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php,src/Scheduling/ConstraintPurity.php
+            mutators: --mutator=SetLogical
+          - shard: round robin, equality and arithmetic
+            path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php,src/Scheduling/ConstraintPurity.php
+            mutators: --except=SetNumber,SetReturn,SetMath,SetAssignment,SetRemoval,SetArray,SetControlStructures,SetString,SetCasting,SetLogical
           - shard: round robin engine
             path: src/Scheduling/RoundRobinEngine.php
           - shard: round robin role search
@@ -89,8 +135,17 @@ jobs:
             path: src/Repack/Internal/LoadPlanner.php,src/Repack/Internal/LoadPlan.php,src/Repack/Internal/StepBudget.php,src/Repack/Internal/BudgetExhausted.php,src/Repack/Internal/CanonicalEncoding.php
           - shard: repack session packing
             path: src/Repack/Internal/SessionPacker.php,src/Repack/Internal/ContiguityTargets.php,src/Repack/Internal/IntervalPlacement.php,src/Repack/Internal/RepackAuditor.php,src/Repack/Internal/PlacementMetrics.php,src/Repack/Internal/ObjectivePolish.php,src/Repack/Internal/Ranking.php
-          - shard: repack recolouring
-            path: src/Repack/Internal/LeftoverRecolourer.php,src/Repack/Internal/RoundColouring.php,src/Repack/Internal/StructuralOrder.php,src/Repack/Internal/GapSearch.php,src/Repack/Internal/GapLowerBound.php
+          # The two shards of the recolouring: see the comment above
+          - shard: repack recolouring, numbers, control structures and arithmetic
+            path: src/Repack/Internal/LeftoverRecolourer.php,src/Repack/Internal/RoundColouring.php
+            mutators: --mutator=SetNumber,SetControlStructures,SetArithmetic
+          - shard: repack recolouring, removals, logic and equality
+            path: src/Repack/Internal/LeftoverRecolourer.php,src/Repack/Internal/RoundColouring.php
+            mutators: --except=SetNumber,SetControlStructures,SetArithmetic
+          - shard: repack structural order
+            path: src/Repack/Internal/StructuralOrder.php
+          - shard: repack gap search
+            path: src/Repack/Internal/GapSearch.php,src/Repack/Internal/GapLowerBound.php
 
     name: Mutation testing, ${{ matrix.shard }}
     timeout-minutes: 180
@@ -117,7 +172,9 @@ jobs:
       run: sudo locale-gen de_DE.UTF-8
 
     # The path given here replaces the two of the script: the option takes
-    # one comma-separated list, and the last one given wins. `pipefail` (set
+    # one comma-separated list, and the last one given wins. The mutators of
+    # a shard that has them follow it; a shard without them gives none, and
+    # Pest makes every change of its default set. `pipefail` (set
     # by naming the shell) keeps the exit status of the run when its output
     # goes through `tee`. The step has a limit of its own, below the job's,
     # so that a run that is stopped still gets its summary.
@@ -126,7 +183,7 @@ jobs:
       timeout-minutes: 170
       run: |
         mkdir -p build
-        composer mutation -- --path=${{ matrix.path }} 2>&1 | tee build/mutation.log
+        composer mutation -- --path=${{ matrix.path }} ${{ matrix.mutators }} 2>&1 | tee build/mutation.log
 
     # Also after a run that failed or was stopped, with whatever it printed.
     # The script reads build/mutation-memory.log as well, which the run

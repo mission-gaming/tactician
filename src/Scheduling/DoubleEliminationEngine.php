@@ -170,9 +170,14 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * (StageState::withoutParticipant()) keeps its slot. A tie it is in
      * and has no complete result for is not played: the other entrant
      * advances and is listed among the byes of the stage, and the
-     * withdrawn entrant takes the loss, so it drops to the losers bracket
-     * from the winners bracket and gives the next tie away there. Nothing
-     * is drawn again. A tie both of whose entrants have withdrawn before
+     * withdrawn entrant takes the loss. Only a winners tie its results
+     * decided drops its loser to the losers bracket (docs/adr/0026): the
+     * withdrawn loser of a winners tie given away drops nobody, the losers
+     * slot it would have filled is empty, so the entrant who would have
+     * met it there goes on alone and is listed among the byes, and it goes
+     * out with those the next losers round puts out. An entrant who
+     * dropped by its results and withdraws later gives its losers tie
+     * away. Nothing is drawn again. A tie both of whose entrants have withdrawn before
      * either went through it is void (see Withdrawal): it sends nobody on
      * and drops nobody, so the entrant who would have met its winner, or
      * the dropper from it, goes on alone and is listed among the byes,
@@ -415,7 +420,10 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * pairs next is isNext(), and the rounds after it are the shape of the
      * bracket from there, as for single elimination (see
      * SingleEliminationEngine::getBracket()). A dropper from a bye is no
-     * entrant: the losers slot it would fill holds the placeholder Bye.
+     * entrant: the losers slot it would fill holds the placeholder Bye. Nor
+     * is the loser of a winners tie its results did not decide (one given
+     * away, or void): that slot holds the placeholder Void, at every moment,
+     * whatever is recorded later (docs/adr/0026).
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
@@ -465,8 +473,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     /**
      * One walk through the fixed stage sequence (see resolveState()).
      *
-     * A winners tie both of whose entrants have left drops nobody to the
-     * losers bracket, also where one of the two went on from it after all
+     * Only a winners tie its results decided drops its loser to the losers
+     * bracket (docs/adr/0026). A tie given away drops nobody; nor does a
+     * winners tie both of whose entrants have left, also where one of the two went on from it after all
      * (it was still in the stage when its next winners tie was paired):
      * the other had withdrawn by then, and an entrant who stands alone in
      * a losers round after withdrawing goes out there as the two of a void
@@ -505,7 +514,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $exits = 0;
         /** @var list<Participant> $voided */
         $voided = [];
-        $noteExits = static function (array $out) use (&$wentOutAt, &$exits, &$voided): void {
+        $noteExits = static function (array $out) use ($reading, &$wentOutAt, &$exits, &$voided): void {
             ++$exits;
             foreach ([...$voided, ...$out] as $entrant) {
                 if ($entrant instanceof Participant) {
@@ -513,12 +522,13 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 }
             }
             $voided = [];
+            $reading->wentOut = array_fill_keys(array_keys($wentOutAt), true);
         };
         // An entrant read as going out of a tie both entrants had left, who
         // was still in the stage when its next tie was paired, went on
-        $revive = static function (array $revived) use (&$wentOutAt, &$voided): void {
+        $revive = static function (array $revived) use ($reading, &$wentOutAt, &$voided): void {
             foreach ($revived as $entrant) {
-                unset($wentOutAt[$entrant->getId()]);
+                unset($wentOutAt[$entrant->getId()], $reading->wentOut[$entrant->getId()]);
                 $voided = array_values(array_filter(
                     $voided,
                     static fn(Participant $other): bool => $other->getId() !== $entrant->getId()
@@ -712,7 +722,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * (`$contended`), and puts the one still in the stage when it was
      * paired there (wentOnFrom()). That one is in `revived`, by its slot
      * here. The slots the stage was entered with, after that, are
-     * `entered`.
+     * `entered`. An entrant who had withdrawn and that a round drawn by
+     * hand left alone beside a tie holds no place, and is in `out` and in
+     * `void` as the two of a void tie are.
      *
      * @param array<Participant|null> $slots
      * @param array<int, list<Participant>> $contended The two entrants of a tie of an earlier stage
@@ -798,7 +810,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $claimed ? $reading->number : $reading->number + 1,
             $this->options->legsPerTie,
             null,
-            $pairedAt
+            $pairedAt,
+            onlyTheStage: true
         );
         foreach ($read['byes'] as $advanced) {
             $reading->byes[$advanced->getId()] = ($reading->byes[$advanced->getId()] ?? 0) + 1;
@@ -854,17 +867,27 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $nextContended = [];
         foreach ($read['units'] as $place => $unit) {
             $isVoid = !$unit['winner'] instanceof Participant && count($unit['losers']) === 2;
+            // Only a tie its results decided drops its loser (docs/adr/0026)
+            $beaten = $read['beaten'][$place] ?? null;
             $winners[] = $unit['winner'];
-            $losers[] = $isVoid ? null : ($unit['losers'][0] ?? null);
+            $losers[] = $beaten;
             foreach ($unit['losers'] as $loser) {
                 $out[] = $loser;
-                if ($isVoid) {
+                if ($loser !== $beaten) {
                     $void[] = $loser;
                 }
             }
             if ($isVoid) {
                 $nextContended[$place] = $unit['losers'];
             }
+        }
+        // An entrant who had withdrawn and that a round drawn by hand left
+        // alone beside a tie holds no place (docs/adr/0025): it drops
+        // nobody, and goes out as the two of a void tie do, with those the
+        // next stage that puts an entrant out puts out
+        foreach ($read['dropped'] as $wentOut) {
+            $out[] = $wentOut;
+            $void[] = $wentOut;
         }
 
         // The stage read last is the one that decided a finished bracket:
