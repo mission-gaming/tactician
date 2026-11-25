@@ -97,8 +97,9 @@ paired from them by the rules of 0.3.0, which can give another round than
 stamps of every other bracket valid: a version raised for the whole
 configuration would refuse all of them, to protect stages that 0.2.x had
 already paired against its own bracket. A round drawn by hand after a
-withdrawal, across the final and the third-place tie, or with an entrant
-who had gone out, is read otherwise
+withdrawal, across the final and the third-place tie, with an entrant
+who had gone out, or in double elimination with an entrant of another
+stage, is read otherwise
 from 0.4.0 and keeps the version for the same reason
 ([0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md)).
 

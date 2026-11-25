@@ -22,8 +22,9 @@ round leaves alone is narrowed by
 [0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md): one who had
 withdrawn when the round was paired holds no place in the next round. What
 point 2 reads of a round drawn by hand is narrowed by the same record: a tie
-with an entrant who has gone out of the bracket is given to the other
-entrant, and does not bring the first back.
+with an entrant who has gone out of the bracket, or in double elimination
+with one who holds a place in another stage, is given to the other entrant,
+and does not bring the first into the round.
 
 ## Context
 

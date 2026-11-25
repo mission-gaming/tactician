@@ -853,6 +853,11 @@ trait EliminationBracketSupport
      * takes the place of the entrant the other was to meet, where that
      * entrant had withdrawn when the round was paired and the round puts it
      * in no tie and lists it among no byes, and the tie is read as any tie.
+     * Where `$onlyTheStage` is set (double elimination), a tie between an
+     * entrant of the round and one who is not in it is given to the entrant
+     * of the round so whoever the other is: one who has gone out, or one who
+     * holds a place in another stage of the bracket at that moment, which
+     * the round brings into no stage it is not in.
      *
      * The tie a recorded round marks as the third-place tie is the extra
      * tie where one of its two is in the round, whoever they are (so marked
@@ -874,6 +879,10 @@ trait EliminationBracketSupport
      * @param bool $inPlaceOfTheWithdrawn Whether one who went out can take the place of an entrant
      *                                    of the round who had withdrawn (single elimination; the
      *                                    stages of double elimination take their entrants by place)
+     * @param bool $onlyTheStage Whether a tie with one who is not in the round is given to the
+     *                           entrant of the round whoever the other is, and not only where the
+     *                           other has gone out (double elimination: an entrant outside a stage
+     *                           has gone out of the bracket or holds a place in another stage)
      * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, beaten: list<Participant|null>, dropped: list<Participant>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, byes: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
      *                                                                                                                                                                                                                                                                              `beaten` holds, for each unit in the same order, the entrant
      *                                                                                                                                                                                                                                                                              its results beat (null for a unit no result decided: a tie
@@ -896,7 +905,8 @@ trait EliminationBracketSupport
         int $legsPerTie,
         ?array $extraTie = null,
         ?int $pairedAt = null,
-        bool $inPlaceOfTheWithdrawn = false
+        bool $inPlaceOfTheWithdrawn = false,
+        bool $onlyTheStage = false
     ): array {
         // Who had withdrawn when the round was paired: a pair of slots the
         // round holds no tie for is settled from that, and from nobody who
@@ -1030,9 +1040,15 @@ trait EliminationBracketSupport
             // it among no byes: it is then in the round in that entrant's
             // place, as the one who replaces a withdrawn entrant (a lucky
             // loser) is, and its tie is read as any other.
+            // In double elimination the one who is not in the stage need not
+            // have gone out: it can hold a place in another stage at that
+            // moment (in the winners bracket, waiting for its next tie, while
+            // the round is a losers round). The round does not bring it into
+            // the stage either, or it would be in both at once: the tie is
+            // given to the entrant of the stage all the same (issue #236).
             $returning = match (true) {
-                !isset($inRound[$first->getId()]) && isset($reading->wentOut[$first->getId()]) => $first,
-                !isset($inRound[$second->getId()]) && isset($reading->wentOut[$second->getId()]) => $second,
+                !isset($inRound[$first->getId()]) && ($onlyTheStage || isset($reading->wentOut[$first->getId()])) => $first,
+                !isset($inRound[$second->getId()]) && ($onlyTheStage || isset($reading->wentOut[$second->getId()])) => $second,
                 default => null,
             };
             $tieEntrants = [$first, $second];

@@ -5,7 +5,8 @@ Status: accepted. Narrows, in
 an entrant a recorded round leaves alone, says how the last round of a
 single elimination bracket with a third-place tie is read when it is drawn
 by hand, and says how a round drawn by hand that names an entrant who has
-gone out is read (amended for issue #230).
+gone out is read (amended for issue #230), or, in double elimination, an
+entrant who holds a place in another stage (amended for issue #236).
 
 ## Context
 
@@ -43,6 +44,15 @@ hand-drawn rounds were read in a way nobody who drew them meant.
   on, and was paired in the next round. A tie marked as the third-place tie
   was read as that tie whoever it held, so two quarterfinal losers could be
   placed third and fourth.
+- **An entrant came into a stage it was not in** (issue #236, found in the
+  review of #230). In double elimination the other entrant of such a tie
+  need not have gone out: it can still be in the bracket, in another stage.
+  Seven entrants, the first-named winning; after three rounds p7 withdraws,
+  and losers round 2 is paired `p3 v p5; byes p4`. Drawn by hand with one
+  more event, `p1 v p4`, while p1 waits in the winners bracket for the
+  winners final, p1 won, went on in the losers bracket too, and was paired
+  in both (`p3 v p1` in losers round 3, then the winners final). Where both
+  of its places came to one tie, the engine paired p1 against itself.
 
 The choice for the second was between reading such a round as a manual
 pairing of the last round and refusing it as a breach of a hard rule. Every
@@ -139,12 +149,36 @@ of the earlier rounds, and whether the entrant had withdrawn when the
 round was paired as the first rule reads it, so the third rule reads the
 same facts whatever order they were recorded in.
 
+**In double elimination a stage drawn by hand brings into it nobody who is
+not in it.** An entrant who is not in a stage of a double elimination
+bracket has gone out, or holds a place in another stage at that moment: it
+waits in the winners bracket for its next winners tie while a losers round
+is played, or in the losers bracket while a winners round is, or is a
+finalist waiting for the grand final. A tie of the stage between an entrant
+of the stage and one who is not in it is given to the entrant of the stage,
+whatever its results say, as the third rule gives a tie with one who has
+gone out, whichever of the two the other is; the one from the other stage
+keeps the place it holds there, and is read there as if the tie had not
+been drawn. A tie given so is decided by no result, so in a winners stage
+it drops nobody to the losers bracket
+([0026](0026-only-a-winners-tie-its-results-decided-drops-its-loser.md)).
+The tie is reported as manual, its node names the entrant of the stage
+alone (`Uncontested`), and its results are recorded results, which the
+table counts. So no entrant is in both brackets at once, and none is in
+two ties of one round. The choice was the same as for the third rule:
+refusing makes the stage unreadable on every call for a round an organiser
+drew, and the later stages take their entrants by place, so reading the
+entrant as being in both stages puts it in two places of the bracket. Whose
+place an entrant holds is read from the results of the earlier rounds, so
+this reads the same facts whatever order they were recorded in. Single
+elimination has one stage to a round, so it has no such case.
+
 **The fingerprint keeps its version.** A state that holds such a round is
 paired otherwise from it now, which
 [0015](0015-an-engine-fingerprint-versions-the-rules-of-each-configuration.md)
 would answer with a new version of the rules. As there, the case is narrow
-(a round drawn by hand, after a withdrawal, across the last two ties or
-with an entrant who had gone out) and
+(a round drawn by hand, after a withdrawal, across the last two ties, with
+an entrant who had gone out, or with an entrant of another stage) and
 was read wrongly, and a new version would refuse the stamp of every bracket
 on a fixed path and of every double elimination bracket, which pair as they
 did.
@@ -171,3 +205,9 @@ did.
   sweep of single and double elimination brackets with rounds drawn by hand
   with an entrant who had gone out, in which no such entrant is paired again
   or goes on.
+- In the case of #236 p4 goes on from the tie with p1, the next losers
+  round is `p3 v p4`, and p1 plays the winners final and the grand final
+  and is in no losers round. `tests/Feature/EliminationInvariantsTest.php`
+  holds a sweep of double elimination brackets with stages drawn by hand
+  with an entrant of another stage, in which no entrant is in a losers
+  round and then in a winners round, and none is in two ties of one round.
