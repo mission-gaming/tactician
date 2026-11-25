@@ -33,18 +33,39 @@ use Throwable;
  * plain-data times, the declared timezone field is authoritative and an
  * embedded zone that contradicts it is rejected loudly.
  *
+ * The declared timezone is a region identifier from the timezone database
+ * (`Europe/London`, `America/New_York`, and `UTC`) or an explicit offset
+ * (`+01:00`, `-05:00`). An abbreviation (`BST`, `EST`, `CET`, and `GMT`
+ * too) is refused: PHP reads one as a fixed offset all year (`BST` is
+ * `+01:00` in January as well), so a caller who means a place would get
+ * kickoffs an hour out for half the year and no error. A caller who does
+ * mean a fixed offset writes it as one. The names of UTC itself are not
+ * refused, in any case: `Z`, the designator ISO 8601 and every kickoff the
+ * library writes end with, `UTC` and `UCT`, because they name no place
+ * and no clock change. The rule is ADR 0023.
+ *
  * @internal Not public API: the parser behind the `fromArray()` factories that
  *           read a configured datetime. It carries no compatibility guarantee.
  */
 final readonly class ZonedTime
 {
     /**
+     * The abbreviations that name UTC itself, in upper case: they name no
+     * place and no clock change, and `Z` is what every kickoff the library
+     * writes ends with. `GMT` is not one of them, being the winter time of
+     * a place.
+     */
+    private const array NAMES_OF_UTC = ['Z', 'UTC', 'UCT'];
+
+    /**
      * @param string $field The configuration key, for diagnostics
      *
      * @throws InvalidConfigurationException When the values are malformed (a timezone PHP rejects
      *                                       outright, such as one holding a NUL byte, included),
-     *                                       the string does not state an instant by itself (see
-     *                                       the class description), or it embeds a
+     *                                       the timezone is an abbreviation (reason
+     *                                       `TimezoneAbbreviation`, before the string is looked
+     *                                       at), the string does not state an instant by itself
+     *                                       (see the class description), or it embeds a
      *                                       contradictory timezone
      */
     public static function parse(mixed $value, mixed $timezoneValue, string $field): DateTimeImmutable
@@ -77,6 +98,20 @@ final readonly class ZonedTime
             // The block holds the two constructors and nothing else that
             // can throw.
             $previous = $exception;
+        }
+
+        if ($timezone !== null && self::isAbbreviation($timezone)) {
+            throw new InvalidConfigurationException(
+                "The timezone '{$timezoneValue}' is an abbreviation, which PHP reads as the fixed offset "
+                    . self::offsetOf($timezone) . " all year, with no clock changes; declare a region identifier (such as 'Europe/London') "
+                    . "for a place, or the offset itself ('" . self::offsetOf($timezone) . "') for a fixed offset",
+                [
+                    $field => $value,
+                    'timezone' => $timezoneValue,
+                    'fixed_offset' => self::offsetOf($timezone),
+                ],
+                reason: InvalidConfigurationReason::TimezoneAbbreviation
+            );
         }
 
         // A timezone or offset embedded in the string overrides the
@@ -124,5 +159,71 @@ final readonly class ZonedTime
     public static function write(DateTimeImmutable $time): string
     {
         return $time->format($time->format('u') === '000000' ? 'Y-m-d H:i:s' : 'Y-m-d H:i:s.u');
+    }
+
+    /**
+     * Write an instant as a kickoff is written: ISO 8601 in UTC, to the
+     * second (`2026-08-01T18:00:00Z`), with the fraction of a second after
+     * the seconds when there is one (`2026-08-01T18:00:00.250000Z`, six
+     * digits, as PHP holds it). A time in another timezone is converted
+     * first, so the string states the instant the object holds. Every
+     * string it writes is one `ScheduledEvent::fromArray()` reads back as
+     * the same instant, to the microsecond.
+     */
+    public static function writeUtc(DateTimeImmutable $time): string
+    {
+        $utc = $time->setTimezone(new DateTimeZone('UTC'));
+
+        return $utc->format($utc->format('u') === '000000' ? 'Y-m-d\TH:i:s\Z' : 'Y-m-d\TH:i:s.u\Z');
+    }
+
+    /**
+     * Write the name of a time's timezone as parse() reads it back: a region
+     * identifier or an offset, as the object holds it. A time held in a
+     * timezone abbreviation (built in code as
+     * `new DateTimeZone('BST')`, or parsed from a string that ends in one)
+     * is refused, because parse() refuses the name it would write; it is
+     * never written as another name, not even its own offset, which would
+     * read back as the same instants and state a zone the caller did not
+     * write.
+     *
+     * @param string $key The configuration key the name is written under, for the error
+     *
+     * @throws InvalidConfigurationException When the timezone is an abbreviation (reason
+     *                                       `NotSerializable`)
+     */
+    public static function writeTimezone(DateTimeImmutable $time, string $key): string
+    {
+        $timezone = $time->getTimezone();
+        if (self::isAbbreviation($timezone)) {
+            throw new InvalidConfigurationException(
+                "{$key} cannot be written: the timezone '{$timezone->getName()}' is an abbreviation, which plain data does not accept; "
+                    . "build the time in a region identifier (such as 'Europe/London') or in the offset itself ('"
+                    . self::offsetOf($timezone) . "')",
+                [$key => $timezone->getName(), 'fixed_offset' => self::offsetOf($timezone)],
+                reason: InvalidConfigurationReason::NotSerializable
+            );
+        }
+
+        return $timezone->getName();
+    }
+
+    /**
+     * Whether PHP holds the timezone as an abbreviation (its type 2), and
+     * not as a region identifier (type 3) or an offset (type 1), other than
+     * a name of UTC itself.
+     */
+    private static function isAbbreviation(DateTimeZone $timezone): bool
+    {
+        return ($timezone->__serialize()['timezone_type'] ?? null) === 2
+            && !in_array(strtoupper($timezone->getName()), self::NAMES_OF_UTC, true);
+    }
+
+    /**
+     * The fixed offset an abbreviation stands for, as `+01:00`.
+     */
+    private static function offsetOf(DateTimeZone $timezone): string
+    {
+        return new DateTimeImmutable('@0')->setTimezone($timezone)->format('P');
     }
 }
