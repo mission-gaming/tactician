@@ -1921,6 +1921,93 @@ sides (#231). They follow decisions 66 to 69.
     large ones the schedule turned down rarely polishes past the one
     kept, and the extra polish costs a few per cent of the time.
 
+## Rounds on the positions with room (0.4.0)
+
+A decision made when seasons with their first rounds pinned in order were
+found to leave gap slots that 0.2.3 did not (#238).
+
+74. **The rounds are laid out a second time, on the positions with room,
+    as a fourth schedule.** The round layout (`RoundColouring`) works
+    out how many rounds the events need, the most events of any
+    participant or the events over the capacity of a slot, and lays
+    them on that many positions from the first in grid order. A
+    position its pins fill was counted among them. Where the rounds
+    already played are pinned in order, those are the first positions
+    of the grid, so the layout had too few rounds with room, searched
+    the leftover to its limit, and lost to the planned schedule, whose
+    gaps the search for fewer gap slots then could not all close. Asked
+    to, the layout now leaves out every position its pins fill, lays
+    the rounds on that many of the positions with room, and searches
+    what is left over first on the grid up to the last of them; where no
+    position is full the two layouts are the same
+    (`RoundColouring::fillsAPosition()`). `solve()` makes the second
+    layout after the third schedule, only where the schedule it has
+    leaves an event unplaced or a gap and a position is full of pins,
+    on the layout's own work limit; it runs the search for fewer gap
+    slots on it, with what the second budget has left, only where the
+    layout is already better than the schedule in hand; and it returns
+    it only where it is better on events placed, then gap slots and then
+    the objectives' score after them (or, ranked ahead of gap slots, on
+    the ranking), so it never replaces a schedule it does not beat.
+
+    It is offered only for the schedule of the whole request that every
+    outcome is first made from and held to (decisions 59 and 66), not
+    for the schedules the objectives make after it (the attempts of the
+    fewest moved events, the reshaped layouts). Offered there too, it
+    was better in each such schedule it replaced, but the later choices,
+    which are greedy, then came out worse on 4 of the 960 repacks with
+    an objective of the sets with current positions below, by the
+    outcome's own ranking (one to five gap slots more with as many of
+    everything ranked before them). Offered
+    only for the first schedule, no request of those sets is worse.
+
+    Two other forms were tried first (#238). Laying the rounds only on
+    the positions with room, in place of the present layout, removed the
+    regression but was worse on 12 of 200 seasons with current positions
+    by up to 10 gap slots. Taking the second layout ahead of the search
+    for fewer gap slots where it ranked better made one request worse by
+    a gap slot, because the third schedule would have beaten the
+    schedule it replaced. Taking it early only where it places every
+    event with no gap, which nothing can beat, saved little time
+    (the time of these seasons goes to the packing of the planned
+    schedule, which spends the whole first budget on 83 of the 160, not
+    to the gap search) and returned another schedule as good as the one
+    before on 12 seasons, an output change with nothing gained, so it was
+    not kept.
+
+    *Measured* at the default budget, no objective, PHP 8.5, on a machine
+    doing other work (times as proportions). "Seasons" are 160 single
+    or double round robins of 20 to 40 with a fifth or a half of their
+    rounds pinned in order, the rest movable with no current position,
+    on a grid of the rounds' size; "scattered" are #162's 200 round
+    robins of 16 to 40 with an eighth to a half of the events pinned at
+    random.
+
+    | Requests | Version | Placed | Gap slots | Stopped budget | Median / 90th percentile / slowest, ms |
+    |---|---|---|---|---|---|
+    | Seasons | 0.2.3 | 72,804 of 72,804 | 0 | 0 | 5 / 14 / 37 |
+    | Seasons | before | 72,804 | 244 | 83 | 96 / 364 / 1,067 |
+    | Seasons | after | 72,804 | 6 | 83 | 95 / 375 / 1,313 |
+    | Scattered | before and after | 53,299 of 53,744 | 445 | 5 | 254 / 1,096 / 1,876 and 255 / 1,096 / 1,956 |
+
+    The 50 seasons that change all have fewer gap slots and none more;
+    the six left are one request repeated (40 participants in two legs
+    on sessions of four slots, 16 rounds played), whose second layout
+    has two gap slots that the search, on what the budget has left, does
+    not close. The scattered requests come out the same in every
+    assignment: their pins rarely fill a position. With current
+    positions, 200 seasons in progress and 120 round robins with
+    scattered pins under four settings (no objective, ahead,
+    `[LeastChurn]`, `[LeastChurn, FewestGapSlots]`), no request is worse
+    by its own ranking, and 9 seasons are better (5 with no objective, 4
+    ahead); the 63 round robins of decision 68 have nothing pinned and
+    are unchanged.
+
+    What this leaves: these seasons still take some 20 times what they
+    took in 0.2.3, and the budget is still reported stopped on 83 of
+    them, because the session packer of the planned schedule spends the
+    whole first budget there. That is the time half of #162.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,

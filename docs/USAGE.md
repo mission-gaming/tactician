@@ -6407,6 +6407,15 @@ have left, and returns that third schedule when it places more events,
 or as many with fewer gap slots. A result that is already clean costs
 nothing more.
 
+A season in progress is usually handed over with the rounds already
+played pinned where they were played, the first sessions of the grid,
+and those positions are full. Where the result still leaves an event
+unplaced or a gap and some position is full of pins, the repacker lays
+the rounds out once more on the positions with room only, and returns
+that fourth schedule on the same terms: on 160 seasons of 20 to 40
+participants with a fifth or a half of their rounds pinned in order it
+takes the gap slots from 244 to 6.
+
 **The ids decide as little as they can.** The repacker takes the
 participants and the events in an order made from the request itself:
 how many events a participant has, where it is pinned and whom it
