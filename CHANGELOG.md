@@ -15,6 +15,38 @@ heading **Output change (fix)**.
 
 ### Output change (fix)
 
+- **A pre-drawn Swiss schedule of a field of odd size gives nobody a second
+  bye** (#150). At the largest round counts of a field of odd size the
+  engine gives a participant a second bye where a round has no pairing
+  otherwise, and `SwissScheduler` returned such a draw, although a schedule
+  in which a different participant sits out each round always exists (there
+  are fewer rounds than participants). It happened for about one seed in
+  five at the most rounds: of seeds 1 to 200, 17 at 7 participants and 6
+  rounds, 42 at 9 and 8, 39 at 11 and 10, 40 at 13 and 12, 46 at 15 and 14,
+  47 at 21 and 20, 49 at 23 and 22, 55 at 25 and 24; and without a source of
+  draws at 33 participants and 32 rounds. The scheduler now takes such a
+  draw as failed and draws again, as it does for a draw that cannot be
+  completed, and without constraints builds the rounds by rotation when
+  twenty draws are not enough (or, without a source of draws, at once). No
+  seed of those measured needs more than five draws. A schedule whose draws
+  gave nobody a second bye is unchanged; one that did is now another
+  schedule for the same seed, and without a source of draws the
+  33-participant, 32-round schedule is now the rotation, whose first round
+  is still the list as given. Under constraints the rotation is not tried,
+  since the constraints may reject it: where every complete draw gives a
+  participant a second bye, the first of them is still returned, and where
+  none is complete the failure of the last draw is still reported. An
+  application that stored a pre-drawn schedule keeps it; one that draws
+  again from a seed at those round counts may get another schedule.
+
+- **A `MinimumRestRule` no longer passes kickoffs that its rest wraps round
+  past.** The rule adds its rest to a kickoff, and where the sum passed the
+  end of the times PHP holds PHP returned a time before the kickoff, so no
+  later kickoff was too close. Now a rest that passes that end covers every
+  later kickoff of the participant, and `validate()` reports it. Only a
+  rest of billions of years from a kickoff billions of years out is
+  affected (#171).
+
 - **A kickoff with a fraction of a second is written with it
   ([#148](https://github.com/mission-gaming/tactician/issues/148)).**
   `ScheduledEvent::toArray()`, `ScheduledSchedule::toArray()` and
@@ -36,6 +68,167 @@ heading **Output change (fix)**.
   (`docs/adr/0024-a-kickoff-is-written-with-its-fraction-of-a-second.md`)
   records the decision and why a start with a fraction is not refused
   instead.
+
+### Added
+
+- **`TimelineDefinition::getRoundSlotTimes()` gives every slot of the
+  rounds asked for
+  ([#174](https://github.com/mission-gaming/tactician/issues/174)).**
+  `getRoundSlotTimes(int ...$rounds)` yields a list per round, keyed by
+  round number and in the order the rounds are given, of the times
+  `getSlotTime()` gives for its slots, in UTC; each round is computed
+  when its list is read. A round number below 1 is refused when it is
+  called (`PositionOutOfRange`), and a round too far from the start while
+  it is read (`ValueOutOfRange`). It replaces `roundSlotTimes()`, the one
+  public method in `src/` that was marked `@internal`: that method was
+  for the assigner alone and is removed; the new one is part of the
+  definition's experimental API, and the assigner uses it.
+
+- **`TimelineAssigner::assignRound()` can be told the round played before
+  ([#173](https://github.com/mission-gaming/tactician/issues/173)).** The
+  two assigning calls now apply one rule: each round is compared with the
+  round played before it. `assign()` reads that round from the schedule;
+  `assignRound()` keeps nothing between calls and takes it as a new
+  optional argument, `previousRound` (0 when no round was played before).
+  Told it for every round, the calls refuse exactly what `assign()`
+  refuses for the schedule of the same rounds, with the same two rounds
+  named. Without the argument nothing changes: the round compared is the
+  one numbered before, which is right for a stage state, whose rounds are
+  numbered 1, 2, 3. Before this, a caller whose rounds had a gap had a
+  round compared with one nobody played (231 such sets refused round by
+  round in the review's sweep that `assign()` accepted) and the two played
+  rounds either side of the gap compared by no call. A round named as
+  played before that is not below the round's number, or is below 0, is
+  refused (`InvalidConfigurationException`, `RoundOutOfSequence`).
+
+- **`MinimumRestRule::MAX_REST_DAYS`**, the longest rest the rule accepts:
+  100,000,000,000,000 days, some 270 billion years (#171).
+
+- **`InvalidConfigurationReason::TimezoneAbbreviation`** (`timezone_abbreviation`),
+  the reason a declared timezone that is an abbreviation is refused with
+  (below, under **Changed**). New cases may be added in any release, so a
+  `match` over the reason already has a `default` arm.
+
+### Changed
+
+- The release checklist (`docs/RELEASING.md`) says what the notes of a GitHub
+  release hold when the changelog section is longer than GitHub accepts.
+  Documentation only; no output and no public signature changes.
+
+- **A round robin that fails under a factory-built `ConsecutiveRoleConstraint`
+  is analysed once** (#149). The constraints `ConsecutiveRoleConstraint::homeAway()`
+  and `position()` build now count among those the library knows to run no
+  code of the caller's, beside `NoRepeatPairings`,
+  `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+  `SeedProtectionConstraint`: a round robin that cannot be completed builds
+  its failure analysis for the order whose failure it reports, and not for
+  every rotated order it goes on from, and a Swiss round search skips the
+  branches that hold no pairing. The results are what they were, the
+  failure analysis included. Measured for 24 participants, three repeated
+  legs, `ConsecutiveRoleConstraint::homeAway(1)` and
+  `RoundParityRoleAssignment` named (no schedule exists): 43 to 128 s on
+  0.3.0, 2.0 to 2.3 s now; with mirrored legs 55 s and 4.6 s. Under the
+  default role assignment the failure was analysed once already. A
+  `ConsecutiveRoleConstraint` given a role extractor of the caller's is
+  asked as before, since the library cannot tell what the extractor
+  does. The factories now hand the constraint an extractor of an internal
+  class (`Constraints\PositionRole`) rather than a closure, which reads the
+  same roles.
+
+- **A session grid has at most 200,000 positions, up from 100,000** (#175).
+  A slot every five minutes, day and night, for a year is 105,120
+  positions (105,408 in a leap year), and `SessionGrid` refused it with
+  the reason `ValueOutOfRange`. `SessionGrid::MAX_POSITIONS` is now
+  200,000, and so are the most sessions a grid can have and the most slots
+  of one session. Every grid that loaded before loads as before and gives
+  the same positions and slot times; only a grid of 100,001 to 200,000
+  positions, refused before, now loads. Its cost rises in proportion to
+  its positions: some 80 MB for an instant-based grid at the limit, and
+  about 1.2 KB a position for a repack, so a repack of a grid of 100,000
+  positions or more needs a `memory_limit` above PHP's default of 128 MB
+  ("Schedule Repacking" in the usage guide). A session whose slot interval was
+  made by `DateInterval::createFromDateString()` is still held to the
+  limit on steps of such an interval, 100,001 slots.
+
+- **A declared timezone that is an abbreviation is refused** (#151, ADR
+  0023, `docs/adr/0023-a-declared-timezone-is-a-region-or-an-offset.md`).
+  The `timezone` of `TimelineDefinition::fromArray()`,
+  `SessionGrid::fromArray()` and each window of `BlackoutRule::fromArray()`
+  accepted any name PHP reads, and PHP reads an abbreviation as a fixed
+  offset all year: `'timezone' => 'BST'` was `+01:00` in January as well,
+  so a caller who meant London got kickoffs an hour out for half the year
+  and no error. The field is now a region identifier (`Europe/London`,
+  `UTC`) or an explicit offset (`+01:00`), and every abbreviation PHP
+  knows is refused with an `InvalidConfigurationException`, reason
+  `TimezoneAbbreviation`, before the datetime is read, `GMT` included
+  (London's winter time). The names of UTC itself, `Z`, `UTC` and `UCT`
+  in any case, are still read: they name no place, and `Z` ends every
+  kickoff the library writes. The context holds the offset the abbreviation
+  stood for under `fixed_offset`. Who is affected: a stored configuration
+  that declares an abbreviation, which was read before and is refused now.
+  To migrate, declare the region that was meant (`Europe/London` for `BST`
+  or `GMT` meant as London: the kickoffs of the half of the year the
+  abbreviation was wrong for move by the hour), or the offset itself
+  (`+01:00`), which keeps every kickoff as it was.
+- **`toArray()` refuses a start held in a timezone abbreviation.**
+  `TimelineDefinition::toArray()` and `SessionGrid::toArray()` wrote the
+  name of the start's timezone, and for a start built in code in an
+  abbreviation (`new DateTimeZone('BST')`, or a string that ends in one)
+  that is a name `fromArray()` now refuses. They refuse it instead, with
+  the reason `NotSerializable`, as they refuse an interval that would not
+  read back; the definition and the grid themselves work with such a start
+  as before. Build the start in a region identifier or an offset where the
+  configuration is stored. `BlackoutRule::toArray()` writes its bounds in
+  UTC and is not affected.
+
+### Fixed
+
+- The `Benchmarks` job installs the benchmark runner again. Composer refused
+  the runner's lock file (`tools/phpbench/composer.lock`) over a security
+  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
+  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
+  pinned to. The library's own development lock file (`composer.lock`) takes
+  the same release, so the `Dependency audit` job passes again. Tooling and
+  development dependencies only; no output and no public signature changes.
+
+- **Assigning a schedule under a relative round interval is linear in its
+  rounds ([#170](https://github.com/mission-gaming/tactician/issues/170)).**
+  Under a round interval made by `DateInterval::createFromDateString()`
+  (`1 week`, `first monday of next month`), which is added one step at a
+  time, `TimelineAssigner::assign()` computed each round's start from the
+  timeline's start again, so the time it took rose with the square of the
+  rounds: 10,000 rounds took 33 seconds. Each round's start is now counted
+  on from the start of the round before it that the schedule holds, which
+  is the same time, and 10,000 rounds take some 50 milliseconds. The
+  kickoffs are the same; an interval written as an ISO 8601 duration was
+  linear already and is computed as before.
+
+- **A rest too long to add is refused when the rule is built.** A
+  `MinimumRestRule` given a rest of `PHP_INT_MAX` seconds was accepted,
+  because its constructor checked only that the rest moves 1970 forward,
+  and then enforced nothing: from any later kickoff the sum wrapped round.
+  A rest that reaches more than `MinimumRestRule::MAX_REST_DAYS` days, each
+  part counted as positive and a month as 31 days, is now refused by the
+  constructor and by `fromArray()` with `InvalidConfigurationException`
+  (reason `ValueOutOfRange`) (#171).
+- **An interval with a part of more than twelve digits is no longer written
+  as plain data that does not read back.** `TimelineDefinition::toArray()`
+  and `SessionGrid::toArray()` wrote a hand-built interval of 10^14 days as
+  `P100000000000000D`, which `fromArray()` refused: PHP reads at most twelve
+  digits for a part of a duration. `TimelineDefinition::writeInterval()`
+  now refuses such an interval with the reason `NotSerializable`, as it
+  refuses the others it cannot write, and `MinimumRestRule::toArray()`
+  refuses such a rest the same way. A timeline or a grid built with one
+  still gives its slot times (#171).
+- **A slot time past the end of PHP's timestamps is refused instead of
+  wrapping round.** `TimelineDefinition` and `SessionGrid` measured how far
+  the round or slot intervals reach and not where they start, so a start
+  far from 1970 with a span under the limit passed the end of the times PHP
+  holds and returned a date that had wrapped round (round 90,000,000,000,000
+  of a daily timeline from the year 95 billion was in the year −243
+  billion). Such a time is now refused with the reason `ValueOutOfRange`,
+  and so is a step of an interval made by
+  `DateInterval::createFromDateString()` that wraps round (#211).
 
 ## [0.3.0] - 2026-11-03
 
