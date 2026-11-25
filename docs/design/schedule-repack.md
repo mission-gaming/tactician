@@ -1885,6 +1885,11 @@ sides (#231). They follow decisions 66 to 69.
     decision 66's guarantee as it was. With gap slots first nothing is
     turned down (the search's result is always kept), so no outcome of a
     list that ranks gap slots first, the default among them, changes.
+    The extra polishes spend steps of the second budget like the first,
+    so below the default budget one of them can be the search the budget
+    stops, and `isBudgetExhausted()` is then true where it was false
+    before (never the other way): a larger budget may let that polish
+    finish and give a schedule that ranks better.
 
     Carried no further than the polish, and why. Each schedule kept aside
     could also be carried through the steps between its choice and the
