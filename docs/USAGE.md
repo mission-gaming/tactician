@@ -132,7 +132,8 @@ anything else that competes.
 | **Gap slot** | A slot a participant waits through between two of its own events in one session: with events at slots 0 and 3, slots 1 and 2. `ContiguityBroken` reports them for a participant and a session, and `RepackOutcome::getGapSlotCount()` adds them up. A late start is not one. |
 | **Lone-event session** | A session of a repacked grid that holds exactly one event, pinned events counted, where that event is a movable one (`RepackOutcome::getLoneEventSessions()`): the session is opened for it alone. A figure of the grid, not of a participant. |
 | **Idle session** | A session a participant has no event in, between two sessions it has one in, pinned events counted (`RepackOutcome::getIdleSessionCount()`, summed over the participants that have a placed movable event). The sessions before a participant's first and after its last are not idle. |
-| **Repack objective** | A figure of the outcome a repack is asked to keep low (`RepackObjective`, listed in order in `RepackOptions(objectives: ...)`): moved events, lone-event sessions, idle sessions. Objectives rank after events placed and gap slots, which they never cost, and before the two weights. None is the default. |
+| **Lone participant-session** | A participant and a session in which that participant has exactly one event, pinned events counted, where that event is a movable one (`RepackOutcome::getLoneParticipantSessionCount()`): the participant turns up for one event. A figure of a participant, counted once for each participant and session; a session with two events between four participants holds four. |
+| **Repack objective** | A figure of the outcome a repack is asked to keep low (`RepackObjective`, listed in order in `RepackOptions(objectives: ...)`): moved events, lone-event sessions, lone participant-sessions, idle sessions, and gap slots themselves (`FewestGapSlots`). Every objective ranks after events placed, which none ever costs, and before the two weights. Gap slots rank first among the figures unless the list names `FewestGapSlots`; an objective listed before it is **ranked ahead of gap slots**. None is the default. |
 | **Shortest grid** | The fewest sessions on which a repack places every event (`ShortestGridFinder`), for a grid the caller describes as a function of its number of sessions. Searched one number at a time, upwards, and reported with what happened at every smaller number. |
 | **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the steps after the packing (the last placement step and the search for fewer gap slots) have a second one of their own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. The searches that count their own work and not steps (laying the events out before any session is chosen, the last placement step, the search for fewer gap slots) have limits that are fixed at the default budget and above, and the same share of those limits as the budget is of the default below it, so a smaller budget shortens every search. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
 | **Last placement step** | The part of a repack that runs only when an event is still unplaced: it moves placed events along alternating paths, and exchanges one placed event for one unplaced event where that lets a further one in, to place events the earlier phases left over. It never double-books, never moves a pin and never exceeds a slot's capacity. |
@@ -6662,7 +6663,7 @@ unplaced as `participant_over_capacity`.
 
 ### Figures to Rank an Outcome By
 
-The violations say what is wrong with a schedule. Five figures say how
+The violations say what is wrong with a schedule. Six figures say how
 good it is, and each is an accessor of the outcome, so two outcomes can
 be compared without the request they came from:
 
@@ -6671,11 +6672,12 @@ be compared without the request they came from:
 | Unplaced events | `getUnplacedCount()` | The movable events with no position: the size of `getUnplaced()`. It comes first: an outcome that places more events is the better one. |
 | Gap slots | `getGapSlotCount()` | The slots participants wait through between two of their own events in a session: the gap slots of every `ContiguityBroken`, added up. |
 | Lone-event sessions | `getLoneEventSessionCount()`, `getLoneEventSessions()` | The sessions that hold exactly one event, pinned events counted, where that one is a movable event: a session opened for a single event. |
+| Lone participant-sessions | `getLoneParticipantSessionCount()` | For each participant, the sessions in which it has exactly one event, pinned events counted, where that one is a movable event; summed over the participants. |
 | Idle sessions | `getIdleSessionCount()` | For each participant with a placed movable event, the sessions it has no event in between two sessions it has one in, pinned events counted; summed over the participants. |
 | Moved events | `getMovedCount()`, `getMovedEventIds()` | The events placed somewhere other than their **current position** (below). |
 
-Every outcome has all five, whatever the options were. They are figures
-and not compromises: `isClean()` does not look at the last three. Three
+Every outcome has all six, whatever the options were. They are figures
+and not compromises: `isClean()` does not look at the last four. Four
 of them need defining exactly:
 
 - A **lone-event session** is a figure of the grid, not of a
@@ -6683,6 +6685,12 @@ of them need defining exactly:
   four participants has a single event in it. A session whose one event
   is pinned is not counted, because the repack did not arrange it, and
   an empty session is not counted either.
+- A **lone participant-session** is a figure of a participant: a
+  session with two events between four participants is one for each of
+  the four, and a participant with two events in a session has none
+  there. A participant whose one event in a session is pinned is not
+  counted there, and neither is one with a pinned event and a movable
+  one, which has two.
 - An **idle session** lies strictly between a participant's first and
   last session with an event. With events in sessions 1, 2 and 5, the
   participant has two idle sessions, 3 and 4; sessions 0 and 6 are not
@@ -6720,17 +6728,20 @@ $plain = (new ScheduleRepacker())->repack(new RepackRequest($outstanding, $fixed
 echo $plain->getUnplacedCount(), "\n";                          // 0
 echo $plain->getGapSlotCount(), "\n";                           // 0
 echo json_encode($plain->getLoneEventSessions()), "\n";         // [2]
+echo $plain->getLoneParticipantSessionCount(), "\n";            // 4
 echo $plain->getIdleSessionCount(), "\n";                       // 0
 echo json_encode($plain->getMovedEventIds()), "\n";             // ["n08"]
 
 echo json_encode($plain->toArray()['metrics']), "\n";
-// {"unplaced":0,"gap_slots":0,"lone_event_sessions":[2],"idle_sessions":0,"moved":["n08"]}
+// {"unplaced":0,"gap_slots":0,"lone_event_sessions":[2],"lone_participant_sessions":4,"idle_sessions":0,"moved":["n08"]}
 ```
 
 The repack moved `n08` from the last session to the middle one, where
 its two participants already play, and left `n07` alone in the last:
 that is the consolidation weight at work, and the figures show what it
-cost. `toArray()` writes the five under `metrics`, because three of them
+cost. Four participant-sessions are lone: Athletic and Napoli turn up
+for one event in the middle session, and again in the last. `toArray()` writes the six under
+`metrics`, because four of them
 cannot be worked out from the rest of the array (it holds neither the
 participants of an event nor the pinned events). The fingerprint does
 not cover them: they follow from the request and the assignments, which
@@ -6788,13 +6799,22 @@ have the repacker keep events where they are, name the objective.
 ### Objectives
 
 `RepackOptions(objectives: [...])` names figures for the repacker to
-keep low, most important first. There are three (`RepackObjective`):
+keep low, most important first. There are five (`RepackObjective`):
 
 | Objective | Keeps low | Identifier in plain data |
 |---|---|---|
 | `LeastChurn` | Moved events | `least_churn` |
 | `FewestLoneEventSessions` | Lone-event sessions | `fewest_lone_event_sessions` |
+| `FewestLoneParticipantSessions` | Lone participant-sessions | `fewest_lone_participant_sessions` |
 | `FewestIdleSessions` | Idle sessions | `fewest_idle_sessions` |
+| `FewestGapSlots` | Gap slots | `fewest_gap_slots` |
+
+`FewestGapSlots` names the figure every repack already keeps low, so
+that the list can say where it ranks: what is listed before it is
+ranked ahead of gap slots ([Objectives Ahead of Gap
+Slots](#objectives-ahead-of-gap-slots)). This section is about lists
+that do not name it, or name it first, which rank gap slots where they
+have always been.
 
 ```php
 use MissionGaming\Tactician\Repack\RepackObjective;
@@ -6820,7 +6840,7 @@ $together = (new ScheduleRepacker())->repack(new RepackRequest(
 echo json_encode($rank($together)), "\n";                  // [0,0,0,0,1]
 
 echo json_encode(RepackOptions::fromArray(['objectives' => ['least_churn', 'fewest_idle_sessions']])->toArray()), "\n";
-// {"format_version":1,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,"throw_on_violations":false,"objectives":["least_churn","fewest_idle_sessions"]}
+// {"format_version":2,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,"throw_on_violations":false,"objectives":["least_churn","fewest_idle_sessions"]}
 ```
 
 With the fewest moved events asked for, every event stays where it is
@@ -6836,9 +6856,11 @@ has no more gap slots. Among schedules level on those two, the
 objectives decide in the order given, a later one only between schedules
 level on every earlier one. The two weights and the late starts come
 after every objective. An objective can be named once; its place in the
-list is its rank.
+list is its rank. A list that starts with `FewestGapSlots` is repacked
+exactly as the same list without it, and `[FewestGapSlots]` alone
+exactly as no objective.
 
-**What each objective does, and how well.** None of the three is
+**What each objective does, and how well.** None of them is
 optimised exactly, and they are not pursued alike:
 
 - **`LeastChurn` is searched for.** The repacker first makes the
@@ -6853,14 +6875,17 @@ optimised exactly, and they are not pursued alike:
   tries again, three times at most. The best schedule of all these, the
   one with no objective included, is returned. It needs events with
   current positions to act on.
-- **`FewestLoneEventSessions` and `FewestIdleSessions` are a tie-break
-  and a repair.** They decide between the schedules the repacker makes
-  anyway where those are level on everything that ranks before them.
-  Then single events are moved to a free position (the one event of a
-  lone-event session to a session that has events, or another event
-  into it; an event of a participant into a session that participant
-  sits out) wherever that makes the figure smaller and makes nothing
-  that ranks before it worse.
+- **`FewestLoneEventSessions`, `FewestLoneParticipantSessions` and
+  `FewestIdleSessions` are a tie-break and a repair.** They decide
+  between the schedules the repacker makes anyway where those are level
+  on everything that ranks before them. Then single events are moved to
+  a free position (the one event of a lone-event session to a session
+  that has events, or another event into it; the one event of a
+  participant in a session to another session of that participant, or
+  another of its events into that session; an event of a participant
+  into a session that participant sits out) wherever that makes the
+  figure smaller and makes nothing that ranks before it worse. Ranked
+  ahead of gap slots, they are searched for as well (below).
 
 How close that comes was measured against every placement of 6,000 small
 requests (three to six events on up to six positions), among the
@@ -6967,6 +6992,143 @@ The fewest moved events cost little on a season, where nearly every
 event is held and few are placed, and two to three times the repack on
 scattered pins, where the schedule that exists rarely survives and the
 attempts are whole repacks.
+
+### Objectives Ahead of Gap Slots
+
+A repack keeps a participant's events in a session back to back before
+anything else it is asked, so it fills the sessions from the first on.
+That costs something an application may care about more. A round robin
+whose rounds do not divide into the sessions ends with a short session,
+in which every participant turns up for one event; and an event that
+would stay where it is at the price of a wait is moved to close the
+wait. Naming `FewestGapSlots` in the list says where gap slots rank, and
+what is listed before it is ranked ahead of them:
+
+```php
+// A league of five that plays every event on two match nights of four
+// slots, two events to a slot
+$five = [];
+foreach (['ajax', 'benfica', 'celtic', 'dinamo', 'esbjerg'] as $id) {
+    $five[] = new Participant($id, ucfirst($id));
+}
+$league = [];
+foreach ($five as $i => $home) {
+    foreach (array_slice($five, $i + 1) as $away) {
+        $league[] = new MovableEvent("{$home->getId()}-{$away->getId()}", $home, $away);
+    }
+}
+$matchNights = SessionGrid::shapeOnly(sessions: 2, slotsPerSession: 4, capacityPerSlot: 2);
+
+$figures = static fn(RepackOutcome $outcome): array => [
+    $outcome->getUnplacedCount(),
+    $outcome->getLoneParticipantSessionCount(),
+    $outcome->getGapSlotCount(),
+];
+
+$compact = (new ScheduleRepacker())->repack(new RepackRequest($league, [], $matchNights));
+echo json_encode($figures($compact)), "\n";    // [0,2,0]
+
+$together = (new ScheduleRepacker())->repack(new RepackRequest($league, [], $matchNights, new RepackOptions(objectives: [
+    RepackObjective::FewestLoneParticipantSessions,
+    RepackObjective::FewestGapSlots,
+])));
+echo json_encode($figures($together)), "\n";   // [0,0,2]
+
+// Ranked after gap slots, the same objective only breaks ties
+$after = (new ScheduleRepacker())->repack(new RepackRequest($league, [], $matchNights, new RepackOptions(objectives: [
+    RepackObjective::FewestLoneParticipantSessions,
+])));
+echo json_encode($figures($after)), "\n";      // [0,2,0]
+
+// An event that stays where it is, at the price of a wait
+$night = SessionGrid::shapeOnly(sessions: 1, slotsPerSession: 3, capacityPerSlot: 2);
+$calendar = [
+    new MovableEvent('m1', $celtic, $athletic, 0, 0),
+    new MovableEvent('m2', $livorno, $rayo, 0, 0),
+    new MovableEvent('m3', $celtic, $livorno, 0, 2),
+];
+$closed = (new ScheduleRepacker())->repack(new RepackRequest($calendar, [], $night, new RepackOptions(objectives: [
+    RepackObjective::LeastChurn,
+])));
+echo json_encode($closed->getMovedEventIds()), ' ', $closed->getGapSlotCount(), "\n";   // ["m3"] 0
+
+$kept = (new ScheduleRepacker())->repack(new RepackRequest($calendar, [], $night, new RepackOptions(objectives: [
+    RepackObjective::LeastChurn,
+    RepackObjective::FewestGapSlots,
+])));
+echo json_encode($kept->getMovedEventIds()), ' ', $kept->getGapSlotCount(), "\n";       // [] 2
+
+echo json_encode(RepackOptions::fromArray(['format_version' => 2, 'objectives' => ['least_churn', 'fewest_gap_slots']])->toArray()['objectives']), "\n";
+// ["least_churn","fewest_gap_slots"]
+```
+
+With no objective, the five play seven events on the first night and
+three on the second, and Ajax and Dinamo each turn up on the second
+night for one. With the lone participant-sessions ranked ahead of gap
+slots, six and four: nobody turns up for one event, and two
+participants wait a slot. Which is better is the application's to say;
+the figures say what each schedule costs.
+
+**What stays.** Events placed always come first: an outcome with an
+objective ahead of gap slots places at least as many events as the same
+request with no objective. The schedule with no objective is made first,
+exactly as without one, and every other schedule is compared with it on
+events placed and then on the figures in the order the list ranks them,
+so where nothing better on that order is found, that is the schedule
+returned. The two weights and the late starts still come last.
+
+**What is searched for.** Ranking an objective ahead of gap slots does
+not only break ties with it:
+
+- **The lone participant-sessions, the lone-event sessions and the idle
+  sessions.** The events are placed again on the first sessions of the
+  grid with their slots cut to as many as the events need (as many as
+  the busiest participant has events, or one more where no shape of
+  that many places every event), spread evenly over the fewest sessions that hold them and
+  over up to two more. A session with a pinned event keeps all its
+  slots, and a shape that would leave a session fewer than two slots is
+  not tried. Each shape is a repack of its own, and the best of them by
+  the ranking, with the search for fewer gap slots run once on it, is
+  kept where it is better than the schedule with no objective. Then the
+  repairs of the tie-break run, by the ranking.
+- **The moved events.** The schedule with no objective is made first.
+  Then every event that can stay at its current position is held there
+  and the others are placed around them, as when `LeastChurn` ranks
+  after gap slots, but the result is compared with the schedule with no
+  objective on events placed and on what is listed before `LeastChurn`
+  only: no event is moved to close a gap unless what ranks before it
+  asks for that. Where held events must be let go, they are the ones
+  around the gaps and the lone participant-sessions. A list such as
+  `[LeastChurn, FewestGapSlots]` leaves a schedule that has nothing
+  wrong with it but its gaps where it is.
+
+**What it gives.** On every complete single round robin of 4 to 24
+participants with nothing pinned, on sessions of four slots and from the
+fewest sessions that hold the rounds up to two more (63 requests, no
+limit on the events of a slot), `[FewestLoneParticipantSessions,
+FewestIdleSessions, FewestGapSlots]` placed every event and left no lone
+participant-session and no idle session, where the repack with no
+objective left 406 lone participant-sessions and 91 idle sessions; it
+left 150 gap slots for 20. On seasons in which nothing had changed since
+the schedule was made (200 seasons of 8 to 30 participants, whole rounds
+played and pinned, every other event at its place),
+`[LeastChurn, FewestGapSlots]` moved none of 39,296 events, where
+`LeastChurn` alone moved 4,427 and no objective 37,453; it left 360 gap
+slots for 100. The design note has the measurements, and what the
+other kinds of season give.
+
+**What it costs.** Each shape tried is a repack of its own, made on what
+the two budgets have left after the schedule with no objective, so a
+repack still spends at most twice `stepBudget`. On the 63 round robins
+(PHP 8.4, no OPcache), the median was 7 ms for 2 with no objective, the
+90th percentile 210 ms for 126, and the slowest 419 ms for 234.
+
+**Earlier releases.** `FewestGapSlots` and
+`FewestLoneParticipantSessions` are in version 2 of the repack options,
+which 0.4.0 writes; version 1, and options with no `format_version`,
+refuse them. 0.3.x refuses every array written as version 2, so options
+written by 0.4.0 are not read back by a rollback ([Format
+Versions](#format-versions)).
 
 ### The Shortest Grid
 
@@ -7444,14 +7606,17 @@ weight.
 
 | Method | Returns |
 |---|---|
-| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget`, `throw_on_violations` and `objectives`, a list of objective identifiers (static) |
-| `toArray()` | The same plain data, with `format_version` first; `objectives` is written only when there is one |
+| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget`, `throw_on_violations` and `objectives`, a list of objective identifiers (static). Version 2 reads all five identifiers; version 1, and an array with no `format_version`, reads `least_churn`, `fewest_lone_event_sessions` and `fewest_idle_sessions` and refuses the other two (`InvalidConfigurationException`, reason `UnknownIdentifier`) |
+| `toArray()` | The same plain data, with `format_version` (2) first; `objectives` is written only when there is one |
 
 #### `RepackObjective`
 
 An enum. Cases: `LeastChurn` (`least_churn`), `FewestLoneEventSessions`
-(`fewest_lone_event_sessions`) and `FewestIdleSessions`
-(`fewest_idle_sessions`). See [Objectives](#objectives).
+(`fewest_lone_event_sessions`), `FewestIdleSessions`
+(`fewest_idle_sessions`), `FewestGapSlots` (`fewest_gap_slots`) and
+`FewestLoneParticipantSessions` (`fewest_lone_participant_sessions`). See
+[Objectives](#objectives) and [Objectives Ahead of Gap
+Slots](#objectives-ahead-of-gap-slots).
 
 #### `RepackOutcome`
 
@@ -7474,21 +7639,23 @@ The constant `RepackOutcome::FINGERPRINT_SCHEME` is the scheme
 | `getGapSlotCount()` | The gap slots of every `ContiguityBroken`, added up |
 | `getLoneEventSessions()` | The sessions holding one event and no more, that one movable, ascending |
 | `getLoneEventSessionCount()` | How many of those there are |
+| `getLoneParticipantSessionCount()` | The lone participant-sessions: for each participant, the sessions in which it has one event and that one movable, summed over the participants |
 | `getIdleSessionCount()` | The idle sessions, summed over the participants |
 | `getMovedEventIds()` | The IDs of the events placed anywhere but at their current position, ascending |
 | `getMovedCount()` | How many of those there are |
 | `isClean()` | Whether nothing is unplaced and there is no violation |
 | `isBudgetExhausted()` | Whether the step budget stopped a search |
 | `fingerprint()` | The outcome's fingerprint |
-| `toArray()` | `['format_version' => 1, 'assignments' => ..., 'unplaced' => ..., 'violations' => ..., 'metrics' => ...]`, each list holding the `toArray()` of its records without their own `format_version` (see [Format Versions](#format-versions)), and `metrics` the five figures: `unplaced`, `gap_slots`, `lone_event_sessions`, `idle_sessions`, `moved` |
+| `toArray()` | `['format_version' => 2, 'assignments' => ..., 'unplaced' => ..., 'violations' => ..., 'metrics' => ...]`, each list holding the `toArray()` of its records without their own `format_version` (see [Format Versions](#format-versions)), and `metrics` the six figures: `unplaced`, `gap_slots`, `lone_event_sessions`, `lone_participant_sessions`, `idle_sessions`, `moved` |
 
 Building one by hand takes the three lists and, optionally, the budget
-flag and the three figures an outcome cannot work out from its lists:
-`new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false, array $loneEventSessions = [], int $idleSessions = 0, array $movedEventIds = [])`.
+flag and the four figures an outcome cannot work out from its lists:
+`new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false, array $loneEventSessions = [], int $idleSessions = 0, array $movedEventIds = [], int $loneParticipantSessions = 0)`.
 A list that holds anything other than the objects or values it is for,
-or a negative count of idle sessions, throws an `InvalidInputException`.
-An outcome built without the figures has none: no lone-event session, no
-idle session, no moved event.
+or a negative count of idle sessions or of lone participant-sessions,
+throws an `InvalidInputException`. An outcome built without the figures
+has none: no lone-event session, no lone participant-session, no idle
+session, no moved event.
 
 #### `SlotAssignment`
 
@@ -7862,7 +8029,11 @@ records with its reasons:
 - **Forms are versioned one by one.** When a release changes a form, that
   form takes the next number, the changelog says what differs, and
   `fromArray()` keeps reading the earlier versions. A patch release never
-  changes a form.
+  changes a form. 0.4.0 gives two forms version 2: repack options, which
+  may name the objectives `fewest_gap_slots` and
+  `fewest_lone_participant_sessions` (version 1 refuses them), and the
+  repack outcome, whose `metrics` hold `lone_participant_sessions`. Every
+  other form is still version 1.
 - **An earlier release does not check the version.** 0.2.x reads an array
   written by 0.3.0 as it read its own, ignoring `format_version` and every
   other key it does not know, so an application that rolls back keeps
@@ -7871,7 +8042,9 @@ records with its reasons:
   before reading them with those releases. What 0.2.x has no key for it
   does not see: it reads an awarded result as one that was played, a
   stage state without its adjustments, and a level tie settled by a decider
-  as one that nobody settled.
+  as one that nobody settled. 0.3.x does check it, and refuses the
+  version 2 forms 0.4.0 writes: repack options written by 0.4.0 are not
+  read by 0.3.x, whether or not they name a new objective.
 
 `format_version` is not the `v1` or `v2` inside an engine fingerprint
 ([Recording Which Engine Pairs a State](#recording-which-engine-pairs-a-state))
