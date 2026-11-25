@@ -161,6 +161,39 @@ describe('a pre-drawn Swiss schedule', function (): void {
         }
     });
 
+    // A field of odd size at its most rounds, where a draw can give a
+    // participant a second bye: the draws that continue the randomizer's
+    // sequence are held to the same rule as the draws from a seed
+    it('gives nobody a second bye for a scheduler that holds a randomizer', function (): void {
+        $scheduler = new SwissScheduler(null, new Randomizer(new Mt19937(7)));
+
+        $problems = [];
+        for ($schedule = 1; $schedule <= 60; ++$schedule) {
+            foreach (preDrawnProblems($scheduler->schedule(preDrawnField(9), new SwissOptions(8)), 9, 8) as $problem) {
+                $problems[] = "schedule {$schedule}: {$problem}";
+            }
+        }
+
+        expect($problems)->toBe([]);
+    });
+
+    // Constraints take away the rotation, not the redraw: where a draw
+    // without a second bye exists, a scheduler with constraints draws until
+    // it finds one, as one without them does. The constraint here accepts
+    // every event, so it changes nothing else.
+    it('gives nobody a second bye under constraints that leave such a schedule', function (): void {
+        $scheduler = new SwissScheduler(ConstraintSet::create()->custom(static fn(Event $event): bool => true, 'Accept every event')->build());
+
+        $problems = [];
+        for ($seed = 1; $seed <= 100; ++$seed) {
+            foreach (preDrawnProblems($scheduler->schedule(preDrawnField(9), new SwissOptions(8, $seed)), 9, 8) as $problem) {
+                $problems[] = "seed {$seed}: {$problem}";
+            }
+        }
+
+        expect($problems)->toBe([]);
+    });
+
     // Without a source of draws there is one draw, and it reaches a round
     // with no pairing at 26 participants from 24 rounds on, at 34 from 32
     // and at 37 at 36, and gives a participant a second bye at 33 and 32:
@@ -309,7 +342,7 @@ describe('a pre-drawn Swiss schedule', function (): void {
     // it. Where every draw that is complete gives a participant a second
     // bye, the first such draw is the schedule, rather than none. Here p5
     // may meet p1 only, so in three rounds of five participants p5 plays at
-    // most once and sits out the other two.
+    // most once and sits out at least two.
     it('returns a draw with a second bye under constraints that leave no other schedule', function (?int $seed): void {
         $scheduler = new SwissScheduler(ConstraintSet::create()->custom(
             static fn(Event $event): bool => !$event->hasParticipant(new Participant('p5', 'Participant 5'))
@@ -322,8 +355,17 @@ describe('a pre-drawn Swiss schedule', function (): void {
         $byes = $schedule->getMetadataValue('byes');
         assert(is_array($byes));
 
+        $opponentsOfP5 = [];
+        foreach ($schedule->getEvents() as $event) {
+            $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+            if (in_array('p5', $ids, true)) {
+                $opponentsOfP5 = [...$opponentsOfP5, ...array_values(array_diff($ids, ['p5']))];
+            }
+        }
+
         expect(count($schedule->getEvents()))->toBe(6)
-            ->and(array_count_values($byes)['p5'] ?? 0)->toBe(2)
+            ->and(array_count_values($byes)['p5'] ?? 0)->toBeGreaterThanOrEqual(2)
+            ->and(array_diff($opponentsOfP5, ['p1']))->toBe([])
             ->and(preDrawnLines($scheduler->schedule(preDrawnField(5), $options)))->toBe(preDrawnLines($schedule));
     })->with([[null], [1], [2]]);
 });
