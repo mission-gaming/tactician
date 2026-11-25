@@ -136,8 +136,18 @@ final class BracketViewBuilder
         $drafts = [];
         /** @var array<string, NodeDraft> $nodes */
         $nodes = [];
+        // The shape names the nodes of a round by the places they hold. A
+        // round drawn by hand can show a node that holds none before them
+        // (docs/adr/0025), so the node that holds a place is named by its
+        // place among those that do
+        /** @var array<string, string> $byPlace */
+        $byPlace = [];
 
         foreach ($shape as $index => [$side, $round, $specs]) {
+            $specs = array_map(
+                static fn(array $spec): array => [...$spec, 'nodes' => array_map(static fn(string $id): string => $byPlace[$id] ?? $id, $spec['nodes'])],
+                $specs
+            );
             $walked = $reading->walked[$index] ?? null;
             if ($walked !== null && $walked['side'] === $side && $walked['round'] === $round) {
                 $draft = self::walkedRound($walked, $specs);
@@ -146,6 +156,13 @@ final class BracketViewBuilder
                 $draft = self::notPlayedRound($side, $round, $specs);
             } else {
                 $draft = self::projectedRound($side, $round, $specs, $nodes, $reading->withdrawn, false);
+            }
+
+            $place = 0;
+            foreach ($draft['nodes'] as $node) {
+                if ($node['place']) {
+                    $byPlace[BracketNode::idOf($side, $round, ++$place)] = BracketNode::idOf($side, $round, $node['position']);
+                }
             }
 
             self::index($draft, $nodes);

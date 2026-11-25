@@ -10,6 +10,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\Bracket;
 use MissionGaming\Tactician\Stage\BracketNodeStatus;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
@@ -78,6 +79,47 @@ function handDrawnTiers(SingleEliminationEngine|DoubleEliminationEngine $engine,
     ksort($tiers, SORT_NATURAL);
 
     return $tiers;
+}
+
+/**
+ * The slots of a view that name a node they are filled from and hold
+ * somebody that node did not send there, as text: none in a view that names
+ * its sources right.
+ *
+ * @return list<string>
+ */
+function handDrawnMisnamedSources(Bracket $bracket): array
+{
+    $byId = [];
+    foreach ($bracket->getRounds() as $round) {
+        foreach ($round->getNodes() as $node) {
+            $byId[$node->getId()] = $node;
+        }
+    }
+
+    $misnamed = [];
+    foreach ($bracket->getRounds() as $round) {
+        foreach ($round->getNodes() as $node) {
+            foreach ($node->getSlots() as $slot) {
+                $participant = $slot->getParticipant();
+                $sources = $slot->getSourceNodes();
+                if (!$participant instanceof Participant || count($sources) !== 1 || !isset($byId[$sources[0]])) {
+                    continue;
+                }
+                $source = $byId[$sources[0]];
+                $sent = match ($slot->getSource()) {
+                    SlotSource::AdvancerOf => $source->getAdvancer()?->getId() === $participant->getId(),
+                    SlotSource::LoserOf => in_array($participant->getId(), array_map(static fn(Participant $loser): string => $loser->getId(), $source->getLosers()), true),
+                    default => true,
+                };
+                if (!$sent) {
+                    $misnamed[] = "{$participant->getId()} in {$node->getId()} from {$slot->getSource()->value} {$sources[0]}";
+                }
+            }
+        }
+    }
+
+    return $misnamed;
 }
 
 describe('a round drawn by hand after a withdrawal (issue #172)', function (): void {
@@ -160,7 +202,8 @@ describe('a round drawn by hand after a withdrawal (issue #172)', function (): v
                 $sources = [...$sources, ...$slot->getSourceNodes()];
             }
         }
-        expect($sources)->toBe(['main:2:2', 'main:2:3', 'main:2:4', 'main:2:5']);
+        expect($sources)->toBe(['main:2:2', 'main:2:3', 'main:2:4', 'main:2:5'])
+            ->and(handDrawnMisnamedSources($bracket))->toBe([]);
     });
 
     it('still sends on an entrant the round leaves alone who is in the stage', function (): void {
@@ -217,7 +260,12 @@ describe('a round drawn by hand after a withdrawal (issue #172)', function (): v
             }
         }
         $tiers = handDrawnTiers($engine, $state);
-        expect($tiers['p1'])->toBe($tiers['p7'])
+
+        // And the view names the node each entrant came from: the node
+        // that holds no place is not counted among the places of its round
+        // (it named the node before the one a slot was filled from)
+        expect(handDrawnMisnamedSources($engine->getBracket($state)))->toBe([])
+            ->and($tiers['p1'])->toBe($tiers['p7'])
             ->and($tiers['p1'])->toBeLessThan($tiers['p5'])
             ->and($tiers['p5'])->toBe($tiers['p6']);
     });
