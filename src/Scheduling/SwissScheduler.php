@@ -48,16 +48,25 @@ use Random\Randomizer;
  * that holds one continues its sequence from call to call.
  *
  * Every round count the scheduler accepts is generated when there are no
- * constraints. A round is paired without a look at the rounds to come, so
- * a draw can reach a round that has no pairing without a repeat; the
- * scheduler then draws again (up to DRAWS draws in all; with a seed each
- * later draw has a seed of its own taken from the seed, see
- * redrawSequence(), and with a Randomizer each continues its sequence, so
- * the result is still a function of the seed), and when that is not
- * enough, or there is nothing to draw from, it builds the rounds by
- * rotation (drawByRotation()). A schedule that needs none of this is the
- * one the first draw gives. With constraints a schedule may not exist, and
- * the failure of the last draw is reported.
+ * constraints, and in a field of odd size nobody has a second bye: there
+ * are fewer rounds than participants, so a schedule with a different
+ * participant out each round always exists. A round is paired without a
+ * look at the rounds to come, so a draw can reach a round that has no
+ * pairing without a repeat, and at the largest round counts of a field of
+ * odd size the engine can give a participant a second bye where the round
+ * has no pairing otherwise. Either way the draw is failed and the
+ * scheduler draws again (up to DRAWS draws in all; with a seed each later
+ * draw has a seed of its own taken from the seed, see redrawSequence(),
+ * and with a Randomizer each continues its sequence, so the result is
+ * still a function of the seed), and when that is not enough, or there is
+ * nothing to draw from, it builds the rounds by rotation
+ * (drawByRotation()), in which nobody has a second bye. A schedule that
+ * needs none of this is the one the first draw gives.
+ *
+ * With constraints a schedule may not exist, and the rotation is not
+ * tried, since the constraints may reject it. Where no draw is complete,
+ * the failure of the last draw is reported; where every complete draw
+ * gives a participant a second bye, the first of them is returned.
  *
  * @experimental
  */
@@ -68,9 +77,10 @@ final class SwissScheduler implements SchedulerInterface
     /**
      * How many times a schedule is drawn through the engine before the
      * scheduler stops drawing. At the largest round counts up to about
-     * three draws in ten reach a round with no pairing, so twenty draws all
-     * doing so is not expected in practice; the number bounds the work, and the
-     * rotation is what makes the result certain.
+     * three draws in ten reach a round with no pairing, and in a field of
+     * odd size about one in four more gives a participant a second bye, so
+     * twenty draws all doing either is not expected in practice; the number
+     * bounds the work, and the rotation is what makes the result certain.
      */
     private const int DRAWS = 20;
 
@@ -136,40 +146,57 @@ final class SwissScheduler implements SchedulerInterface
         $plan = new SwissPlan($participants, $rounds);
 
         // A round is paired with no look at the rounds to come, so a draw
-        // can leave a later round without a pairing. That says nothing
-        // about the configuration: another draw of the same field goes
-        // through. A draw that needs no redraw is not touched by this.
+        // can leave a later round without a pairing, or give a participant
+        // of a field of odd size a second bye. That says nothing about the
+        // configuration: another draw of the same field goes through. A
+        // draw that needs no redraw is not touched by this.
         $draws = $sequence === null ? 1 : self::DRAWS;
-        $drawn = ['events' => [], 'byes' => [], 'failure' => null];
+        $drawn = null;
+        $failed = null;
+        $withASecondBye = null;
         for ($draw = 1; $draw <= $draws; ++$draw) {
             if ($redraws === null) {
-                $drawn = $this->drawWithEngine($participants, $rounds, $this->randomizer, null);
+                $attempt = $this->drawWithEngine($participants, $rounds, $this->randomizer, null);
             } else {
                 $seedOfDraw = $draw === 1 ? $seed : $redraws->getInt(PHP_INT_MIN, PHP_INT_MAX);
-                $drawn = $this->drawWithEngine($participants, $rounds, null, $seedOfDraw);
+                $attempt = $this->drawWithEngine($participants, $rounds, null, $seedOfDraw);
             }
-            if ($drawn['failure'] === null) {
+            if ($attempt['failure'] !== null) {
+                $failed = $attempt;
+            } elseif (self::someoneHasASecondBye($attempt['byes'])) {
+                $withASecondBye ??= $attempt;
+            } else {
+                $drawn = $attempt;
+
                 break;
             }
         }
 
-        if ($drawn['failure'] !== null) {
-            if ($this->constraints !== null) {
-                throw new IncompleteScheduleException(
-                    $plan->getExpectedEventCount(),
-                    count($drawn['events']),
-                    $this->violationCollector,
-                    $plan,
-                    $participants,
-                    "Failed to generate complete Swiss schedule for round {$drawn['failure']->getRoundNumber()}.",
-                    0,
-                    $drawn['failure']
-                );
-            }
-
+        if ($drawn === null && $this->constraints === null) {
             // Without constraints every accepted round count has a
-            // schedule, and the rotation builds one outright.
+            // schedule with no second bye, and the rotation builds one
+            // outright.
             $drawn = $this->drawByRotation($participants, $rounds, $sequence);
+        }
+
+        // With constraints the rotation may be rejected: a complete draw
+        // with a second bye is better than none
+        $drawn ??= $withASecondBye;
+
+        if ($drawn === null) {
+            // Not null: no draw gave a schedule, so one failed
+            assert($failed !== null && $failed['failure'] !== null);
+
+            throw new IncompleteScheduleException(
+                $plan->getExpectedEventCount(),
+                count($failed['events']),
+                $this->violationCollector,
+                $plan,
+                $participants,
+                "Failed to generate complete Swiss schedule for round {$failed['failure']->getRoundNumber()}.",
+                0,
+                $failed['failure']
+            );
         }
 
         $events = $drawn['events'];
@@ -187,6 +214,16 @@ final class SwissScheduler implements SchedulerInterface
         $this->validateGeneratedSchedule($schedule, $participants, $plan);
 
         return $schedule;
+    }
+
+    /**
+     * Whether a participant sits out more than one round of a draw.
+     *
+     * @param array<int, string> $byes The ID of who sits out, by round
+     */
+    private static function someoneHasASecondBye(array $byes): bool
+    {
+        return count($byes) !== count(array_unique($byes));
     }
 
     /**
