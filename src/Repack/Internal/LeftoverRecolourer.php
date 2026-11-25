@@ -852,16 +852,18 @@ final class LeftoverRecolourer
 
         $order = $this->candidatePositions($fromSession);
 
-        // What blocking() answers at each position, for the three passes
-        // below. Each branch they try is rolled back before the next one,
-        // so the placed events, and with them the answers, are the same at
-        // the start of every pass and every branch (see checkedBlocking()).
+        // What blocking() answered at each position the first pass below
+        // checked, for the two passes after it. Each branch they try is
+        // rolled back before the next one, so the placed events, and with
+        // them the answers, are the same at the start of every pass and
+        // every branch. The first pass checks each position once, so it
+        // has no answer to read from here
         /** @var array<int, list<int>|null> $checked */
         $checked = [];
 
         // A position where it collides with nothing ends the path at once
         foreach ($order as $index) {
-            if ($this->room[$index] > 0 && $this->checkedBlocking($eventIndex, $index, $checked) === []) {
+            if ($this->room[$index] > 0 && ($checked[$index] = $this->blocking($eventIndex, $index)) === []) {
                 $this->put($eventIndex, $index);
 
                 return true;
@@ -953,27 +955,6 @@ final class LeftoverRecolourer
                 $this->put($eventIndex, $index, false);
             }
         }
-    }
-
-    /**
-     * blocking() for the event at the position, from $checked when the
-     * position was checked before in the same call of insert(). A check
-     * answered from $checked still counts as one towards the work limit:
-     * the limit decides the outcome of a request that reaches it, and it
-     * counts the checks the step makes, not the ones it has to compute.
-     *
-     * @param array<int, list<int>|null> $checked
-     * @return list<int>|null
-     */
-    private function checkedBlocking(int $eventIndex, int $index, array &$checked): ?array
-    {
-        if (array_key_exists($index, $checked)) {
-            ++$this->work;
-
-            return $checked[$index];
-        }
-
-        return $checked[$index] = $this->blocking($eventIndex, $index);
     }
 
     /**
