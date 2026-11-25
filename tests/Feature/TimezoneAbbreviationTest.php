@@ -213,6 +213,19 @@ describe('Writing a time held in a timezone abbreviation', function (): void {
         }
     })->with(['Europe/London', 'UTC', '+01:00', 'Z']);
 
+    it('is not refused by a session grid for a name of UTC, which reads back to the same slot times', function (string $timezone): void {
+        $grid = new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone($timezone)), new DateTimeImmutable('2026-08-19 20:00', new DateTimeZone($timezone))],
+            new DateInterval('PT30M'),
+            2
+        );
+
+        $readBack = SessionGrid::fromArray($grid->toArray());
+
+        expect($grid->toArray())->toHaveKey('timezone', $timezone)
+            ->and($readBack->getSlotTime(1, 1))->toEqual($grid->getSlotTime(1, 1));
+    })->with(['Z', 'UCT']);
+
     it('is not refused by a blackout rule, which writes its bounds in UTC', function (): void {
         $rule = new BlackoutRule([[
             'from' => new DateTimeImmutable('2026-11-09 00:00', new DateTimeZone('BST')),
