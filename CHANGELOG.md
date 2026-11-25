@@ -36,9 +36,8 @@ wrongly, and a new version would refuse the stamps of every bracket.
   leaves one place too many, which the engine refused
   (`RecordedRoundMismatch`); it is now read, and the withdrawn entrant goes
   out with those the next losers round puts out, as the two of a void
-  winners tie do. A round the engines pair never
-  holds such an entrant, so no state paired by the engines alone reads
-  otherwise. Who is affected: a bracket with a round drawn by hand after a
+  winners tie do. A round the engines pair never holds such an entrant, so
+  no state paired by the engines alone reads otherwise. Who is affected: a bracket with a round drawn by hand after a
   withdrawal. What to check: the round paired after it and the table.
 - **A last round drawn by hand across the final and the third-place tie
   ends the bracket** (#183). With the third-place option, a last round that
@@ -48,8 +47,8 @@ wrongly, and a new version would refuse the stamps of every bracket.
   one entrant twice in a round. Now the tie the round marks as the
   third-place tie (`BracketTie::ThirdPlace`) is that tie and the other tie
   of the round is the final, whoever they hold (a tie marked
-  `BracketTie::Final` also where neither of its entrants stood in the
-  slots). The bracket is over when both are decided, placing the final's
+  `BracketTie::Final` also where its two are the semifinal losers, who
+  stood in no slot of the final). The bracket is over when both are decided, placing the final's
   two first and second and the third-place tie's third and fourth, and the
   round is reported as manual. A last round whose events carry no mark is
   read as before. Who is affected: a bracket with a third-place tie whose
