@@ -774,7 +774,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             '$keeping->getMovedEventIds()',
             [
                 "[]\n2\n0\n[0,0,1,0,0]\n[0,0,0,0,1]\n"
-                . '{"format_version":2,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,'
+                . '{"format_version":1,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,'
                 . "\"throw_on_violations\":false,\"objectives\":[\"least_churn\",\"fewest_idle_sessions\"]}\n",
             ],
             [],

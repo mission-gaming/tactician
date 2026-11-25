@@ -52,18 +52,15 @@ heading **Output change (fix)**.
 
 ### Changed
 
-- **Repack options are format version 2** (ADR 0005). `toArray()` writes
-  `'format_version' => 2`; version 2 reads the five objective
-  identifiers. Version 1, and options with no `format_version` (what 0.2.x
-  and 0.3.x wrote), are read as before and refuse `fewest_gap_slots` and
-  `fewest_lone_participant_sessions` (`InvalidConfigurationException`,
-  reason `UnknownIdentifier`, naming the version that has them). 0.3.x
-  refuses every version 2 array, so options written by 0.4.0 are not read
-  back by an application that rolls back to 0.3.x.
 - **Repack outcomes are format version 2.** `toArray()` writes
   `'format_version' => 2`, and `metrics` holds `lone_participant_sessions`
   after `lone_event_sessions`. An outcome's array has no `fromArray()`;
-  code that reads the array it stored should expect the new key.
+  code that reads the array it stored should expect the new key. Repack
+  options stay version 1: a new identifier of the `objectives` key is not
+  a new key (ADR 0005 now says so). 0.3.x reads options written by 0.4.0
+  that name neither new objective, and refuses options that name
+  `fewest_gap_slots` or `fewest_lone_participant_sessions` as an unknown
+  identifier (`InvalidConfigurationException`, reason `UnknownIdentifier`).
 
 ### Fixed
 

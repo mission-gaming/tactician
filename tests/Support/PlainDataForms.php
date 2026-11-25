@@ -777,9 +777,6 @@ final class PlainDataForms
     public static function versionOf(string $name): int
     {
         return [
-            // 0.4.0: the objectives fewest_gap_slots and
-            // fewest_lone_participant_sessions
-            'repack options' => 2,
             // 0.4.0: lone_participant_sessions among the metrics
             'repack outcome' => 2,
         ][$name] ?? 1;

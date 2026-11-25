@@ -1669,18 +1669,20 @@ untouched.
     outcome, whatever the options, because a caller ranking outcomes
     (decision 52) needs it for outcomes made without the objective as
     much as with it.
-71. **Two forms take version 2.** The repack options gain two
-    identifiers, and a reader that does not know them would refuse them
-    as unknown, so the options are version 2 (ADR 0005): version 1,
-    and an array with no version, read the three identifiers they
-    always had and refuse the two new ones with a message that names
-    the version that has them, so that a stored row is never read as
-    something it was not. The outcome's `metrics` gain a key, so the
-    outcome is version 2 as well, though it has no `fromArray()`. 0.3.x
-    refuses version 2 of both; that is the cost of the rule, and the
-    changelog says so. These are the first forms of the library to
-    reach version 2, so the tests of the forms now read each form's
-    newest version from `tests/Support/PlainDataForms.php`.
+71. **The options stay version 1; the outcome takes version 2.** The
+    repack options gain two identifiers of the `objectives` key, and no
+    key. A reader that does not know an identifier refuses it as
+    unknown, loudly, and never misreads it, so the options stay version
+    1, as `balanced_where_possible` stayed in version 1 of round-robin
+    options (ADR 0005, which now says so of every new identifier).
+    Version 2 of the options was considered and not taken: 0.3.x would
+    refuse every options array 0.4.0 writes, the default ones included,
+    where now it refuses only the ones that name a new objective. The
+    outcome's `metrics` gain a key, so the outcome is version 2, though
+    it has no `fromArray()`, and 0.3.x refuses it. It is the first form
+    of the library to reach version 2, so the tests of the forms now
+    read each form's newest version from
+    `tests/Support/PlainDataForms.php`.
 
 *Measurements.* Run outside the suite with scripts that are not shipped,
 PHP 8.4, no OPcache, on a machine doing other work (so read the times as

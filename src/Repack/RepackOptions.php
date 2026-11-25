@@ -102,13 +102,6 @@ final readonly class RepackOptions
     public const int MAX_CONSOLIDATION_WEIGHT = PHP_INT_MAX >> 1;
 
     /**
-     * The version of the form toArray() writes. Version 2 knows the
-     * objectives FewestGapSlots and FewestLoneParticipantSessions; version
-     * 1, which 0.3.x wrote, does not.
-     */
-    private const int FORMAT_VERSION = 2;
-
-    /**
      * @param int $consolidationWeight Preference for concentrating a participant's
      *                                 events into fewer sessions (0 disables)
      * @param int $earlyFillWeight Preference for filling earliest sessions first
@@ -209,14 +202,12 @@ final readonly class RepackOptions
      * method does not know is refused, so that a misspelt option is not
      * silently read as its default.
      *
-     * The form has two versions. Version 2, which toArray() writes, knows
-     * every objective. Version 1, which 0.3.x wrote, knows the first three
-     * only, so an array that states no format version (which is read as
-     * version 1) and names `fewest_gap_slots` or
-     * `fewest_lone_participant_sessions` is refused, with the reason
-     * `UnknownIdentifier`: an array that names them says
-     * `'format_version' => 2`. The keys and every other value mean the
-     * same in both.
+     * The form is version 1, with or without the two identifiers 0.4.0
+     * added (`fewest_gap_slots`, `fewest_lone_participant_sessions`): a new
+     * identifier of an existing key is not a new key (ADR 0005). A release
+     * that does not know an identifier refuses it with the reason
+     * `UnknownIdentifier`, so options that name one of the two are refused
+     * by 0.3.x, and options that name neither are read by it as they are.
      *
      * @param array<string, mixed> $config
      *
@@ -229,15 +220,11 @@ final readonly class RepackOptions
      */
     public static function fromArray(array $config): self
     {
-        $version = PlainData::checkOptions(
+        PlainData::checkOptions(
             $config,
             ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations', 'objectives'],
-            'repack options',
-            newest: self::FORMAT_VERSION
+            'repack options'
         );
-        $known = $version === 1
-            ? [RepackObjective::LeastChurn, RepackObjective::FewestLoneEventSessions, RepackObjective::FewestIdleSessions]
-            : RepackObjective::cases();
 
         $consolidationWeight = $config['consolidation_weight'] ?? 3;
         $earlyFillWeight = $config['early_fill_weight'] ?? 1;
@@ -264,18 +251,15 @@ final readonly class RepackOptions
             }
 
             $objective = RepackObjective::tryFrom($identifier);
-            if (!$objective instanceof RepackObjective || !in_array($objective, $known, true)) {
+            if (!$objective instanceof RepackObjective) {
                 throw new InvalidConfigurationException(
-                    $objective instanceof RepackObjective
-                        ? sprintf(
-                            "The repack objective '%s' is not one of version 1 of repack options; options that name it state 'format_version' => %d",
-                            $identifier,
-                            self::FORMAT_VERSION
-                        )
-                        : 'Unknown repack objective',
+                    'Unknown repack objective',
                     [
                         'objective' => $identifier,
-                        'known' => array_map(static fn(RepackObjective $case): string => $case->value, $known),
+                        'known' => array_map(
+                            static fn(RepackObjective $case): string => $case->value,
+                            RepackObjective::cases()
+                        ),
                     ],
                     reason: InvalidConfigurationReason::UnknownIdentifier
                 );
@@ -308,7 +292,7 @@ final readonly class RepackOptions
 
     /**
      * Serialize back to the plain configuration data fromArray() accepts:
-     * `format_version`, the version of this form (2), then the two
+     * `format_version`, the version of this form (1), then the two
      * weights, the budget and the flag, always present, and `objectives`
      * (their backing strings, in order) only when there is one. Options
      * with no objective are written as they were before objectives
@@ -319,7 +303,7 @@ final readonly class RepackOptions
     public function toArray(): array
     {
         $data = [
-            PlainData::VERSION_KEY => self::FORMAT_VERSION,
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'consolidation_weight' => $this->consolidationWeight,
             'early_fill_weight' => $this->earlyFillWeight,
             'step_budget' => $this->stepBudget,

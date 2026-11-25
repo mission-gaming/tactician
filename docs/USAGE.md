@@ -6840,7 +6840,7 @@ $together = (new ScheduleRepacker())->repack(new RepackRequest(
 echo json_encode($rank($together)), "\n";                  // [0,0,0,0,1]
 
 echo json_encode(RepackOptions::fromArray(['objectives' => ['least_churn', 'fewest_idle_sessions']])->toArray()), "\n";
-// {"format_version":2,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,"throw_on_violations":false,"objectives":["least_churn","fewest_idle_sessions"]}
+// {"format_version":1,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,"throw_on_violations":false,"objectives":["least_churn","fewest_idle_sessions"]}
 ```
 
 With the fewest moved events asked for, every event stays where it is
@@ -7058,7 +7058,7 @@ $kept = (new ScheduleRepacker())->repack(new RepackRequest($calendar, [], $night
 ])));
 echo json_encode($kept->getMovedEventIds()), ' ', $kept->getGapSlotCount(), "\n";       // [] 2
 
-echo json_encode(RepackOptions::fromArray(['format_version' => 2, 'objectives' => ['least_churn', 'fewest_gap_slots']])->toArray()['objectives']), "\n";
+echo json_encode(RepackOptions::fromArray(['objectives' => ['least_churn', 'fewest_gap_slots']])->toArray()['objectives']), "\n";
 // ["least_churn","fewest_gap_slots"]
 ```
 
@@ -7123,12 +7123,12 @@ repack still spends at most twice `stepBudget`. On the 63 round robins
 (PHP 8.4, no OPcache), the median was 7 ms for 2 with no objective, the
 90th percentile 210 ms for 126, and the slowest 419 ms for 234.
 
-**Earlier releases.** `FewestGapSlots` and
-`FewestLoneParticipantSessions` are in version 2 of the repack options,
-which 0.4.0 writes; version 1, and options with no `format_version`,
-refuse them. 0.3.x refuses every array written as version 2, so options
-written by 0.4.0 are not read back by a rollback ([Format
-Versions](#format-versions)).
+**Earlier releases.** The repack options are still version 1 of their
+form: a new identifier of the `objectives` key is not a new key ([Format
+Versions](#format-versions)). 0.3.x reads options written by 0.4.0 as
+they are where they name neither new objective, and refuses options that
+name `fewest_gap_slots` or `fewest_lone_participant_sessions` as an
+unknown identifier.
 
 ### The Shortest Grid
 
@@ -7606,8 +7606,8 @@ weight.
 
 | Method | Returns |
 |---|---|
-| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget`, `throw_on_violations` and `objectives`, a list of objective identifiers (static). Version 2 reads all five identifiers; version 1, and an array with no `format_version`, reads `least_churn`, `fewest_lone_event_sessions` and `fewest_idle_sessions` and refuses the other two (`InvalidConfigurationException`, reason `UnknownIdentifier`) |
-| `toArray()` | The same plain data, with `format_version` (2) first; `objectives` is written only when there is one |
+| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget`, `throw_on_violations` and `objectives`, a list of objective identifiers (static). An identifier it does not know is refused (`InvalidConfigurationException`, reason `UnknownIdentifier`); 0.3.x knows the first three only |
+| `toArray()` | The same plain data, with `format_version` (1) first; `objectives` is written only when there is one |
 
 #### `RepackObjective`
 
@@ -8029,11 +8029,13 @@ records with its reasons:
 - **Forms are versioned one by one.** When a release changes a form, that
   form takes the next number, the changelog says what differs, and
   `fromArray()` keeps reading the earlier versions. A patch release never
-  changes a form. 0.4.0 gives two forms version 2: repack options, which
-  may name the objectives `fewest_gap_slots` and
-  `fewest_lone_participant_sessions` (version 1 refuses them), and the
-  repack outcome, whose `metrics` hold `lone_participant_sessions`. Every
-  other form is still version 1.
+  changes a form. 0.4.0 gives one form version 2: the repack outcome,
+  whose `metrics` hold `lone_participant_sessions`. Every other form is
+  still version 1. A new identifier among the values of an existing key
+  is not a change of the form: repack options that name the objectives
+  0.4.0 added, `fewest_gap_slots` and `fewest_lone_participant_sessions`,
+  are version 1, and a release that does not know them refuses them as
+  unknown identifiers.
 - **An earlier release does not check the version.** 0.2.x reads an array
   written by 0.3.0 as it read its own, ignoring `format_version` and every
   other key it does not know, so an application that rolls back keeps
@@ -8043,8 +8045,7 @@ records with its reasons:
   does not see: it reads an awarded result as one that was played, a
   stage state without its adjustments, and a level tie settled by a decider
   as one that nobody settled. 0.3.x does check it, and refuses the
-  version 2 forms 0.4.0 writes: repack options written by 0.4.0 are not
-  read by 0.3.x, whether or not they name a new objective.
+  version 2 repack outcome 0.4.0 writes, which has no `fromArray()`.
 
 `format_version` is not the `v1` or `v2` inside an engine fingerprint
 ([Recording Which Engine Pairs a State](#recording-which-engine-pairs-a-state))

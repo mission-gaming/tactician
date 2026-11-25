@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Tests\Support\AwkwardIds;
@@ -225,10 +223,7 @@ describe('the format version of an array that is written', function (): void {
         ...array_keys(PlainDataForms::writtenOnly()),
     ])->with(fn(): array => ['ordinary ids' => [AwkwardIds::participants(AwkwardIds::sets()['ordinary ids'])]]);
 
-    // Data stored by 0.2.x has no version key anywhere. An array without
-    // the key is version 1, so an array of a form that has changed since
-    // reads the same without it only where it holds nothing of the later
-    // version, and is refused, loudly, where it does
+    // Data stored by 0.2.x has no version key anywhere
     it('may be missing from an array that is read: the value is the same', function (string $name, array $field): void {
         $form = PlainDataForms::all()[$name];
         if ($form['generate'] === null) {
@@ -245,17 +240,7 @@ describe('the format version of an array that is written', function (): void {
             $unversioned = $written;
             unset($unversioned['format_version']);
 
-            try {
-                $read = $form['read']($unversioned, $registry);
-            } catch (InvalidConfigurationException $exception) {
-                expect(PlainDataForms::versionOf($name))->toBeGreaterThan(1, "{$name}, instance {$i}")
-                    ->and($exception->getReason())->toBe(InvalidConfigurationReason::UnknownIdentifier)
-                    ->and($exception->getMessage())->toContain("'format_version' => " . PlainDataForms::versionOf($name));
-
-                continue;
-            }
-
-            expect(plainDataOf($read))->toBe($written, "{$name}, instance {$i}");
+            expect(plainDataOf($form['read']($unversioned, $registry)))->toBe($written, "{$name}, instance {$i}");
         }
     })->with(fn(): array => array_keys(PlainDataForms::all()))->with(fn(): array => [
         'ordinary ids' => [AwkwardIds::participants(AwkwardIds::sets()['ordinary ids'])],
