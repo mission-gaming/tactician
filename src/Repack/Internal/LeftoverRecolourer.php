@@ -868,8 +868,33 @@ final class LeftoverRecolourer
             }
         }
 
-        foreach ($order as $index) {
-            $lift = $this->liftFor($index, $this->checkedBlocking($eventIndex, $index, $checked));
+        // The first pass that lifts an event checks every position in
+        // order, one check each, reading the answer above where there is
+        // one, and notes where two events are in the way. The second
+        // goes only to those: a position does not come to qualify, the
+        // answers being fixed for the call, and passing over one costs
+        // nothing. The work limit counts a check at every position of every
+        // pass all the same: the count is advanced past each position
+        // passed over before the next one is tried, and to the end of the
+        // pass after it. A recursive insert() asks the limit when it
+        // starts, so the count must be exact at every one.
+        $twoInTheWay = [];
+        foreach ($order as $at => $index) {
+            ++$this->work;
+            $blocking = array_key_exists($index, $checked)
+                ? $checked[$index]
+                : $checked[$index] = $this->collisions($eventIndex, $index);
+            if ($blocking === null) {
+                continue;
+            }
+            if (count($blocking) > 1) {
+                if (count($blocking) === 2) {
+                    $twoInTheWay[$at] = $index;
+                }
+
+                continue;
+            }
+            $lift = $this->liftFor($index, $blocking);
             if ($lift === null) {
                 continue;
             }
@@ -883,17 +908,16 @@ final class LeftoverRecolourer
             }
             $this->rollBack($mark);
         }
+        $lastAt = count($order) - 1;
 
         // Where both participants are in the way, both events are lifted,
         // and the path branches: each of them needs a position of its own
-        foreach ($order as $index) {
-            $blocking = $this->checkedBlocking($eventIndex, $index, $checked);
-            if (
-                $blocking === null
-                || count($blocking) !== 2
-                || isset($this->lifted[$blocking[0]])
-                || isset($this->lifted[$blocking[1]])
-            ) {
+        $passedAt = -1;
+        foreach ($twoInTheWay as $at => $index) {
+            $this->work += $at - $passedAt;
+            $passedAt = $at;
+            $blocking = $checked[$index];
+            if ($blocking === null || isset($this->lifted[$blocking[0]]) || isset($this->lifted[$blocking[1]])) {
                 continue;
             }
 
@@ -909,6 +933,7 @@ final class LeftoverRecolourer
             }
             $this->rollBack($mark);
         }
+        $this->work += $lastAt - $passedAt;
 
         return false;
     }
@@ -991,6 +1016,18 @@ final class LeftoverRecolourer
     private function blocking(int $eventIndex, int $index): ?array
     {
         ++$this->work;
+
+        return $this->collisions($eventIndex, $index);
+    }
+
+    /**
+     * What blocking() answers, without counting a check towards the work
+     * limit: for a caller that counts its checks itself.
+     *
+     * @return list<int>|null
+     */
+    private function collisions(int $eventIndex, int $index): ?array
+    {
         $blocking = [];
         foreach ($this->edges[$eventIndex] as $pid) {
             if (isset($this->pinned[$index][$pid])) {
