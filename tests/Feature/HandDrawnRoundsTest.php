@@ -693,4 +693,44 @@ describe('a stage of double elimination drawn by hand with an entrant of another
         $rounds = array_map(static fn(RecordedRound $round): string => handDrawnShape($round->getPairing()), $engine->getRecordedRounds($state));
         expect(array_slice($rounds, 3))->toBe(['p3 v p8; byes p7', 'p3 v p7', 'p1 v p2', 'p2 v p3', 'p1 v p2']);
     });
+
+    // Where the entrant drawn in from the losers bracket won the winners tie,
+    // it held two places that met in one losers tie, and the engine paired it
+    // against itself and threw (found by the sweep in
+    // EliminationInvariantsTest).
+    it('pairs nobody against itself when the entrant from the losers bracket wins a winners tie', function (string $firstNamed, string $secondNamed, bool $fromHistory) use ($drawnIn): void {
+        // Given: Five entrants; p4 beats p5 in round 1, which drops p5 to
+        // the losers bracket, and p3 withdraws, which gives p2 a bye in
+        // winners round 2. The stage is drawn by hand with p5 against p2,
+        // and the first-named wins
+        $field = handDrawnField(5);
+        [$engine, $state] = $drawnIn(5, 1, 'p3', 'p1 v p4; byes p2', new Event([$field[$firstNamed], $field[$secondNamed]], new Round(2)), $fromHistory);
+
+        // Then: p2 goes on in the winners bracket, nobody drops from the tie,
+        // and the bracket plays on to its end with p5 in the losers bracket
+        // only, whoever won the tie
+        $nodes = [];
+        foreach ($engine->getBracket($state)->getRounds() as $bracketRound) {
+            foreach ($bracketRound->getNodes() as $node) {
+                if ($node->getRoundNumber() === 2) {
+                    $nodes[] = $node;
+                }
+            }
+        }
+        $given = array_values(array_filter($nodes, static fn($node): bool => $node->getStatus() === BracketNodeStatus::Uncontested));
+        expect($given)->toHaveCount(1)
+            ->and(array_map(static fn(Participant $participant): string => $participant->getId(), $given[0]->getParticipants()))->toBe(['p2'])
+            ->and($given[0]->getAdvancer()?->getId())->toBe('p2')
+            ->and($given[0]->getLosers())->toBe([]);
+        while (!$engine->isComplete($state)) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, handDrawnFirstWins($pairing->getEvents()));
+        }
+        $rounds = array_map(static fn(RecordedRound $round): string => handDrawnShape($round->getPairing()), $engine->getRecordedRounds($state));
+        expect(array_slice($rounds, 2))->toBe(['p5 v p4', 'p1 v p2', 'p2 v p5', 'p1 v p2']);
+    })->with([
+        'the entrant from the losers bracket wins' => ['p5', 'p2', false],
+        'the entrant of the stage wins' => ['p2', 'p5', false],
+        'read from rows in another order' => ['p5', 'p2', true],
+    ]);
 });
