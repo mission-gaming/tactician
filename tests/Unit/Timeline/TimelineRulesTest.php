@@ -204,6 +204,35 @@ describe('MinimumRestRule', function (): void {
         expect($rule->validate($scheduled))->toHaveCount(1);
     });
 
+    // A rest that moves 1970 forward and steps back from some other dates
+    // is no rest from those dates: only a sum that has wrapped round past the
+    // end of the times PHP holds covers every later kickoff
+    it('reports nothing after a kickoff from which the rest steps back, and the rest it asks from other kickoffs', function (DateInterval $rest): void {
+        $rule = new MinimumRestRule($rest);
+
+        // From 1 February, a month on less 30 days is 30 January
+        $fromFebruary = scheduledFixtures([
+            [$this->alice, $this->bob, '2027-02-01 12:00'],
+            [$this->alice, $this->carol, '2027-03-20 12:00'],
+        ]);
+        // From 1 March it is 2 March: a day's rest
+        $fromMarch = scheduledFixtures([
+            [$this->alice, $this->bob, '2027-03-01 12:00'],
+            [$this->alice, $this->carol, '2027-03-01 18:00'],
+        ]);
+
+        expect($rule->validate($fromFebruary))->toBe([])
+            ->and($rule->validate($fromMarch))->toHaveCount(1);
+    })->with([
+        'a relative date string' => [DateInterval::createFromDateString('+1 month -30 days')],
+        'a hand-built interval with a negative part' => [(static function (): DateInterval {
+            $rest = new DateInterval('P1M');
+            $rest->d = -30;
+
+            return $rest;
+        })()],
+    ]);
+
     // From a kickoff billions of years out, even a rest the constructor
     // accepts passes the end of the times PHP holds, and PHP's sum wraps
     // round to before the kickoff. The rest then covers every later kickoff

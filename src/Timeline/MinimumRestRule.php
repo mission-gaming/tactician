@@ -193,8 +193,13 @@ final readonly class MinimumRestRule implements TimelineRule
                 // the times PHP holds from a kickoff billions of years out,
                 // and PHP's sum then wraps round to before it. The rest ends
                 // later than any time PHP holds, so every later kickoff is
-                // inside it
-                $restPassesTheEnd = $earliestAllowed <= $previous;
+                // inside it. The wrapped sum lands more than MAX_TIMESTAMP
+                // seconds before the kickoff, and no rest the constructor
+                // accepts moves a time that far: a rest that steps back from
+                // some dates (`+1 month -30 days` from 1 February) moves it
+                // by a day or so, and is no rest from those dates, as before
+                $restPassesTheEnd = (float) $previous->getTimestamp() - (float) $earliestAllowed->getTimestamp()
+                    > IntervalArithmetic::MAX_TIMESTAMP;
 
                 if ($restPassesTheEnd || $current < $earliestAllowed) {
                     $violations[] = sprintf(
