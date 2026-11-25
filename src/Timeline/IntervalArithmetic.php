@@ -153,6 +153,51 @@ final class IntervalArithmetic
     }
 
     /**
+     * What advance() gives for a number of steps, given what it gave for
+     * fewer steps of the same interval from the same anchor.
+     *
+     * For a run of results in rising steps, such as the first slots of the
+     * rounds a schedule holds. An interval made from a relative date string
+     * is added one step at a time, each from the one before, so its result
+     * is the known result moved on by the steps between: the additions rise
+     * with the steps between and not with the steps from the anchor, which
+     * makes a run of results cost the steps of its last and not their sum.
+     * The limit on the steps of such an interval is of the steps from the
+     * anchor, as in advance(). Any other interval is multiplied out from
+     * the anchor, as advance() does it, and the known result is not used:
+     * the result of a calendar step is not the result of fewer steps moved
+     * on (one month from 31 January is the end of February, and two months
+     * 31 March and not 28 March).
+     *
+     * @param int $steps How many intervals to add to the anchor, 0 or more
+     * @param DateTimeImmutable $reached What advance() gave for $reachedSteps of the same
+     *                                   interval from the same anchor
+     * @param int $reachedSteps 0 or more; when it is more than $steps, the known result is
+     *                          not used
+     *
+     * @throws InvalidConfigurationException As advance() throws
+     */
+    public static function advanceFrom(
+        DateTimeImmutable $anchor,
+        DateInterval $interval,
+        int $steps,
+        DateTimeImmutable $reached,
+        int $reachedSteps
+    ): DateTimeImmutable {
+        if (!self::isRelative($interval) || $reachedSteps < 0 || $reachedSteps > $steps) {
+            return self::advance($anchor, $interval, $steps);
+        }
+
+        self::refuseTooManyRelativeSteps($interval, $steps);
+
+        for ($i = $reachedSteps; $i < $steps; ++$i) {
+            $reached = $reached->add($interval);
+        }
+
+        return $reached;
+    }
+
+    /**
      * The anchor and the steps after it, one at a time and in order: what
      * advance() gives for 0, 1, 2 and so on, up to one less than the count.
      *
