@@ -478,6 +478,17 @@ none.
   unused parameter of a test helper that Rector 2.8 reports removed.
   Development dependencies only; no output and no public signature changes.
 
+- **A Swiss round and a role streak limit cost less to check** (#253,
+  #254). The Swiss round search built a string key from two ids every
+  time it asked whether a pair had played; it now remembers the answer
+  for the round it is pairing. `ConsecutiveRoleConstraint` sorted each
+  participant's whole history by round on every question; it now sorts
+  only a history that is out of round order, and asks the role extractor
+  about the same events in the same order as before. Measured with
+  `composer bench-compare` (fastest of five rounds): 24 participants to
+  the last round, 33.3 ms to 29.5; under a role streak limit of 2, 20.5 ms
+  to 18.0. No output changes and no public signature changes.
+
 ### Fixed
 
 - `SessionGrid::ordinalOf()`, `positionOf()` and `getPositionCount()` no
