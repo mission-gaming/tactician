@@ -387,6 +387,48 @@ describe('LeftoverRecolourer', function (): void {
         }
     });
 
+    it('counts a check at every position of the lift of two, the positions it passes over and those after it included', function (): void {
+        // One session of four slots with room for two events each. Slot 0
+        // holds pins of participants 0, 3, 5 and 6, slot 2 one of 1 and
+        // 5, slot 3 one of 0, 3, 5 and 9, and events 0 (0 v 2) and 1
+        // (1 v 3) share slot 1. Event 2 (0 v 1) has only slot 1 open to
+        // it, where both are in the way, and event 1 has nowhere to go
+        // once it is lifted, so that path fails; event 3 (2 v 5) then
+        // lifts event 0 to slot 2 and takes its place.
+        //
+        // The direct move of event 2 checks slot 2 (1). Its path checks
+        // slot 2 (2), then one position after another for a lift of one
+        // (6), and the lift of two counts slots 0 and 1 (8) before it
+        // lifts both. Event 0 checks slots 1 and 2 and goes to slot 2
+        // (10); event 1 checks slot 1, then all four slots for a lift of
+        // one, and all four for the lift of two, where none has two in
+        // its way (19). The lift of two of event 2 then counts slots 2
+        // and 3, which it passes over (21). Event 3's direct move checks
+        // slot 2 (22), its path starts, checks slot 2 (23) and slots 0
+        // and 1 for a lift of one (25), and the path of event 0 that it
+        // lifts may start only at a limit of 25. Leaving out the
+        // positions the lift of two passes over, before the one it tries
+        // or after the last, would let it start lower
+        foreach ([24 => [2, 3], 25 => [2]] as $limit => $expectedLeft) {
+            $positions = [0 => [0, 1], 1 => [0, 1]];
+
+            $left = new LeftoverRecolourer(new StepBudget(1_000), $limit)->place(
+                [[0, 2], [1, 3], [0, 1], [2, 5]],
+                $positions,
+                [2, 3],
+                [0 => [0 => [0, 3], 3 => [0, 3], 5 => [0, 2, 3], 6 => [0], 1 => [2], 9 => [3]]],
+                [0 => [0 => 2, 2 => 1, 3 => 2]],
+                [0 => 4],
+                2
+            );
+
+            expect($left)->toBe($expectedLeft, "limit {$limit}")
+                ->and($positions)->toBe($expectedLeft === [2]
+                    ? [0 => [0, 2], 1 => [0, 1], 3 => [0, 1]]
+                    : [0 => [0, 1], 1 => [0, 1]], "limit {$limit}");
+        }
+    });
+
     it('has the share of its work limit that a budget below the default leaves, and tells the budget when that stops a search', function (): void {
         // The exchange request above, on steps that do not run out. At the
         // default budget the step has its whole limit of 500,000 position
