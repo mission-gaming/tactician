@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\Repack\SlotAssignment;
 use MissionGaming\Tactician\Tests\Support\RepackBruteForce;
 use MissionGaming\Tactician\Tests\Support\RepackFigures;
 use Random\Engine\Xoshiro256StarStar;
@@ -1213,6 +1214,70 @@ describe('Objectives ranked ahead of gap slots', function (): void {
             expect(rankedBy($outcome, $list) <=> rankedBy($plain, $list))->toBeLessThanOrEqual(0);
         }
     })->with(range(1250, 1265))->with([1, 7, 60, 900, 200_000]);
+
+    it('polish the schedule the search for fewer gap slots turned down too, and take it where it then ranks better', function (): void {
+        // Two sessions of four slots, one event to a slot. c is pinned
+        // against a at slot 1 of the first session and has two movable
+        // events against b. Laid out again with lone participant-sessions
+        // ahead of gap slots, the two events go to the first session around
+        // the pin, where b waits a slot between them; the search for fewer
+        // gap slots closes that gap by spreading the events over both
+        // sessions, at the price of three lone participant-sessions, and is
+        // turned down. That choice is made before the polish, which then
+        // moves the other event to the second session too: back to back,
+        // no lone participant-session and no gap. The schedule kept
+        // polishes to nothing better than one gap slot
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $c = new Participant('c', 'C');
+        $grid = SessionGrid::shapeOnly(2, 4, capacityPerSlot: 1);
+        $pinned = [new PinnedEvent('x1', $a, $c, 0, 1)];
+        $movable = [new MovableEvent('m1', $c, $b), new MovableEvent('m2', $c, $b)];
+
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::FewestGapSlots,
+        ])));
+
+        $sessions = array_map(static fn(SlotAssignment $assignment): int => $assignment->getSession(), $outcome->getAssignments());
+        $slots = array_map(static fn(SlotAssignment $assignment): int => $assignment->getSlot(), $outcome->getAssignments());
+        sort($slots);
+        expect($sessions)->toBe([1, 1])
+            ->and($slots[1] - $slots[0])->toBe(1)
+            ->and($outcome->getLoneParticipantSessionCount())->toBe(0)
+            ->and($outcome->getGapSlotCount())->toBe(0);
+    });
+
+    it('take the polished schedule the search for fewer gap slots found where the one it kept polishes worse', function (): void {
+        // Three sessions of three slots, two events to a slot. The reshaped
+        // schedule has three lone participant-sessions and one gap slot;
+        // the search for fewer gap slots closes the gap at the price of two
+        // more lone participant-sessions and is turned down. Polished, the
+        // schedule kept comes to one lone participant-session and three gap
+        // slots, and the one turned down to one and one
+        $p = [];
+        foreach (['p0', 'p1', 'p2'] as $id) {
+            $p[$id] = new Participant($id, $id);
+        }
+        $grid = SessionGrid::shapeOnly(3, 3, capacityPerSlot: 2);
+        $pinned = [new PinnedEvent('x0', $p['p2'], $p['p0'], 2, 1)];
+        $movable = [
+            new MovableEvent('m1', $p['p1'], $p['p2']),
+            new MovableEvent('m2', $p['p2'], $p['p1']),
+            new MovableEvent('m3', $p['p2'], $p['p0']),
+            new MovableEvent('m4', $p['p2'], $p['p0']),
+            new MovableEvent('m5', $p['p1'], $p['p0']),
+        ];
+
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::FewestGapSlots,
+        ])));
+
+        expect($outcome->getAssignments())->toHaveCount(5)
+            ->and($outcome->getLoneParticipantSessionCount())->toBe(1)
+            ->and($outcome->getGapSlotCount())->toBe(1);
+    });
 
     it('keep a schedule the search for fewer gap slots would give a lone participant-session', function (): void {
         // Two sessions of four slots, one event to a slot. a plays b at the
