@@ -68,6 +68,19 @@ final readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     }
 
     /**
+     * Whether the role extractor is the one homeAway() and position() give,
+     * which reads the participant's position in the event and nothing else,
+     * and keeps no state. False for a constraint given a callable of the
+     * caller's, whatever the callable does.
+     *
+     * @internal For ConstraintPurity; not part of the public API.
+     */
+    public function extractsRolesByPosition(): bool
+    {
+        return $this->roleExtractor instanceof PositionRole;
+    }
+
+    /**
      * Validate that adding this event won't create too many consecutive roles for the participant.
      */
     private function validateParticipantRoleHistory(Participant $participant, Event $newEvent, SchedulingContext $context): bool
@@ -142,24 +155,9 @@ final readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         return new self(
             $maxConsecutive,
-            static fn(Event $event, Participant $participant) => self::positionIn($event, $participant) === 0 ? 'home' : 'away',
+            new PositionRole(homeAway: true),
             "Home/Away consecutive limit ({$maxConsecutive})"
         );
-    }
-
-    /**
-     * The index of the participant with this ID in the event's participant
-     * list, or false when the event does not hold it.
-     */
-    private static function positionIn(Event $event, Participant $participant): int|false
-    {
-        foreach (array_values($event->getParticipants()) as $position => $eventParticipant) {
-            if ($eventParticipant->getId() === $participant->getId()) {
-                return $position;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -176,7 +174,7 @@ final readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         return new self(
             $maxConsecutive,
-            static fn(Event $event, Participant $participant) => self::positionIn($event, $participant),
+            new PositionRole(homeAway: false),
             "Position consecutive limit ({$maxConsecutive})"
         );
     }
