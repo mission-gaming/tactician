@@ -237,14 +237,7 @@ final class GapLowerBound
             $pairs[min($a, $b) . ':' . max($a, $b)] = true;
         }
 
-        $even = true;
-        foreach ($degree as $count) {
-            if ($count % 2 !== 0) {
-                $even = false;
-
-                break;
-            }
-        }
+        $even = array_all($degree, static fn(int $count): bool => $count % 2 === 0);
         $bound = $even && count($events) % 2 === 1 ? 1 : 0;
         if ($capacityPerSlot === 1) {
             $bound = max($bound, count($events) - count($degree) + 1 - (count($events) - count($pairs)));
