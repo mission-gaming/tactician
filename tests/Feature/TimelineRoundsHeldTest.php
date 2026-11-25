@@ -687,4 +687,22 @@ describe('assign() and assignRound() apply one rule: each round is compared with
             ->and(roundsHeldRefusal(fn() => $assigner->assignRound(roundsHeldPairing(3), $timeline))?->getReason())
             ->toBe(InvalidConfigurationReason::OverlappingTime);
     });
+
+    it('assigns a pairing with no events nothing, whatever round it is told was played before, and still refuses one out of sequence', function (): void {
+        // Round 2 runs into round 3 on this timeline, but a pairing with no
+        // events is not a round played: it has no slot to compare
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P1M'),
+            slotsPerRound: 2,
+            slotInterval: new DateInterval('P30D')
+        );
+        $assigner = new TimelineAssigner();
+        $empty = new RoundPairing(3, null, []);
+
+        expect($assigner->assignRound($empty, $timeline, 2))->toBe([])
+            ->and($assigner->assignRound($empty, $timeline))->toBe([])
+            ->and(roundsHeldRefusal(fn() => $assigner->assignRound($empty, $timeline, 3))?->getReason())
+            ->toBe(InvalidConfigurationReason::RoundOutOfSequence);
+    });
 });
