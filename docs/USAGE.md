@@ -4751,11 +4751,17 @@ echo $first->getLabel() . ' v ' . $second->getLabel() . "\n"; // Ada v Bo
   withdrawals after the same round is part of the history: a state keeps
   it, and a history gives the withdrawals of one round in that order
   ([ADR 0013](adr/0013-a-finished-bracket-keeps-its-winner.md)).
-- **Double elimination.** The withdrawn entrant takes the loss: from the
-  winners bracket it drops to the losers bracket, where its next tie is
-  uncontested too. A void winners tie drops nobody: the losers bracket
-  slot it would have filled is empty, and its two entrants go out together
-  with those the next losers round puts out.
+- **Double elimination.** Only a winners tie its results decided drops its
+  loser to the losers bracket
+  ([ADR 0026](adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md)).
+  An entrant who withdraws from a winners tie gives it away and drops
+  nobody: the losers bracket slot it would have filled is empty, so the
+  entrant who would have met it there stands alone (a bye), and it goes
+  out with those the next losers round puts out. A void winners tie drops
+  nobody either, and its two entrants go out the same way. So the losers
+  bracket looks the same whatever the other entrant of the winners tie
+  does later. An entrant who lost its winners tie by its results and then
+  withdraws gives its losers tie away (a walkover, uncontested).
 - **The table.** A withdrawn entrant is placed by the round it went out
   in, as every entrant is, and keeps its place in the entrant list where
   records are level.

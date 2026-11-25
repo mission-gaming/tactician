@@ -20,7 +20,7 @@ there is not repeated here.
 | [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
 | [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says (amended by 0014, 0019 and 0022; narrowed by 0017 for a league) |
 | [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table (amended by 0014) |
-| [0011](0011-a-tie-both-entrants-left-is-void.md) | A tie both entrants left is void |
+| [0011](0011-a-tie-both-entrants-left-is-void.md) | A tie both entrants left is void (narrowed by 0026 for the dropper of a winners tie) |
 | [0012](0012-a-withdrawal-states-its-round.md) | A withdrawal states its round (amended: an adjustment does too) |
 | [0013](0013-a-finished-bracket-keeps-its-winner.md) | A finished bracket keeps its winner |
 | [0014](0014-a-bracket-table-is-one-table-of-its-tiers-and-byes.md) | A bracket's table forms its tied sets inside a tier and credits its byes (amends 0009 and 0010; extended to Swiss by 0019; amended by 0022) |
@@ -35,6 +35,7 @@ there is not repeated here.
 | [0023](0023-a-declared-timezone-is-a-region-or-an-offset.md) | A declared timezone is a region or an offset, never an abbreviation |
 | [0024](0024-a-kickoff-is-written-with-its-fraction-of-a-second.md) | A kickoff is written with its fraction of a second |
 | [0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md) | A round drawn by hand is read as drawn: a withdrawn entrant it leaves alone holds no place, and a last round's marked ties are its final and third-place tie (narrows 0007) |
+| [0026](0026-only-a-winners-tie-its-results-decided-drops-its-loser.md) | Only a winners tie its results decided drops its loser to the losers bracket (narrows 0011) |
 
 ## Adding a record
 

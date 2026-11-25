@@ -242,11 +242,21 @@ describe('a round drawn by hand after a withdrawal (issue #172)', function (): v
         // is between the two it sent on
         $next = $engine->pairNextRound($state);
         expect($engine->getRecordedRounds($state)[2]->isManual())->toBeTrue();
+        $losersRoundTwo = null;
         while (!str_starts_with((string) $next->getLabel(), 'winners final')) {
+            if ($next->getLabel() === 'losers round 2') {
+                $losersRoundTwo = $next;
+            }
             $state = $state->withRoundPlayed($next, handDrawnFirstWins($next->getEvents()));
             $next = $engine->pairNextRound($state);
         }
         expect(handDrawnShape($next))->toBe('p4 v p3');
+
+        // And the losers round after it takes the one entrant the drawn
+        // round's results beat, p2, and nobody for p1 or for p3's bye
+        // (docs/adr/0026): p8 stands alone
+        assert($losersRoundTwo instanceof RoundPairing);
+        expect(handDrawnShape($losersRoundTwo))->toBe('p2 v p7; byes p8');
 
         // And p1, which holds no place, drops nobody and goes out as the two
         // of a void winners tie do: with the entrant the next losers round

@@ -86,7 +86,7 @@ heading **Output change (fix)**.
   now report a violation it passed before, or pass one it reported. No
   golden fixture changed.
 
-The last two entries of this section come from one decision: **a round drawn by
+The next two entries of this section come from one decision: **a round drawn by
 hand is read as drawn** (ADR 0025,
 `docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). Neither raises
 the version of an engine fingerprint: the cases are narrow and were read
@@ -125,6 +125,25 @@ wrongly, and a new version would refuse the stamps of every bracket.
   read as before. Who is affected: a bracket with a third-place tie whose
   last round was drawn by hand. What to check: `isComplete()`, the outcome
   and the table of such a state.
+- **In double elimination, the withdrawn loser of a winners tie drops
+  nobody to the losers bracket** (#182). A winners tie given away because
+  one entrant withdrew used to drop that entrant, and the losers tie it
+  would have played was shown as uncontested; but where the other entrant
+  withdrew later as well (before its next winners tie, so the tie turned
+  void, ADR 0011) the same losers tie was shown as a bye. A later
+  withdrawal changed how an earlier recorded round looked. Now only a
+  winners tie its results decided drops its loser (ADR 0026,
+  `docs/adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md`):
+  the losers slot of a withdrawn loser is empty at every moment (the
+  placeholder `Void` in the bracket view), the entrant who would have met
+  it there has a bye, which `StandingEntry::getByes()` counts and a ranking
+  strategy with a bye value credits, and the withdrawn entrant goes out
+  with those the next losers round puts out, where it went out before. The
+  rounds paired, the placings and the fingerprint are unchanged. A dropper
+  who lost by its results and withdraws later still gives its losers tie
+  away. Who is affected: a double elimination bracket with a withdrawal
+  from a winners tie. What to check: the losers bracket of the view and
+  the bye counts of the table.
 
 No golden fixture changed.
 
