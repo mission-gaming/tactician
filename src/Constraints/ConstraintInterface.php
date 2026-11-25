@@ -53,7 +53,12 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * the round-robin scheduler goes on from the failed orderings to a search
  * of roles (the role assignment states a rule, as the balanced one of the
  * default does), it builds the failure analysis once, after the search,
- * and for none of the orderings. This paragraph describes the present
+ * and for none of the orderings. And for a set of those four classes and of
+ * `ConsecutiveRoleConstraint` objects built by `homeAway()` or
+ * `position()`, the analysis of a failure asks each constraint once about
+ * each role order of a missing pairing in a round, and once in all where
+ * the constraint reads no position, instead of asking the set and then
+ * each constraint again. This paragraph describes the present
  * implementation; the list above is what a constraint may rely on.
  *
  * The library does not catch what a constraint of your own throws: the

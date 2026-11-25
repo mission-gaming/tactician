@@ -2,13 +2,23 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+use MissionGaming\Tactician\Constraints\NoRepeatPairings;
+use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\Diagnostics\DiagnosticReport;
 use MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Scheduling\ConstraintPurity;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Tests\Support\DeprecatedCall;
@@ -345,6 +355,120 @@ describe('SchedulingDiagnostics', function (): void {
         expect($report->getMissingPairings())->toBe([
             'Alice vs Carol (Leg 1)',
             'Bob vs Carol (Leg 1)',
+        ]);
+    });
+
+    // A known set is asked each constraint once per role order (once in all
+    // for one that reads no position), where any other set is asked the
+    // set and then each constraint again. The findings must be the same:
+    // a known set's analysis is compared with that of the same constraints
+    // behind a wrapper that passes every question on, which no shortcut
+    // knows. The partial schedules are complete round robins with events
+    // left out, so that pairings go missing in rounds of every kind.
+    it('finds for a known set what the same constraints find when asked everything', function (): void {
+        $randomizer = new Random\Randomizer(new Random\Engine\Xoshiro256StarStar(252));
+        $passOn = static fn(ConstraintInterface $inner): ConstraintInterface => new class ($inner) implements ConstraintInterface {
+            public function __construct(private readonly ConstraintInterface $inner) {}
+
+            #[\Override]
+            public function isSatisfied(Event $event, SchedulingContext $context): bool
+            {
+                return $this->inner->isSatisfied($event, $context);
+            }
+
+            #[\Override]
+            public function getName(): string
+            {
+                return $this->inner->getName();
+            }
+        };
+        $report = static fn(DiagnosticReport $report): array => [
+            $report->getConstraintViolations(), $report->getImpossiblePairings(), $report->getSuggestions(),
+            $report->getConstraintRejections(), $report->getBlockedPairings(), $report->getPairingsAtCapacity(),
+        ];
+
+        $analysed = 0;
+        for ($case = 0; $case < 120; ++$case) {
+            $size = $randomizer->getInt(4, 8);
+            $legs = $randomizer->getInt(1, 2);
+            $field = [];
+            for ($i = 1; $i <= $size; ++$i) {
+                $field[] = new Participant("p{$i}", "P{$i}", $i);
+            }
+            $pool = [
+                new NoRepeatPairings(),
+                new NoRepeatPairings(acrossLegs: true),
+                new MinimumRestPeriodsConstraint($randomizer->getInt(1, 3)),
+                RoleBalanceConstraint::homeAway(1),
+                new SeedProtectionConstraint($randomizer->getInt(2, 3), 0.5),
+                ConsecutiveRoleConstraint::homeAway(1),
+            ];
+            $chosen = [];
+            foreach ($pool as $constraint) {
+                if ($randomizer->getInt(0, 2) === 0) {
+                    $chosen[] = $constraint;
+                }
+            }
+            if ($chosen === []) {
+                $chosen[] = $pool[$randomizer->getInt(0, count($pool) - 1)];
+            }
+            $known = new ConstraintSet($chosen);
+            $unknown = new ConstraintSet(array_map($passOn, $chosen));
+            expect(ConstraintPurity::isKnown($known))->toBeTrue()
+                ->and(ConstraintPurity::isKnown($unknown))->toBeFalse();
+
+            $events = [];
+            foreach (new RoundRobinScheduler()->schedule($field, new RoundRobinOptions(legs: $legs)) as $event) {
+                if ($randomizer->getInt(0, 3) !== 0) {
+                    $events[] = $event;
+                }
+            }
+            $plan = new RoundRobinPlan($field, $legs);
+
+            $fromKnown = $report($this->diagnostics->analyzeSchedulingFailure($field, $known, $events, $plan));
+            $fromUnknown = $report($this->diagnostics->analyzeSchedulingFailure($field, $unknown, $events, $plan));
+            expect($fromKnown)->toEqual($fromUnknown, "case {$case}");
+            if ($fromKnown[0] !== []) {
+                ++$analysed;
+            }
+        }
+
+        // Most cases charge some constraint with a round, so the comparison
+        // covers findings and not only empty ones
+        expect($analysed)->toBeGreaterThan(60);
+    });
+
+    // ConstraintInterface: a set that holds a constraint of the caller's is
+    // asked every question it was asked before the shortcuts existed. Here
+    // that is, for each round of the one missing pairing, the set about one
+    // role order and, when the set rejects it, about the other; then the
+    // constraint about one role order and, when it rejects that, the other.
+    it('asks a set with a constraint of the caller\'s every question it asked before', function (): void {
+        $asked = [];
+        $derbyBan = ConstraintSet::create()->custom(static function (Event $event) use (&$asked): bool {
+            $ids = array_map(fn($p) => $p->getId(), $event->getParticipants());
+            $asked[] = implode('-', $ids) . '@' . $event->getRound()?->getNumber();
+            sort($ids);
+
+            return implode('|', $ids) !== 'p1|p2';
+        }, 'Derby Ban')->build();
+
+        $this->diagnostics->analyzeSchedulingFailure(
+            $this->participants,
+            $derbyBan,
+            [new Event([$this->alice, $this->carol], new Round(1))],
+            new RoundRobinPlan($this->participants, 1)
+        );
+
+        // The pairings of Bob and Carol are missing too, and the constraint
+        // accepts them in the first role order asked: one question each
+        $perRound = static fn(int $round): array => [
+            "p1-p2@{$round}", "p2-p1@{$round}", "p1-p2@{$round}", "p2-p1@{$round}",
+        ];
+        $bobCarol = static fn(int $round): array => ["p2-p3@{$round}", "p2-p3@{$round}"];
+        expect($asked)->toBe([
+            ...$perRound(1), ...$perRound(2), ...$perRound(3),
+            ...$bobCarol(1), ...$bobCarol(2), ...$bobCarol(3),
         ]);
     });
 

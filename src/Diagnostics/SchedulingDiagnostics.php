@@ -8,6 +8,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Scheduling\ConstraintPurity;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\PairwisePlan;
@@ -328,6 +329,9 @@ final class SchedulingDiagnostics
         /** @var array<string, list<ConstraintRejection>> $rejectionDetails constraint name => rejections */
         $rejectionDetails = [];
 
+        $constraintList = $constraints->getConstraints();
+        $knownSet = ConstraintPurity::isKnown($constraints);
+
         foreach ($missingPairs as [$a, $b]) {
             $pairLabel = $a->getLabel() . ' vs ' . $b->getLabel();
             $allowedRounds = [];
@@ -341,6 +345,31 @@ final class SchedulingDiagnostics
                     new Event([$b, $a], new Round($round)),
                 ];
 
+                if ($knownSet) {
+                    // Each constraint is asked once per orientation, and
+                    // once in all where it reads no position; both findings
+                    // are read off those answers. Asking the set and then
+                    // every constraint again was most of a failed round
+                    // robin's time. Only for a known set, whose verdicts do
+                    // not depend on how often or in which order it is asked
+                    $acceptedIn = [true, true];
+                    foreach ($constraintList as $constraint) {
+                        $first = $constraint->isSatisfied($orientations[0], $context);
+                        $second = ConstraintPurity::constraintIgnoresRoles($constraint)
+                            ? $first
+                            : $constraint->isSatisfied($orientations[1], $context);
+                        $acceptedIn = [$acceptedIn[0] && $first, $acceptedIn[1] && $second];
+                        if (!$first && !$second) {
+                            $roundsRejectedBy[$constraint->getName()] = ($roundsRejectedBy[$constraint->getName()] ?? 0) + 1;
+                        }
+                    }
+                    if ($acceptedIn[0] || $acceptedIn[1]) {
+                        $allowedRounds[] = $round;
+                    }
+
+                    continue;
+                }
+
                 $roundAllowed = false;
                 foreach ($orientations as $candidate) {
                     if ($constraints->isSatisfied($candidate, $context)) {
@@ -352,7 +381,7 @@ final class SchedulingDiagnostics
                     $allowedRounds[] = $round;
                 }
 
-                foreach ($constraints->getConstraints() as $constraint) {
+                foreach ($constraintList as $constraint) {
                     $rejectsBoth = array_all($orientations, fn($candidate) => !$constraint->isSatisfied($candidate, $context));
                     if ($rejectsBoth) {
                         $roundsRejectedBy[$constraint->getName()] = ($roundsRejectedBy[$constraint->getName()] ?? 0) + 1;
