@@ -575,6 +575,11 @@ it('makes every change to a file of the two directories in exactly one shard', f
     $shards = ciMutationShards($workflow);
     $mutatorsOf = ciMutationShardMutators($workflow);
     expect(array_keys($mutatorsOf))->toBe(array_keys($shards));
+    // Every mutators entry was read: one the reader above does not match (a
+    // space or a comment after the names) would be taken for a shard without
+    // mutators, while the workflow still hands its text to Pest
+    expect(preg_match_all('/^\s+mutators:/m', $workflow))
+        ->toBe(count(array_filter($mutatorsOf, static fn(string $option): bool => $option !== '')));
 
     expect(count($shards))->toBeGreaterThanOrEqual(2);
 
