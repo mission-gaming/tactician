@@ -150,6 +150,45 @@ heading **Output change (fix)**.
   of them with two events fewer placed (7 unplaced became 9, as many as
   with no objective).
 
+- **The packer no longer spends its whole first budget on a season with
+  its first rounds pinned** (#242). The exact search of a session tried
+  every combination of the runs of its separate groups of participants,
+  and on the last sessions of such a season (small groups with one or two
+  events each) its share of the budget ran out though the session packs
+  without a gap. At the default budget and above it now packs each group
+  alone and combines the packings, which is the packing the whole search
+  finds, and turns down a placement no matching can cover before searching
+  it. Wherever the whole search packed a session, the packing is the same;
+  where it ran out, the session is now packed without a gap. On 160
+  seasons of 20 to 40 participants with a fifth or a half of their rounds
+  pinned in order, a stopped budget is reported by 41 where it was by 83.
+  A schedule with late starts and nothing else to gain is now also
+  offered the rounds laid on the positions with room, which it was
+  offered only where it left an event or a gap: once the planned schedule
+  packed without a gap, it kept late starts the rounds did not have. With
+  no objective, late starts break the ties of events placed and gap slots
+  between the schedules a repack makes; with one, those rounds are handed
+  to the polish that moves single events, which takes them where they
+  then rank better. On those seasons at the default budget 67 outcomes
+  change, every one with as many events placed, as many gap slots and
+  fewer late starts (6 in all where there were 564), and the median time
+  is 88 ms where it was 97 ms (0.2.3 took 4). Who is affected: callers who
+  repack a season in progress. At 2,000 and 300 steps the packing is as
+  before, and 15 and 24 of the seasons have fewer late starts with as many
+  events placed and gap slots. On #162's 200 round robins with scattered
+  pins, 6 outcomes at the default budget and 3 at 300 steps change, each
+  with fewer late starts and nothing else different by events placed or
+  gap slots. With an objective, on 5,974 small repacks none is worse by
+  its own ranking at 200,000, 2,000 or 300 steps, and 226, 193 and 153 are
+  better. In
+  `examples/29-rescheduling-with-least-churn.php` the repack with no
+  objective moves 8 games where it moved 12, with the same figures
+  otherwise (its golden fixture changes with it); the 63 round robins of
+  #209 and the other golden fixtures and examples do not change; of
+  1,280 outcomes of requests with current positions under four settings
+  of the objectives, 39 are better by their own ranking and the rest the
+  same.
+
 The next four entries of this section come from one decision: **a round drawn by
 hand is read as drawn** (ADR 0025,
 `docs/adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md`). None of them raises

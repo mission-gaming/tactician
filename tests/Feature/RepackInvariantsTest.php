@@ -2359,7 +2359,7 @@ describe('Repacking without an avoidable gap', function (): void {
  * rounds (the last session may have spare ones), half the field to a
  * slot, so a pinned round fills its position.
  *
- * @param int $playedOneIn A fifth (5) or a half (2) of the rounds are played
+ * @param int $playedOneIn One in this many of the rounds are played, rounded down: a fifth (5), a half (2)
  *
  * @return array{0: list<MovableEvent>, 1: list<PinnedEvent>, 2: SessionGrid}
  *
@@ -2497,6 +2497,41 @@ describe('Repacking seasons with their first rounds pinned in order', function (
             ->and($outcome->getGapSlotCount())->toBe(0);
         assertProperness($outcome, $movable, $pinned);
     })->with(function (): Generator {
+        foreach ([16, 18, 20, 22] as $participants) {
+            foreach ([1, 2] as $legs) {
+                foreach ([2, 3, 4] as $slots) {
+                    foreach ([5, 2] as $playedOneIn) {
+                        yield "{$participants} in {$legs} legs, {$slots} slots, 1 in {$playedOneIn} played" => [$participants, $legs, $slots, $playedOneIn];
+                    }
+                }
+            }
+        }
+    });
+
+    it('starts every participant at the first slot of each session it plays in', function (int $participants, int $legs, int $slots, int $playedOneIn): void {
+        // With no objective, late starts break the ties of events placed
+        // and gap slots between the schedules of a repack, and a schedule
+        // with late starts is offered the rounds laid on the positions
+        // with room even where it has no gap. Once
+        // the exact search packed the planned schedule of these seasons
+        // without a gap, that schedule was no longer offered them and kept
+        // its late starts: 20 in one leg on sessions of four slots with a
+        // fourth or a third of the rounds played had 4 where they had none
+        // before, and so did 24 with a fourth played (#246). Most of the
+        // others had some before as well (18 in one leg on sessions of
+        // four with half played, 8)
+        [$movable, $pinned, $grid] = seasonWithRoundsPinnedInOrder($participants, $legs, $slots, $playedOneIn);
+
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+
+        expect($outcome->getUnplaced())->toBe([])
+            ->and($outcome->getGapSlotCount())->toBe(0)
+            ->and($outcome->getLateStartViolations())->toBe([]);
+        assertProperness($outcome, $movable, $pinned);
+    })->with(function (): Generator {
+        yield '20 in 1 leg, 4 slots, 1 in 4 played' => [20, 1, 4, 4];
+        yield '20 in 1 leg, 4 slots, 1 in 3 played' => [20, 1, 4, 3];
+        yield '24 in 1 leg, 4 slots, 1 in 4 played' => [24, 1, 4, 4];
         foreach ([16, 18, 20, 22] as $participants) {
             foreach ([1, 2] as $legs) {
                 foreach ([2, 3, 4] as $slots) {

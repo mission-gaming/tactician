@@ -62,7 +62,8 @@ while the tool is updated.
 
 The benchmark suite (`tests/Benchmark/`, run by
 [phpbench](https://phpbench.readthedocs.io/)) times the operations whose
-cost has mattered: schedule repack at 24 and 40 participants, a round robin
+cost has mattered: schedule repack at 24 and 40 participants and of a
+season of 36 whose first half of rounds is pinned in order, a round robin
 with no constraints, one that needs retries and one that cannot be
 completed, Swiss pairing under a constraint, and the conversion of every
 position of a session grid to its ordinal and of every slot time to its

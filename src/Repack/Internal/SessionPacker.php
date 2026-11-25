@@ -25,6 +25,19 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * itself start late or keep a gap its load cannot bridge
  * (ContiguityTargets).
  *
+ * At the default budget and above, the exact search takes the session's
+ * independent parts (the sets of participants its events connect) one
+ * at a time and combines their packings, which is the packing the whole
+ * search finds, without trying every combination of the parts' runs
+ * (searchPartByPart() says why); where the combination overfills a
+ * slot, the session is searched whole. It also turns down, before its
+ * matching is searched, a placement with a slot whose participants fall
+ * into a set of an odd number. Below the default budget the session is
+ * searched whole and every placement's matching is searched, as before:
+ * the steps after the packing run on shortened work limits there, and a
+ * session packed where the whole search ran out can lead them to place
+ * fewer events (decision 76 of the design note).
+ *
  * Phase C is the honest fallback: a prioritized greedy packing
  * (participants who must play every remaining slot go first), a direct
  * placement pass for whatever remains, then bounded local repair —
@@ -110,6 +123,13 @@ final class SessionPacker
 
     /** The budget of the exact search in progress, a share of the packer's */
     private StepBudget $searchBudget;
+
+    /**
+     * Whether the exact search in progress goes part by part and turns
+     * down a placement with an odd set of participants at a slot before
+     * searching its matching: at the default budget and above.
+     */
+    private bool $byParts = true;
 
     public function __construct(private readonly StepBudget $budget)
     {
@@ -197,15 +217,11 @@ final class SessionPacker
             return null;
         }
 
-        $fixedMask = 0;
-        $fixedTargets = [];
-        $flexiblePids = [];
-        $flexibleLengths = [];
+        $targets = [];
         foreach ($this->loads as $pid => $load) {
             $pins = $this->pinSlots[$pid] ?? [];
             if ($pins === []) {
-                $flexiblePids[] = $pid;
-                $flexibleLengths[] = $load;
+                $targets[$pid] = null;
                 continue;
             }
 
@@ -215,8 +231,7 @@ final class SessionPacker
                 // more events in a session than it has free slots there
                 return null;
             }
-            $fixedTargets[$pid] = $target;
-            $fixedMask ^= IntervalPlacement::maskOfSet($target, $this->slotCount);
+            $targets[$pid] = $target;
         }
 
         // The search has a share of the steps that are left, not all of
@@ -225,30 +240,204 @@ final class SessionPacker
         $this->searchBudget = $this->budget->share(self::SEARCH_SHARE);
         $shared = $this->searchBudget->stepsLeft();
 
+        // Below the default budget the session is searched whole, as it
+        // was before the search went part by part: the steps after the
+        // packing then run on shortened work limits, and a packing found
+        // where the whole search ran out can lead them to place fewer
+        // events (decision 76 of the design note)
+        $this->byParts = $this->budget->limitsAreWhole();
+
+        $sessionEdges = $this->edges;
         $result = null;
         try {
-            IntervalPlacement::enumerate(
-                $fixedMask,
-                $flexibleLengths,
-                $this->slotCount,
-                $this->searchBudget,
-                function (array $starts) use ($fixedTargets, $flexiblePids, $flexibleLengths, &$result): bool {
-                    $assignments = $this->tryPlacement($fixedTargets, $flexiblePids, $flexibleLengths, $starts);
-                    if ($assignments === null) {
-                        return false;
-                    }
-                    $result = $assignments;
-
-                    return true;
-                }
-            );
+            $parts = $this->byParts ? $this->independentParts() : [$sessionEdges];
+            $result = count($parts) > 1 ? $this->searchPartByPart($parts, $targets) : false;
+            $this->edges = $sessionEdges;
+            if ($result === false) {
+                // One part, or parts whose packings together overfill a
+                // slot: the session is searched whole
+                $result = $this->searchPlacements($targets);
+            }
         } catch (BudgetExhausted) {
             // Fall through to the greedy path with whatever budget is left
+            $result = null;
+        } finally {
+            $this->edges = $sessionEdges;
         }
         $this->budget->returnShare($this->searchBudget, $shared);
 
         $this->slotOf = [];
         $this->usedEvents = [];
+
+        return $result;
+    }
+
+    /**
+     * The session's events split into its independent parts: the events
+     * of each set of participants that the events connect, each part's
+     * events ascending, the parts in the order of their first event.
+     *
+     * @return list<array<int, array{int, int}>>
+     */
+    private function independentParts(): array
+    {
+        $root = [];
+        $find = static function (int $pid) use (&$root): int {
+            while ($root[$pid] !== $pid) {
+                $root[$pid] = $root[$root[$pid]];
+                $pid = $root[$pid];
+            }
+
+            return $pid;
+        };
+        foreach ($this->edges as [$a, $b]) {
+            $root[$a] ??= $a;
+            $root[$b] ??= $b;
+            $ra = $find($a);
+            $rb = $find($b);
+            if ($ra !== $rb) {
+                $root[max($ra, $rb)] = min($ra, $rb);
+            }
+        }
+
+        $parts = [];
+        foreach ($this->edges as $eventIndex => [$a]) {
+            $parts[$find($a)][$eventIndex] = $this->edges[$eventIndex];
+        }
+
+        return array_values($parts);
+    }
+
+    /**
+     * The exact search part by part. Nothing but the room of a slot ties
+     * the parts together: an event's two participants are in one part, so
+     * a slot's matching is one matching per part, and the parity of a slot
+     * is even in every part of a placement that packs. So the placements
+     * that pack the session at the least total late start are exactly the
+     * combinations of a placement of each part that packs it at that
+     * part's least, wherever the combination leaves every slot room; the
+     * first of them in the order the whole session's search tries them
+     * (lexicographic by participant) is the combination of each part's
+     * first; and the whole session's matching search, which branches on
+     * one part's participants at a time and whose dead ends are each in
+     * one part, finds for that placement the combination of the matchings
+     * each part's own search finds. The result is the whole search's, in
+     * the steps of the parts' searches, which explore no combination.
+     *
+     * @param list<array<int, array{int, int}>> $parts
+     * @param array<int, array<int>|null> $targets Participant => its pinned target, null when unpinned
+     *
+     * @return array<int, int>|false|null Event => slot; null when a part has no packing, false when
+     *                                     the parts' packings together overfill a slot
+     *
+     * @throws BudgetExhausted
+     */
+    private function searchPartByPart(array $parts, array $targets): array|false|null
+    {
+        // A part no placement of whose runs leaves every slot an even
+        // number of participants has no packing, and then neither has the
+        // session: known before any part is searched, at no step
+        foreach ($parts as $part) {
+            $this->edges = $part;
+            [$fixedMask, , , $flexibleLengths] = $this->shapeOf($targets);
+            if (IntervalPlacement::minOddScore($fixedMask, $flexibleLengths, $this->slotCount) !== 0) {
+                return null;
+            }
+        }
+
+        $assignments = [];
+        foreach ($parts as $part) {
+            $this->edges = $part;
+            $found = $this->searchPlacements($targets);
+            if ($found === null) {
+                return null;
+            }
+            $assignments += $found;
+        }
+
+        $used = [];
+        foreach ($assignments as $slot) {
+            $used[$slot] = ($used[$slot] ?? 0) + 1;
+        }
+        foreach ($used as $slot => $count) {
+            if ($count > $this->capacity - ($this->pinCounts[$slot] ?? 0)) {
+                return false;
+            }
+        }
+        ksort($assignments);
+
+        return $assignments;
+    }
+
+    /**
+     * What the run placement search of the participants of $this->edges
+     * starts from: the boundary flips of the pinned participants' targets,
+     * those targets, and the unpinned participants with their loads, all
+     * in the order of $this->loads.
+     *
+     * @param array<int, array<int>|null> $targets Participant => its pinned target, null when unpinned
+     *
+     * @return array{int, array<int, array<int>>, list<int>, list<int>}
+     */
+    private function shapeOf(array $targets): array
+    {
+        $here = [];
+        foreach ($this->edges as [$a, $b]) {
+            $here[$a] = true;
+            $here[$b] = true;
+        }
+
+        $fixedMask = 0;
+        $fixedTargets = [];
+        $flexiblePids = [];
+        $flexibleLengths = [];
+        foreach ($this->loads as $pid => $load) {
+            if (!isset($here[$pid])) {
+                continue;
+            }
+            $target = $targets[$pid];
+            if ($target === null) {
+                $flexiblePids[] = $pid;
+                $flexibleLengths[] = $load;
+                continue;
+            }
+            $fixedTargets[$pid] = $target;
+            $fixedMask ^= IntervalPlacement::maskOfSet($target, $this->slotCount);
+        }
+
+        return [$fixedMask, $fixedTargets, $flexiblePids, $flexibleLengths];
+    }
+
+    /**
+     * The run placements of the participants of $this->edges, tried in
+     * order of total late start, until one packs.
+     *
+     * @param array<int, array<int>|null> $targets Participant => its pinned target, null when unpinned
+     *
+     * @return array<int, int>|null Event => slot, null when none packs or the share ran out
+     *
+     * @throws BudgetExhausted
+     */
+    private function searchPlacements(array $targets): ?array
+    {
+        [$fixedMask, $fixedTargets, $flexiblePids, $flexibleLengths] = $this->shapeOf($targets);
+
+        $result = null;
+        IntervalPlacement::enumerate(
+            $fixedMask,
+            $flexibleLengths,
+            $this->slotCount,
+            $this->searchBudget,
+            function (array $starts) use ($fixedTargets, $flexiblePids, $flexibleLengths, &$result): bool {
+                $assignments = $this->tryPlacement($fixedTargets, $flexiblePids, $flexibleLengths, $starts);
+                if ($assignments === null) {
+                    return false;
+                }
+                $result = $assignments;
+
+                return true;
+            }
+        );
 
         return $result;
     }
@@ -322,6 +511,14 @@ final class SessionPacker
             }
         }
 
+        // A slot whose participants split into an odd number of them
+        // somewhere has no perfect matching: the placement cannot pack
+        foreach ($slotParticipants as $slot => $here) {
+            if ($this->byParts && $this->hasOddPart($here, $slotEvents[$slot])) {
+                return null;
+            }
+        }
+
         $this->slotParticipants = $slotParticipants;
         $this->slotEvents = $slotEvents;
         $this->optionsAt = array_fill(0, $this->slotCount, []);
@@ -340,6 +537,48 @@ final class SessionPacker
         }
 
         return $solved ? $assignments : null;
+    }
+
+    /**
+     * Whether the participants of one slot fall into a set, connected by
+     * the events they can play there, of an odd number of them: no
+     * perfect matching covers such a set, so no placement with that slot
+     * packs. It costs no step: it is a look at the slot's own events, once
+     * a placement, and it turns down only placements the matching search
+     * would turn down after searching.
+     *
+     * @param list<int> $participants
+     * @param array<int, list<array{int, int}>> $eventsHere Participant => [event, opponent]
+     */
+    private function hasOddPart(array $participants, array $eventsHere): bool
+    {
+        // The opponent of an event at the slot targets the slot too, so
+        // every participant reached is one of the slot's
+        $seen = array_fill_keys($participants, false);
+        foreach ($participants as $first) {
+            if ($seen[$first]) {
+                continue;
+            }
+            $seen[$first] = true;
+            $stack = [$first];
+            $size = 0;
+            while ($stack !== []) {
+                $pid = array_pop($stack);
+                ++$size;
+                foreach ($eventsHere[$pid] ?? [] as $event) {
+                    $opponent = $event[1];
+                    if (!$seen[$opponent]) {
+                        $seen[$opponent] = true;
+                        $stack[] = $opponent;
+                    }
+                }
+            }
+            if ($size % 2 !== 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

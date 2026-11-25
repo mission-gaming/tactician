@@ -102,12 +102,8 @@ violations: 2
 == Moved, without it ==
 - g09
 - g10
-- g11
-- g12
 - g13
-- g14
 - g15
-- g16
 - g25
 - g26
 - g27
@@ -120,7 +116,7 @@ violations: 2
   Gap slots: 0
   Lone-event sessions: 0
   Idle sessions: 0
-  Moved: 12
+  Moved: 8
 -
   Repack: Fewest moved games
   Unplaced: 0

@@ -1378,9 +1378,9 @@ $demonstrations = [
         expect(array_keys($taken))->toBe(['2/1', '3/0', '3/1']);
 
         expect($results['Moved, with the objective'])->toBe([])
-            ->and($results['Moved, without it'])->toHaveCount(12)
+            ->and($results['Moved, without it'])->toHaveCount(8)
             ->and($results['Figures'])->toBe([
-                ['Repack' => 'With no objective', 'Unplaced' => 0, 'Gap slots' => 0, 'Lone-event sessions' => 0, 'Idle sessions' => 0, 'Moved' => 12],
+                ['Repack' => 'With no objective', 'Unplaced' => 0, 'Gap slots' => 0, 'Lone-event sessions' => 0, 'Idle sessions' => 0, 'Moved' => 8],
                 ['Repack' => 'Fewest moved games', 'Unplaced' => 0, 'Gap slots' => 0, 'Lone-event sessions' => 0, 'Idle sessions' => 0, 'Moved' => 0],
             ])
             // Seven games a rink need seven draws: three nights of two are ruled out by counting

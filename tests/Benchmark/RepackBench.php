@@ -46,7 +46,24 @@ final class RepackBench
             'uneven 24' => self::request(24, uneven: true),
             'even 40' => self::request(40, uneven: false),
             'uneven 40' => self::request(40, uneven: true),
+            'season 36' => self::seasonWithLeadingRoundsPinned(36),
         ];
+    }
+
+    /**
+     * A season in progress: a double round robin of 36 on sessions of
+     * three slots, its first half of rounds played and pinned in order,
+     * the rest movable. It is the common shape of a repack request, and
+     * the shape on which the packer used to spend the whole of its first
+     * budget (#242).
+     *
+     * @throws InvalidConfigurationException
+     * @throws RepackViolationsException
+     * @throws RuntimeException When the benchmark did not produce what it measures
+     */
+    public function bench36TwoLegsWithLeadingRoundsPinned(): void
+    {
+        $this->repack('season 36');
     }
 
     /**
@@ -153,5 +170,55 @@ final class RepackBench
         }
 
         return new RepackRequest($movable, $pinned, $grid);
+    }
+
+    /**
+     * A double round robin of the field by the circle method, one round to
+     * a slot on sessions of three slots, half the field to a slot. The
+     * first half of the rounds stays where it was played; the other half
+     * is movable with no position of its own.
+     *
+     * @throws InvalidConfigurationException
+     */
+    private static function seasonWithLeadingRoundsPinned(int $size): RepackRequest
+    {
+        $participants = [];
+        for ($i = 1; $i <= $size; ++$i) {
+            $participants[] = new Participant(sprintf('p%02d', $i), "Participant {$i}");
+        }
+
+        $ids = range(0, $size - 1);
+        $rounds = [];
+        for ($round = 0; $round < $size - 1; ++$round) {
+            $pairs = [];
+            for ($k = 0; $k < intdiv($size, 2); ++$k) {
+                $pairs[] = [$ids[$k], $ids[$size - 1 - $k]];
+            }
+            $rounds[] = $pairs;
+            $last = array_pop($ids);
+            array_splice($ids, 1, 0, [$last]);
+        }
+        $rounds = [...$rounds, ...array_map(
+            static fn(array $pairs): array => array_map(static fn(array $pair): array => [$pair[1], $pair[0]], $pairs),
+            $rounds
+        )];
+
+        $slots = 3;
+        $played = intdiv(count($rounds), 2);
+        $movable = [];
+        $pinned = [];
+        foreach ($rounds as $round => $pairs) {
+            foreach ($pairs as $index => [$a, $b]) {
+                $id = sprintf('r%02d-%02d', $round, $index);
+                if ($round < $played) {
+                    $pinned[] = new PinnedEvent($id, $participants[$a], $participants[$b], intdiv($round, $slots), $round % $slots);
+                } else {
+                    $movable[] = new MovableEvent($id, $participants[$a], $participants[$b]);
+                }
+            }
+        }
+        $sessions = intdiv(count($rounds) + $slots - 1, $slots);
+
+        return new RepackRequest($movable, $pinned, SessionGrid::shapeOnly($sessions, $slots, [], intdiv($size, 2)));
     }
 }

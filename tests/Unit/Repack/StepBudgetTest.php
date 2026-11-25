@@ -37,6 +37,17 @@ describe('StepBudget', function (): void {
         expect($budget->stoppedASearch())->toBeFalse();
     });
 
+    it('says whether every work limit is whole', function (int $callersBudget, bool $whole): void {
+        $budget = new StepBudget(10, $callersBudget);
+
+        expect($budget->limitsAreWhole())->toBe($whole)
+            ->and($budget->share(2)->limitsAreWhole())->toBe($whole);
+    })->with([
+        'below the default' => [StepBudget::DEFAULT_STEPS - 1, false],
+        'the default' => [StepBudget::DEFAULT_STEPS, true],
+        'above the default' => [StepBudget::DEFAULT_STEPS + 1, true],
+    ]);
+
     it('says whether a step is left without recording anything', function (): void {
         $budget = new StepBudget(1);
         expect($budget->hasStepsLeft())->toBeTrue();
