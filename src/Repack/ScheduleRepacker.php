@@ -55,7 +55,11 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * the positions with room only, and that fourth schedule is returned on
  * the same terms. Where fewer events are still placed than the ceiling,
  * they are planned once more in a fixed scrambled order, a fifth
- * schedule returned on the same terms. Properness — no participant twice at one position,
+ * schedule returned on the same terms. Below the default budget those two
+ * are made on a work limit of their own (what the two budgets have left,
+ * which they do not spend), and with an objective ranked ahead of gap
+ * slots they are returned only where they place more events, so that no
+ * outcome is worse for them (#244). Properness — no participant twice at one position,
  * pins immovable — is never traded; contiguity is satisfied or reported,
  * never silently relaxed.
  *
@@ -409,7 +413,8 @@ final readonly class ScheduleRepacker
             null,
             $layoutStopped,
             true,
-            true
+            true,
+            $gapSlotsFirst
         );
 
         if ($score !== null || !$gapSlotsFirst) {
@@ -1212,6 +1217,9 @@ final readonly class ScheduleRepacker
      *                    laid on the positions with room) and the fifth (the events planned in a
      *                    scrambled order), not the schedules of the objectives made after it, whose
      *                    later choices could then turn out worse
+     * @param bool $gapSlotsFirst Whether no objective ranks ahead of gap slots, for the floor:
+     *                            where one does, below the default budget the fourth and the
+     *                            fifth schedule are kept only where they place more events
      *
      * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, int>, list<array<int, array{int, int}>>}
      *         The positions by index into $ids (ascending), the events of the subset with none and
@@ -1236,7 +1244,8 @@ final readonly class ScheduleRepacker
         ?\Closure $ranked,
         bool &$layoutStopped,
         bool $searchGaps = true,
-        bool $floor = false
+        bool $floor = false,
+        bool $gapSlotsFirst = true
     ): array {
         // The events of the subset, still in the repacker's order
         $pairsInOrder = [];
@@ -1446,6 +1455,29 @@ final readonly class ScheduleRepacker
         // fewer gap slots runs on it only where it is already better before
         // the search, and it is returned only where it is better on what
         // every choice above is made on
+        //
+        // Below the default budget the steps after these two schedules
+        // run on what the two budgets have left, and a schedule made and
+        // not kept would leave them fewer (#244). So there the two are
+        // made on copies of what is left, a work limit of their own as the
+        // layout has, and the steps they spend are not spent from the two
+        // budgets: a schedule not kept leaves everything after it as it
+        // would be without them. And where an objective ranks ahead of
+        // gap slots, there they are kept only where they place more
+        // events: one kept for fewer gap slots with as many placed hands
+        // the objectives' steps (the reshaped layouts, the polish) another
+        // schedule to start from, and on shortened work limits they can
+        // get it less far than the one in hand (decision 77 of the design
+        // note). At the default budget and
+        // above they spend from the two budgets and are kept on the
+        // ranking, as before
+        $apart = !$budget->limitsAreWhole();
+        $extraBudget = $apart ? $budget->share(1) : $budget;
+        $extraRecolourBudget = $apart ? $recolourBudget->share(1) : $recolourBudget;
+        $extraLayoutBudget = $apart ? new StepBudget(PHP_INT_MAX, $options->stepBudget) : $layoutBudget;
+        $onlyMorePlaced = $apart && !$gapSlotsFirst;
+        $extraOthers = [];
+        $extraKept = false;
         $gapSlots = self::gapSlots($positions, $edges, $pinSlots);
         if (
             $floor
@@ -1460,7 +1492,7 @@ final readonly class ScheduleRepacker
                 $pinCounts,
                 $slotCounts,
                 $capacityPerSlot,
-                $layoutBudget,
+                $extraLayoutBudget,
                 true
             ) as $at => $position) {
                 $freeLayout[$localIndexOf[$at]] = $position;
@@ -1481,18 +1513,19 @@ final readonly class ScheduleRepacker
                     $pinCounts,
                     $slotCounts,
                     $capacityPerSlot,
-                    $recolourBudget,
+                    $extraRecolourBudget,
                     $keyOf,
                     $ranked instanceof \Closure,
                     $other
                 );
                 if ($other !== null && $other[1] === []) {
-                    $others[] = $asGiven($other[0]);
+                    $extraOthers[] = $asGiven($other[0]);
                 }
             }
-            if ($better($freeLayout, $freeLeft)) {
+            if ($onlyMorePlaced ? count($freeLeft) < count($stillLeft) : $better($freeLayout, $freeLeft)) {
                 $positions = $freeLayout;
                 $stillLeft = $freeLeft;
+                $extraKept = true;
             }
         }
 
@@ -1523,22 +1556,36 @@ final readonly class ScheduleRepacker
                 $slotCounts,
                 $capacityPerSlot,
                 $options,
-                $budget,
-                $recolourBudget
+                $extraBudget,
+                $extraRecolourBudget
             );
             if (
-                $ranked instanceof \Closure
-                    ? $keyOf($otherPositions, $otherLeft) < $keyOf($positions, $stillLeft)
-                    : [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions)]
-                        < [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots), ...$scoreOf($positions)]
+                $onlyMorePlaced ? count($otherLeft) < count($stillLeft) : (
+                    $ranked instanceof \Closure
+                        ? $keyOf($otherPositions, $otherLeft) < $keyOf($positions, $stillLeft)
+                        : [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions)]
+                            < [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots), ...$scoreOf($positions)]
+                )
             ) {
                 $positions = $otherPositions;
                 $stillLeft = $otherLeft;
                 $dropped = $otherDropped;
                 $plan = $otherPlan;
+                $extraKept = true;
             }
         }
 
+        // What the two schedules made on copies found counts only where one
+        // of them is kept: then a search they stopped is one the budget
+        // stopped, but their steps are still not spent
+        if (!$apart || $extraKept) {
+            $others = [...$others, ...$extraOthers];
+        }
+        if ($apart && $extraKept) {
+            $budget->recordStopsOf($extraBudget);
+            $recolourBudget->recordStopsOf($extraRecolourBudget);
+            $layoutStopped = $layoutStopped || $extraLayoutBudget->stoppedASearch();
+        }
         $layoutStopped = $layoutStopped || $layoutBudget->stoppedASearch();
 
         return [

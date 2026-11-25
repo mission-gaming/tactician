@@ -2012,20 +2012,22 @@ with scattered pins were brought closer to the events 0.2.3 placed
     ahead); the 63 round robins of decision 68 have nothing pinned and
     are unchanged.
 
-    That holds at the default budget, not below it. On 1,200 small
-    seasons and round robins (4 to 14 participants, one or two legs,
-    sessions of two to four slots, some with positions full of pins and
-    half with current positions) under no objective and five lists, 5 of
-    the 5,974 outcomes at 2,000 steps are worse by their own ranking,
-    each by one to four of a figure and none by an event placed, and
-    each with the budget reported stopped, and all under a list with an
-    objective ahead of gap slots. The first schedule of such a list is
-    chosen on events placed and gap slots alone, so a fourth schedule
-    with fewer gap slots hands the steps of the ranking (the reshaped
-    layouts, the polish) another schedule to start from, and on what the
-    budget had left, part of it spent by the fourth schedule's search,
-    they did not get it as far. With no objective none is worse, and at
-    the default budget none of the 5,974 is (#244).
+    Below the default budget that held only once decision 77 was made.
+    On 1,200 small seasons and round robins (4 to 14 participants, one or
+    two legs, sessions of two to four slots, some with positions full of
+    pins and half with current positions) under no objective and five
+    lists, 5 of the 5,974 outcomes at 2,000 steps came out worse by their
+    own ranking, each by one to four of a figure and none by an event
+    placed, all with the budget reported stopped and all under a list
+    with an objective ahead of gap slots. The first schedule of such a
+    list is chosen on events placed and gap slots alone, so a fourth
+    schedule with fewer gap slots handed the steps of the ranking (the
+    reshaped layouts, the polish) another schedule to start from, and on
+    what the budget had left, part of it spent by the fourth schedule's
+    search, they did not get it as far. Below the default budget the
+    fourth schedule is now made on a work limit of its own and, under
+    such a list, kept only where it places more events (decision 77), and
+    none of those outcomes is worse (#244).
 
     What this leaves: these seasons still take some 20 times what they
     took in 0.2.3, and the budget is still reported stopped on 83 of
@@ -2083,18 +2085,19 @@ with scattered pins were brought closer to the events 0.2.3 placed
     round robin with scattered pins places two more events with no
     objective and one ahead.
 
-    Below the default budget an outcome with an objective can be worse
+    Below the default budget an outcome with an objective came out worse
     than before by its own ranking, as with the fourth schedule. On the
     1,200 small requests of decision 74 at 2,000 steps, 5 of the 5,974
-    outcomes are worse than with the fourth schedule alone, all with the
+    outcomes were worse than with the fourth schedule alone, all with the
     budget reported stopped and all under a list with `LeastChurn`: in
-    four the schedule every outcome is held to places one to two more
-    events, and the fewest moved events, held to it, then move 1 to 21
+    four the schedule every outcome is held to placed one to two more
+    events, and the fewest moved events, held to it, then moved 1 to 21
     more; in one the fifth schedule, made and not kept, spent the steps
     with which the attempts of the fewest moved events had placed two
-    events more than that schedule, and they now place as many as it
-    (9 events unplaced where 7 were). With no objective none is worse,
-    and at the default budget none is (#244).
+    events more than that schedule, and they then placed as many as it
+    (9 events unplaced where 7 were). Decision 77 removes them: below the
+    default budget the fifth schedule no longer spends from the two
+    budgets (#244).
 
     *Still short* (#162). At the default budget, 4 requests place fewer
     events than 0.2.3 did: seeds 47 (414 against 415), 64 (260 against
@@ -2206,6 +2209,64 @@ with scattered pins were brought closer to the events 0.2.3 placed
     session of four whole rounds whose slots the matching search cannot
     decompose in time), and the rest the planner, the structural order
     and the search for fewer gap slots.
+
+## The extra schedules below the default budget (0.4.0)
+
+77. **Below the default budget the fourth and the fifth schedule run on a
+    work limit of their own.** Decisions 74 and 75 left outcomes worse by
+    their own ranking below the default budget (#244): on the 1,200 small
+    requests of decision 74, under no objective and five lists (5,974
+    outcomes a budget), 10 at 2,000 steps and 19 at 300, two of them with
+    an event fewer placed, against the repacker without the two
+    schedules (that of decision 73). Two things made them. A schedule
+    made and not kept had spent steps of the two budgets that the
+    objectives' steps after it then lacked; and a schedule kept for
+    fewer gap slots, with as many events placed, handed the objectives
+    another schedule to start from, which on shortened work limits they
+    got less far than the one in hand.
+
+    So below the default budget (`StepBudget::limitsAreWhole()` false)
+    the two schedules are made on copies of what the two budgets have
+    left (`share(1)`), a work limit of their own as the round layout has,
+    and the steps they spend are not spent from the two budgets; a search
+    a kept schedule's copy stopped is recorded as one the budget stopped
+    (`StepBudget::recordStopsOf()`). A schedule not kept leaves the
+    repack as it would be without it, the schedules its search for fewer
+    gap slots turned down included. And where an objective ranks ahead
+    of gap slots, the two are kept only where they place more events. At
+    the default budget and above nothing changes: they spend from the two
+    budgets and are kept on the ranking, as decisions 74 and 75 say.
+    Below it a repack can now do up to twice the steps of either budget,
+    the second time on work whose result is kept only where it is better;
+    each copy is bounded by what its budget had left.
+
+    *Measured* on those 1,200 requests, against the repacker of decision
+    73 (better and worse by each outcome's own ranking):
+
+    | Budget | Before: better / worse | After: better / worse |
+    |---|---|---|
+    | 200,000 | 8 / 0 | 8 / 0 (the same outcomes) |
+    | 2,000 | 79 / 10 | 58 / 0 |
+    | 300 | 173 / 19 | 123 / 0 |
+
+    With no objective, the seasons of decision 74 and the round robins
+    with scattered pins of decision 75 place as many events with as many
+    gap slots as before at 2,000 and at 300 steps (seasons 72,596 and
+    72,511 of 72,804, with 618 and 972 gap slots, where decision 73's
+    repacker placed 72,517 and 72,425 with 918 and 1,755; scattered
+    52,027 and 51,676 of 53,744, where it placed 51,916 and 51,674), and
+    the scattered requests take half the time they did at 2,000 steps
+    (22 ms at the median, 54 at the 90th percentile, where they took 44
+    and 110). The outcomes worse than before are those of the lists
+    ahead of gap slots that the two schedules had made better than
+    decision 73's repacker did: 71, none with an event fewer placed.
+
+    Considered and not taken. The copies alone, kept on the ranking
+    under every list: 15 outcomes were still worse, all under a list
+    with an objective ahead of gap slots and none by an event placed.
+    Keeping the two schedules only where they place more events under
+    every list: nothing worse, but the seasons at 2,000 steps kept 898
+    gap slots where decision 74 had brought them to 618.
 
 ## Testing
 

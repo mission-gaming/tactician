@@ -122,6 +122,16 @@ final class StepBudget
     }
 
     /**
+     * Take on the searches another budget stopped, and none of its steps:
+     * for work done on a copy of what is left (share(1)) whose result is
+     * kept while its steps are not spent here.
+     */
+    public function recordStopsOf(self $other): void
+    {
+        $this->stoppedASearch = $this->stoppedASearch || $other->stoppedASearch;
+    }
+
+    /**
      * How many steps are left, for the caller that hands out a share and
      * has to say later how large it was.
      */
