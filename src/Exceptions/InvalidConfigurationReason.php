@@ -239,7 +239,9 @@ enum InvalidConfigurationReason: string
 
     /**
      * A round was recorded out of play order: its number is not above the
-     * number of the last round recorded.
+     * number of the last round recorded. Also a round named as the one
+     * played before another (TimelineAssigner::assignRound()) that is not
+     * below it, or is below 0.
      */
     case RoundOutOfSequence = 'round_out_of_sequence';
 
@@ -377,6 +379,16 @@ enum InvalidConfigurationReason: string
      * different zones.
      */
     case TimezoneMismatch = 'timezone_mismatch';
+
+    /**
+     * A declared timezone in plain data is an abbreviation (`BST`, `EST`,
+     * `GMT`), which PHP reads as a fixed offset all year; the names of UTC
+     * itself (`Z`, `UTC`, `UCT`) are not refused. The context has
+     * that offset under `fixed_offset`; declare a region identifier
+     * (`Europe/London`) for a place or the offset itself for a fixed
+     * offset.
+     */
+    case TimezoneAbbreviation = 'timezone_abbreviation';
 
     /**
      * Something that must move time forward does not: an interval of zero

@@ -514,14 +514,15 @@ Because purity is not part of `ConstraintInterface`, the library does not
 assume it where assuming it would change what a constraint that breaks the
 rule gets back. Two shortcuts are taken only for a `ConstraintSet` made of
 `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint`
-and `SeedProtectionConstraint` objects, which run no code of yours: a round
-robin that cannot be completed is analysed once and not once per order
-tried, and a Swiss round search skips the branches that hold no pairing.
-Any other set gets the same results without the shortcuts, which on those
-two failure paths takes longer: a set that holds a `CallableConstraint`, a
-`MetadataConstraint` or a `ConsecutiveRoleConstraint` (each holds a
-callable, also when one of its factories built it), or a class of your
-own.
+and `SeedProtectionConstraint` objects, and of `ConsecutiveRoleConstraint`
+objects built by `homeAway()` or `position()`, which run no code of yours: a
+round robin that cannot be completed is analysed once and not once per
+order tried, and a Swiss round search skips the branches that hold no
+pairing. Any other set gets the same results without the shortcuts, which
+on those two failure paths takes longer: a set that holds a
+`CallableConstraint`, a `MetadataConstraint` (which holds a callable, also
+when one of its factories built it), a `ConsecutiveRoleConstraint` given a
+role extractor of your own, or a class of your own.
 
 ### Role-Based Constraints
 
@@ -2819,9 +2820,12 @@ scheduler that holds one continues its sequence, and two calls give two
 schedules.
 
 Every round count the scheduler accepts is generated when it has no
-constraints. A round is paired without a look at the rounds to come, so at
-the larger round counts a draw can reach a round that has no pairing left
-without a repeat. The scheduler then draws again: with a seed, each later
+constraints, and in a field of odd size nobody has a second bye. A round is
+paired without a look at the rounds to come, so at the larger round counts
+a draw can reach a round that has no pairing left without a repeat, and at
+the largest counts of a field of odd size it can give a participant a
+second bye, which the engine does where the round has no pairing otherwise.
+The scheduler takes either as a failed draw and draws again: with a seed, each later
 draw from a seed of its own that the seed gives (a `Xoshiro256StarStar`
 sequence from the seed, advanced by one `jumpLong()`), and with a
 `Randomizer`, continuing its sequence. Either way the schedule is still a
@@ -2830,12 +2834,16 @@ first draw gives. If twenty draws are
 not enough, or there is nothing to draw from, it builds the rounds by the
 rotation that lays out a round robin, which cannot fail. Without a source of
 draws there is one draw, and it needs the rotation at a few of the largest
-round counts (of the fields up to 44: 26 participants from 24 rounds on, 34
-from 32, and 37 at 36). The first round is the list as given there too,
-with the bye of a field of odd size at the last position; the later rounds
-are those of the rotation, in which nobody has a second bye. With constraints a
-schedule may not exist at all, and an `IncompleteScheduleException` reports
-the round the last draw could not pair.
+round counts (of the fields up to 44: 26 participants from 24 rounds on, 33
+at 32, 34 from 32, and 37 at 36). The first round is the list as given there
+too, with the bye of a field of odd size at the last position; the later
+rounds are those of the rotation, in which nobody has a second bye. With
+constraints a schedule may not exist at all, and the rotation is not tried,
+since the constraints may reject it: an `IncompleteScheduleException`
+reports the round the last draw could not pair, and where every draw that
+is complete gives a participant a second bye (the constraints may leave a
+participant too few opponents to play every round), the first of them is
+the schedule.
 
 An event of a round that is never played is recorded with an
 [awarded result](#awarded-results), which counts in the table like any other
@@ -5953,22 +5961,28 @@ The rules of the mechanism:
   and round 3 from 28 February: a schedule of rounds 1 and 2 is
   assigned, and one that holds round 3 as well is refused. The order is
   the order of the round numbers, so a later round at an earlier time is
-  refused like one at the same time. `assignRound()` is given one round
-  and keeps nothing between calls, so it compares that round with the
-  one before it by number, which a stage that plays its rounds in order
-  from round 1 has played. Round 1 is compared with nothing, and so is
-  no round with the one after it: an overlap of two rounds is reported
-  when the later of them is assigned. The round before is the one before
-  by number whether or not it was played. A caller whose rounds have a
-  gap (a number skipped, or a pairing with no events) has a round
-  compared with one nobody played, which can refuse it, and the two
-  played rounds on either side of the gap compared with each other by
-  no call; `assign()` given a schedule of the rounds played compares
-  exactly those.
+  refused like one at the same time. `assignRound()` applies the same
+  rule, each round compared with the round played before it, but it is
+  given one round and keeps nothing between calls, so it is told which
+  round that was: `assignRound($pairing, $timeline, previousRound: 3)`,
+  or `previousRound: 0` for the first round played. Not told, it takes
+  the round numbered before it, which is the round played before for a
+  stage whose rounds are numbered 1, 2, 3 and so on (the rounds of a
+  `StageState` are); round 1 then has none. No round is compared with
+  the one after it: an overlap of two rounds is reported when the later
+  of them is assigned. A caller whose rounds have a gap (a number
+  skipped, or a pairing with no events) passes the round played before;
+  told it for every round, the calls refuse exactly what `assign()`
+  refuses for the schedule of the same rounds, with the same two rounds
+  named. Not told, a round after the gap is compared with a round nobody
+  played, which can refuse it, and not with the round before the gap. A
+  round named as played before that is not below the round's number, or
+  is below 0, is refused (`RoundOutOfSequence`).
 - **A round too far away is refused.** A round whose time is more than
-  some 270 billion years from the start, which is past what PHP's
-  timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
-  return a date that has wrapped round. Short of that a round number has
+  some 270 billion years from the start, or past either end of what PHP's
+  timestamps hold (some 291 billion years from 1970, which a start far
+  from 1970 reaches sooner), fails with the reason `ValueOutOfRange`;
+  PHP would return a date that has wrapped round. Short of that a round number has
   no limit where the interval is a duration: the steps are multiplied
   out, so round a million costs what round two costs. An interval made by
   `DateInterval::createFromDateString()` has no multiple and is added once
@@ -6026,6 +6040,39 @@ P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00
 PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
 ```
 
+A definition answers for slot times without a schedule.
+`getSlotTime($round, $slot)` gives one slot, in UTC.
+`getRoundSlotTimes(...$rounds)` gives every slot of each round asked for,
+filled or not: a list per round, keyed by round number, in the order the
+rounds are given, each round computed when its list is read. The times are
+the ones `getSlotTime()` gives. Given in rising order, the rounds are
+computed in one pass: under an interval made by
+`DateInterval::createFromDateString()`, which is added one step at a time,
+each round's first slot is counted on from the round before it in the list,
+so the rounds of a whole schedule cost what its last round costs alone.
+This is how `assign()` computes the rounds of a schedule:
+
+```php
+$evenings = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('PT90M'),
+);
+
+foreach ($evenings->getRoundSlotTimes(1, 3) as $round => $slots) {
+    $times = array_map(fn (DateTimeImmutable $slot): string => $slot->format('j M H:i'), $slots);
+    echo "Round {$round}: " . implode(', ', $times) . " UTC\n";
+}
+echo $evenings->getSlotTime(3, 1)->format('j M H:i') . " UTC\n";
+```
+
+```text
+Round 1: 17 Oct 18:00, 17 Oct 19:30 UTC
+Round 3: 31 Oct 19:00, 31 Oct 20:30 UTC
+31 Oct 20:30 UTC
+```
+
 The assigner places events on slots and checks that a round fits and that
 it ends before the next round starts. It also refuses a round that puts
 one participant in two events at the same time, which a slot with two or
@@ -6072,10 +6119,45 @@ $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
 `assignRound()` makes the checks `assign()` makes, on the one round: the
-round fits, its slots rise, it starts after the round numbered before it
+round fits, its slots rise, it starts after the round played before it
 has ended, and it satisfies the rules the assigner was built with (see
 [Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
 events and no others, since the assigner keeps nothing between calls.
+
+A stage whose rounds on the timeline have a gap tells it the round
+played before. Monthly rounds from 31 December with two slots 30 days
+apart have round 2 run into round 3; a stage that plays rounds 1 and 3
+is assigned round 3 when it says round 1 came before it, and refused when
+it does not say, because round 3 is then compared with round 2:
+
+```php
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\RoundPairing;
+
+$monthly = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+    roundInterval: new DateInterval('P1M'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('P30D'),
+);
+$roundThree = new RoundPairing(3, null, [new Event([$participants[0], $participants[1]], new Round(3))]);
+
+$afterRoundOne = (new TimelineAssigner())->assignRound($roundThree, $monthly, previousRound: 1);
+echo $afterRoundOne[0]->getKickoff()->format('Y-m-d H:i') . "\n";
+
+try {
+    (new TimelineAssigner())->assignRound($roundThree, $monthly);
+} catch (InvalidConfigurationException $e) {
+    echo $e->getReason()?->name . ': round ' . $e->getContext()['round'] . "\n";
+}
+```
+
+```text
+2027-02-28 19:00
+OverlappingTime: round 2
+```
 
 Definitions are plain-data constructible for config-driven platforms,
 with ISO 8601 durations:
@@ -6109,15 +6191,42 @@ refused are:
   interval of whole days, months and years that `diff()` returned is
   written;
 - one with a fraction of a second, an inverted one, and one with a negative
-  part.
+  part;
+- one with a part of more than twelve digits (a day count set by hand to
+  100,000,000,000,000), because PHP reads no more than twelve for a part of
+  a duration and would refuse `P100000000000000D` when it is read back.
 
 Build the interval as `new DateInterval('PT25M')` where the configuration
 has to be stored. A start with a fraction of a second is written with it
 (`2026-08-01 18:00:00.250000`), and so are a session start of a grid and
-a bound of a blackout window. A `MinimumRestRule` adds its rest once and
+a bound of a blackout window. So are the kickoffs assigned from such a
+start: `ScheduledEvent::toArray()` (and with it
+`ScheduledSchedule::toArray()`) and `SlotAssignment::toArray()` write a
+kickoff to the second (`2026-08-01T17:00:00Z`), and with its fraction
+after the seconds when it has one (`2026-08-01T17:00:00.250000Z`), so a
+kickoff read back is the slot time the definition gives:
+
+```php
+use MissionGaming\Tactician\Timeline\ScheduledSchedule;
+
+$quarterPast = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-08-01 18:00:00.25', new DateTimeZone('Europe/London')),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('PT1H'),
+);
+$stored = (new TimelineAssigner())->assign($schedule, $quarterPast)->toArray();
+echo $stored['events'][0]['kickoff'], "\n"; // 2026-08-01T17:00:00.250000Z
+
+$readBack = ScheduledSchedule::fromArray($stored)->getScheduledEvents()[0]->getKickoff();
+var_dump($readBack == $quarterPast->getSlotTime(1, 0)); // bool(true)
+```
+
+A `MinimumRestRule` adds its rest once and
 in UTC, so its `toArray()` writes a rest of amounts of time from either
 source (`48 hours` is `PT48H`) and refuses only what has no duration: a
-relative string that is more than amounts, a fraction of a second, a sign.
+relative string that is more than amounts, a fraction of a second, a sign,
+a part of more than twelve digits.
 
 **A datetime in plain data states its date in full**: the year, the month
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
@@ -6132,6 +6241,35 @@ from plain data: the `start` of a timeline, the `from` and `to` of a
 blackout window and the `sessions` of a session grid. The `kickoff` of a
 serialized scheduled event declares no zone: it is UTC unless the string
 carries one, and any zone the string carries is accepted.
+
+**A declared timezone is a region or an offset.** The `timezone` field is
+a region identifier of the timezone database (`Europe/London`,
+`America/New_York`, `UTC`) or an explicit offset (`+01:00`, `-05:00`). An
+abbreviation is refused with the reason `TimezoneAbbreviation`, before the
+datetime is read: PHP reads one as a fixed offset all year, so `BST` is
+`+01:00` in January as well, and a caller who meant London would get
+kickoffs an hour out for half the year. Every abbreviation PHP knows is
+refused, `GMT` included (it is London's winter time, an hour out all
+summer), except the names of UTC itself: `Z`, `UTC` and `UCT`, in any
+case. Write the offset itself (`+01:00`) where a fixed one is meant. The context of the error has that offset under `fixed_offset`
+([ADR 0023](adr/0023-a-declared-timezone-is-a-region-or-an-offset.md)).
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\InvalidConfigurationException" -->
+```php
+// BST is +01:00 all year: London's winter kickoffs would be an hour out
+TimelineDefinition::fromArray([
+    'start' => '2026-08-01 18:00',
+    'timezone' => 'BST',
+    'round_interval' => 'P7D',
+]);
+```
+
+A definition or a session grid built in code with a start in an
+abbreviation (`new DateTimeZone('BST')`) works, as that fixed offset, and
+its `toArray()` refuses it with the reason `NotSerializable`, since
+`fromArray()` would refuse what it wrote. Build the start in a region or an
+offset where the configuration has to be stored. A blackout rule writes its
+bounds in UTC and is not affected.
 
 Two kinds of string are rejected, with the reason `UnparseableTime` (the
 kickoff with an `InvalidInputException`):
@@ -6227,6 +6365,15 @@ between rounds is checked there. Both built-in
 rules are plain-data constructible with `fromArray()`/`toArray()`, and
 custom rules implement the two-method `TimelineRule` interface.
 
+A `MinimumRestRule` refuses a rest longer than
+`MinimumRestRule::MAX_REST_DAYS` days (some 270 billion years, each part of
+the rest counted as positive and a month as 31 days) when it is built, with
+the reason `ValueOutOfRange`: PHP adds a longer rest to a kickoff without
+complaint and returns a time that has wrapped round to before it, and the
+rule would find no kickoff too close. A rest it accepts that still passes
+the end of the times PHP holds, from a kickoff billions of years out, covers
+every later kickoff of that participant.
+
 ## Schedule Repacking
 
 Generation invents events; repacking repairs a schedule whose events
@@ -6272,7 +6419,7 @@ shape-only grid has no instants and is not
 checked. Every slot time is computed from its session's start, never from
 the slot before it.
 
-**A grid has at most 100,000 positions** (`SessionGrid::MAX_POSITIONS`):
+**A grid has at most 200,000 positions** (`SessionGrid::MAX_POSITIONS`):
 the slot counts of its sessions added up, overrides applied. The number
 of sessions (`session_count`, or the length of `sessions`),
 `slots_per_session`, each slot count in `slots_per_session_overrides`
@@ -6280,8 +6427,21 @@ and their sum are each refused above it, with the reason
 `ValueOutOfRange`, before anything of that size is allocated or visited.
 The limit is the same for both forms of grid, and its value comes from
 the instant-based one, which keeps the instant of every position
-(`docs/design/schedule-repack.md` says why). 100,000 positions are a
-slot every five minutes, day and night, for nearly a year.
+(`docs/design/schedule-repack.md` says why). 200,000 positions are a
+slot every five minutes, day and night, for nearly two years; a leap year
+of them is 105,408. The memory a grid takes rises with its positions:
+about 0.4 KB a position for an instant-based grid, some 40 MB for that
+leap year, and next to nothing for a shape-only one. A repack holds more,
+some 1.2 KB a position with instants and 0.8 KB without, so a repack of a
+grid of 100,000 positions or more needs a `memory_limit` above PHP's
+default of 128 MB: about 130 MB for the leap year and 250 MB at the
+limit. A grid of the sessions still to be played, and not of the whole
+season, costs less.
+A slot interval made by `DateInterval::createFromDateString()` (`5
+minutes`), which only the constructor takes, is added one step at a time,
+so a session of it has the limit on steps of a timeline as well: 100,001
+slots, the first and 100,000 steps after it. Written as an ISO 8601
+duration (`PT5M`) it has no such limit.
 `capacity_per_slot` has a limit as well, of a million million
 (`SessionGrid::MAX_CAPACITY_PER_SLOT`); see
 [Unbounded Capacity](#unbounded-capacity).
@@ -7452,8 +7612,9 @@ these keys:
 Each key holds what `toArray()` of the record holds under it: an event ID
 as a string, a session, a slot and a count as integers, a participant as
 its ID or null, a kind and a reason as their backing strings, the lists
-as lists, and a kickoff as the string `2026-08-12T19:00:00Z` or null. The
-keys are named because they are the scheme: a key that a `toArray()`
+as lists, and a kickoff as the string `2026-08-12T19:00:00Z`, or
+`2026-08-12T19:00:00.250000Z` when it has a fraction of a second, or null.
+The keys are named because they are the scheme: a key that a `toArray()`
 gains in a later version is not part of scheme `v1` and does not change a
 `v1` fingerprint.
 
@@ -7478,7 +7639,8 @@ What follows from that:
 - Every field the records have today is covered. A participant is covered
   by its ID and by nothing else of it, so a changed label or changed
   metadata leaves the fingerprint as it was. A kickoff is covered to the
-  second and is null for a shape-only grid.
+  microsecond (a kickoff on a whole second is written to the second, as
+  it always was) and is null for a shape-only grid.
 - `isBudgetExhausted()` is not covered: two outcomes holding the same
   plan are the same plan, however each search ended.
 - Nothing in it depends on the PHP version, the platform, the locale or
@@ -7571,7 +7733,7 @@ interval. The integer and the null in the first two types are how
 `shapeOnly()` reaches the constructor (a session count and no interval);
 do not pass them yourself, call `shapeOnly()`. The constant `SessionGrid::UNBOUNDED` is
 the plain-data word for an unbounded capacity; `SessionGrid::MAX_POSITIONS`
-(100,000) is the most positions, sessions or slots of one session a grid
+(200,000) is the most positions, sessions or slots of one session a grid
 can have, and `SessionGrid::MAX_CAPACITY_PER_SLOT` (a million million) the
 largest capacity that is a number.
 
@@ -7670,7 +7832,7 @@ hand, in a test for example.
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
 | `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, in the timezone it was given in); throws an `UnavailableValueException` when there is none |
-| `toArray()` | `format_version`, `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
+| `toArray()` | `format_version`, `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in, and written with its fraction of a second when it has one (`2026-08-12T19:30:00.250000Z`) |
 
 #### `UnplacedEvent`
 
@@ -8678,6 +8840,7 @@ identifier for logs and stored data):
 | `PositionOutOfRange` | `position_out_of_range` | A session, slot, round or resource index is outside the grid or timeline |
 | `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
+| `TimezoneAbbreviation` | `timezone_abbreviation` | A declared timezone is an abbreviation (`BST`, `EST`, `GMT`), which PHP reads as a fixed offset all year; the context has that offset under `fixed_offset` |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `OverlappingTime` | `overlapping_time` | The slots of one round of a timeline, or of one session of a grid, run up to or past the first slot of the next, or two slots of one round or session are not at rising times |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
