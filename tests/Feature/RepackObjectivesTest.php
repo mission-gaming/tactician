@@ -1253,7 +1253,11 @@ describe('Objectives ranked ahead of gap slots', function (): void {
         // is polished, polishes to the same schedule, so the polish skips
         // it. The digest is of the fingerprints of these 3,200 outcomes as
         // they were before it did (with the polish of decision 73, #237),
-        // at a budget the polish can run short of and at the default
+        // at a budget the polish can run short of and at the default, but
+        // for 20 (10 at each budget) that are better by their own ranking
+        // since the rounds laid on the positions with room are handed to
+        // the polish where the schedule of the request has late starts
+        // alone (decision 76, #246); none is worse
         $lists = [
             [RepackObjective::FewestLoneParticipantSessions, RepackObjective::FewestGapSlots],
             [RepackObjective::FewestIdleSessions, RepackObjective::FewestGapSlots],
@@ -1272,7 +1276,7 @@ describe('Objectives ranked ahead of gap slots', function (): void {
             }
         }
 
-        expect(hash('sha256', implode("\n", $fingerprints)))->toBe('68dd7dbc244eff73a79033d31dfa29f35f1f7eecc268d3d36d71e27161edf2a3');
+        expect(hash('sha256', implode("\n", $fingerprints)))->toBe('b76753089c9edcb0f14dd64fc228a5845a4e8bb373f7632f7354602809c6e15f');
     });
 
     it('take the polished schedule the search for fewer gap slots found where the one it kept polishes worse', function (): void {
