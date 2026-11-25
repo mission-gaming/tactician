@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\PairwisePlan;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StagePlan;
@@ -156,6 +157,77 @@ describe('RoundRobinPlan', function (): void {
         expect($violations)->toContain('Pairing Player 1 vs Player 2 appears 3 time(s), expected 1.');
         expect($violations)->toContain('Pairing Player 1 vs Player 3 appears 0 time(s), expected 1.');
         expect($violations)->toContain('Pairing Player 2 vs Player 3 appears 0 time(s), expected 1.');
+    });
+
+    // validateIntegrity()'s docblock: event violations in schedule order,
+    // then the pairing counts in field order, each pairing once, counted
+    // whichever participant is named first and named in key order. The
+    // oracle states that rule with a PairKey per pairing. The fields list
+    // ids twice, ids that read as numbers, ids PHP compares without a total
+    // order ('10', '9', '1e1') and ids holding PairKey's separator; the
+    // schedules drop, repeat and reverse pairings and hold events the plan
+    // reports.
+    it('counts every pairing of the field in field order, whatever the ids', function (): void {
+        $randomizer = new Random\Randomizer(new Random\Engine\Xoshiro256StarStar(251));
+        $pool = ['a', 'b', '10', '9', '1e1', '0', 'x|y', 'x\\y', 'c'];
+
+        for ($case = 0; $case < 300; ++$case) {
+            $size = $randomizer->getInt(2, 7);
+            $field = [];
+            for ($i = 0; $i < $size; ++$i) {
+                $id = $pool[$randomizer->getInt(0, count($pool) - 1)];
+                $field[] = new Participant($id, "L{$i}-{$id}");
+            }
+            $outsider = new Participant('outsider', 'Outsider');
+            $legs = $randomizer->getInt(1, 2);
+
+            $events = [];
+            for ($e = $randomizer->getInt(0, 14); $e > 0; --$e) {
+                $kind = $randomizer->getInt(0, 9);
+                $one = $field[$randomizer->getInt(0, $size - 1)];
+                $two = $field[$randomizer->getInt(0, $size - 1)];
+                $events[] = match (true) {
+                    $kind === 0 => UncheckedEvent::of([$one, $two, $outsider], new Round(1)),
+                    $kind === 1 => new Event([$one, $outsider], new Round(1)),
+                    default => UncheckedEvent::of([$one, $two], new Round(1)),
+                };
+            }
+
+            $labels = [];
+            foreach ($field as $participant) {
+                $labels[$participant->getId()] = $participant->getLabel();
+            }
+            $expected = [];
+            $counts = [];
+            foreach ($events as $index => $event) {
+                $sides = array_values($event->getParticipants());
+                if (count($sides) !== 2) {
+                    $expected[] = sprintf('Event %d has %d participants; round robin events must have exactly 2 participants.', $index + 1, count($sides));
+                } elseif ($sides[0]->getId() === $sides[1]->getId()) {
+                    $expected[] = sprintf('Event %d contains participant %s twice.', $index + 1, $sides[0]->getId());
+                } elseif (!isset($labels[$sides[0]->getId()], $labels[$sides[1]->getId()])) {
+                    $expected[] = sprintf('Event %d contains a participant that is not in the tournament.', $index + 1);
+                } else {
+                    $key = PairKey::of($sides[0]->getId(), $sides[1]->getId());
+                    $counts[$key] = ($counts[$key] ?? 0) + 1;
+                }
+            }
+            $pairings = [];
+            for ($i = 0; $i < $size - 1; ++$i) {
+                for ($j = $i + 1; $j < $size; ++$j) {
+                    $ids = PairKey::order([$field[$i]->getId(), $field[$j]->getId()]);
+                    $pairings[PairKey::join($ids)] = $ids;
+                }
+            }
+            foreach ($pairings as $key => [$first, $second]) {
+                if (($counts[$key] ?? 0) !== $legs) {
+                    $expected[] = sprintf('Pairing %s vs %s appears %d time(s), expected %d.', $labels[$first], $labels[$second], $counts[$key] ?? 0, $legs);
+                }
+            }
+
+            expect(new RoundRobinPlan($field, $legs)->validateIntegrity(new Schedule($events)))
+                ->toBe($expected, "case {$case}");
+        }
     });
 
     it('exposes its participants re-indexed', function (): void {

@@ -299,6 +299,48 @@ describe('SwissRoundSearch, against the search without pruning', function (): vo
         expect($unpairable)->toBeGreaterThan(50);
     });
 
+    // The engine pairs an odd field with one search, once for each bye
+    // candidate, each time without that candidate: a participant's position
+    // differs from one list to the next. Whether two participants have
+    // played is remembered by position, so every list must be paired as a
+    // search made for it alone would pair it.
+    it('pairs each list one search is given as the search without pruning does', function (): void {
+        $randomizer = new Randomizer(new Mt19937(253));
+        $constraintSets = array_values(swissSearchConstraints());
+        $paired = 0;
+
+        for ($case = 0; $case < 120; ++$case) {
+            $size = 2 * $randomizer->getInt(3, 5) + 1;
+            $field = $randomizer->shuffleArray(swissSearchField($size));
+            $played = [];
+            for ($a = 0; $a < $size; ++$a) {
+                for ($b = $a + 1; $b < $size; ++$b) {
+                    if ($randomizer->getInt(0, 99) < 45) {
+                        $played[] = [$a, $b];
+                    }
+                }
+            }
+            $history = swissHistory($field, $played);
+            $context = new SchedulingContext($field, new SwissPlan($field, 6), $history['events']);
+            $constraints = $constraintSets[$case % count($constraintSets)];
+            $search = new SwissRoundSearch($constraints, $history['played'], $history['homeCounts'], $context, 4);
+
+            foreach (array_keys($field) as $sitsOut) {
+                $remaining = $field;
+                unset($remaining[$sitsOut]);
+                $remaining = array_values($remaining);
+
+                $expected = describePairing(pairRoundWithoutPruning($remaining, $history['played'], $history['homeCounts'], $constraints, $context, 4));
+                expect(describePairing($search->pair($remaining)))->toBe($expected, "case {$case}, without {$sitsOut}");
+                if ($expected !== null) {
+                    ++$paired;
+                }
+            }
+        }
+
+        expect($paired)->toBeGreaterThan(200);
+    });
+
     it('takes the shortcut past a dead end the plain search would walk for hours', function (?ConstraintSet $constraints): void {
         // Two halves of eleven that have played every pairing across the
         // halves: only pairings inside a half are left, and eleven cannot be

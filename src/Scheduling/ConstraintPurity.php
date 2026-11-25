@@ -20,11 +20,14 @@ use MissionGaming\Tactician\RoleAssignment\LegBalanceRule;
  * Nothing states that a constraint is a predicate. A constraint of the
  * caller's may count its calls, read a randomizer, or throw for an event it
  * cannot judge, and then how often and in which order it is asked decides
- * what the caller gets back. Two shortcuts ask differently: the round-robin
- * retry loop builds no failure analysis for an ordering it goes on from, and
- * the Swiss round search skips branches that hold no pairing. Both are taken
- * only for a set this class knows; for any other set the constraints are
- * asked exactly as they were before those shortcuts existed.
+ * what the caller gets back. Three shortcuts ask differently: the
+ * round-robin retry loop builds no failure analysis for an ordering it goes
+ * on from, the Swiss round search skips branches that hold no pairing, and
+ * the failure analysis (SchedulingDiagnostics) asks each constraint once per
+ * role order, and once in all for one that reads no position
+ * (constraintIgnoresRoles()). All three are taken only for a set this class
+ * knows; for any other set the constraints are asked exactly as they were
+ * before those shortcuts existed.
  *
  * A set is known when it holds only objects of the classes in KNOWN, and
  * ConsecutiveRoleConstraint objects built by one of its factories
