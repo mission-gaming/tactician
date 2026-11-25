@@ -478,13 +478,24 @@ slot count there looped without end in the check decision 37 added,
 where 0.2.3 had built the grid at once and failed later, when the
 positions of two such sessions were counted. No arithmetic replaces the check: where two slots
 fall on one instant depends on the timezone's clocks. So the positions
-are limited (`SessionGrid::MAX_POSITIONS`, 100,000) and every count is
+are limited (`SessionGrid::MAX_POSITIONS`, 100,000 in 0.3.0 and
+200,000 from 0.4.0) and every count is
 refused above the limit before anything of its size is allocated or
-visited. The value is set by the instant-based grid, some 40 MB and a
-sixth of a second at the limit, and applies to the shape-only one too,
+visited. The value is set by the instant-based grid, some 80 MB and a
+quarter to half a second at the limit, and applies to the shape-only one too,
 so that one number describes a grid; one limit on the positions was
 chosen over a limit for each count because the positions are what is
-paid for. The capacity has a limit for another reason
+paid for. 0.4.0 doubled the limit (#175): a slot every five minutes for
+a year is 105,120 positions (105,408 in a leap year), which 100,000
+refused. Measured at one, two, five and ten times the old limit, every
+cost rises in proportion to the positions: building an instant-based
+grid takes about 0.4 KB a position and a repack about 1.2 KB, so 200,000
+is some 80 MB for the grid and 250 MB for a repack of it, against 400 MB
+and 1.1 GB at a million. 200,000 is the round number that covers a year
+of five-minute slots with room to spare while a grid at the limit still
+fits PHP's default memory limit of 128 MB; a repack of a grid of 100,000
+positions or more needs a higher one, which was already so at the old
+limit. The capacity has a limit for another reason
 (`MAX_CAPACITY_PER_SLOT`, a million million): the planner adds it up
 over the positions, and that sum left PHP's integers for a capacity near
 the largest integer (a `TypeError` inside the repacker, in 0.2.3 as

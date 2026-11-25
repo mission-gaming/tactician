@@ -152,4 +152,81 @@ describe('GapLowerBound', function (): void {
         // And it is not a bound of nothing: some of these it reaches
         expect($reached)->toBeGreaterThan(0);
     });
+
+    it('is never more than the fewest gap slots on irregular grids, with or without the exact search', function (): void {
+        // Against the exhaustive search again, on the shapes the first
+        // property leaves out: sessions of different lengths (some of a
+        // single slot), up to three sessions, three events to a slot,
+        // pins more often, two participants alone. The bounds that need
+        // no search (a work limit of one slot check) are never more than
+        // the exact one, which is never more than the fewest there are
+        $random = new Randomizer(new Xoshiro256StarStar(16_900));
+        $reached = 0;
+        $checked = 0;
+        for ($case = 0; $case < 600; ++$case) {
+            $participantCount = $random->getInt(2, 5);
+            $participants = [];
+            for ($index = 0; $index < $participantCount; ++$index) {
+                $participants[] = new Participant("p{$index}", "p{$index}");
+            }
+            $sessions = $random->getInt(1, 3);
+            $slotCounts = [];
+            for ($session = 0; $session < $sessions; ++$session) {
+                $slotCounts[$session] = $random->getInt(1, 5);
+            }
+            $capacity = $random->getInt(1, 3);
+            $grid = SessionGrid::shapeOnly($sessions, 1, $slotCounts, $capacity);
+
+            $edges = [];
+            $movable = [];
+            $pinned = [];
+            $pinSlots = [];
+            $pinCounts = [];
+            for ($index = 0, $count = $random->getInt(2, 7); $index < $count; ++$index) {
+                $a = $random->getInt(0, $participantCount - 1);
+                $b = ($a + $random->getInt(1, $participantCount - 1)) % $participantCount;
+                if ($random->getInt(1, 3) === 1) {
+                    $session = $random->getInt(0, $sessions - 1);
+                    $slot = $random->getInt(0, $slotCounts[$session] - 1);
+                    if (
+                        ($pinCounts[$session][$slot] ?? 0) < $capacity
+                        && !in_array($slot, $pinSlots[$session][$a] ?? [], true)
+                        && !in_array($slot, $pinSlots[$session][$b] ?? [], true)
+                    ) {
+                        $pinned[] = new PinnedEvent("x{$index}", $participants[$a], $participants[$b], $session, $slot);
+                        $pinSlots[$session][$a][] = $slot;
+                        $pinSlots[$session][$b][] = $slot;
+                        $pinCounts[$session][$slot] = ($pinCounts[$session][$slot] ?? 0) + 1;
+
+                        continue;
+                    }
+                }
+                $movable[] = new MovableEvent("m{$index}", $participants[$a], $participants[$b]);
+                $edges[] = [$a, $b];
+            }
+            if (
+                $movable === []
+                || array_sum($slotCounts) ** count($movable) > 200_000
+                || RepackBruteForce::maxPlaced($movable, $pinned, $grid) < count($movable)
+            ) {
+                // Too large for the exhaustive search, or not every event
+                // can be placed, which is what the bound is of
+                continue;
+            }
+
+            ++$checked;
+            $fewest = RepackBruteForce::fewestGapSlots($movable, $pinned, $grid);
+            $bound = GapLowerBound::of($edges, $pinSlots, $pinCounts, $slotCounts, $capacity);
+            $withoutSearch = GapLowerBound::of($edges, $pinSlots, $pinCounts, $slotCounts, $capacity, 1);
+
+            expect($bound)->toBeLessThanOrEqual($fewest)
+                ->and($withoutSearch)->toBeLessThanOrEqual($bound);
+            if ($bound > 0 && $bound === $fewest) {
+                ++$reached;
+            }
+        }
+
+        expect($checked)->toBeGreaterThan(300)
+            ->and($reached)->toBeGreaterThan(0);
+    });
 });

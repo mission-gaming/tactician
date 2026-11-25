@@ -34,14 +34,17 @@ enum SelectionYieldKind: string
 
     /**
      * The winners of the last round of the stage before, and its byes:
-     * half its entrants rounded up after one knockout round, and 1 after a
-     * whole bracket.
+     * after one knockout round paired as the elimination engines pair the
+     * first round of a bracket (byes up to the next power of two), half
+     * that power of two; 1 after a whole bracket.
      */
     case WinnersOfLastRound = 'winners-of-last-round';
 
     /**
-     * The losers of the last round of the stage before: half its entrants
-     * rounded down after one knockout round, and 1 after a whole bracket.
+     * The losers of the last round of the stage before: after one knockout
+     * round paired as the elimination engines pair the first round of a
+     * bracket, one for each of its ties, which is the entrants beyond half
+     * the next power of two; 1 after a whole bracket.
      */
     case LosersOfLastRound = 'losers-of-last-round';
 
