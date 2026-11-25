@@ -2531,4 +2531,21 @@ describe('Repacking seasons with their first rounds pinned in order', function (
         [21, 37, 0], [22, 34, 0], [23, 49, 0], [24, 43, 0], [25, 37, 0],
         [26, 52, 0], [27, 64, 0], [28, 67, 0], [29, 41, 0], [30, 50, 0],
     ]);
+
+    it('plans the events once more in a scrambled order where the schedule places fewer than the ceiling', function (): void {
+        // 14 participants, 46 of the 91 events movable. The round order,
+        // the order of the participants and the rounds laid on the
+        // positions with room all place 43 of them, below the ceiling of
+        // the last placement step; planned in the scrambled order, the
+        // events find room for one more (#162). Of 200 such requests this
+        // is the one the fifth schedule changes
+        [$movable, $pinned, $grid] = roundRobinPinnedAtRandom(149);
+
+        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+
+        expect($movable)->toHaveCount(46)
+            ->and($outcome->getAssignments())->toHaveCount(44)
+            ->and($outcome->getGapSlotCount())->toBe(0);
+        assertProperness($outcome, $movable, $pinned);
+    });
 });

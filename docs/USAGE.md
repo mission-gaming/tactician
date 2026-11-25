@@ -6686,7 +6686,11 @@ unplaced or a gap and some position is full of pins, the repacker lays
 the rounds out once more on the positions with room only, and returns
 that fourth schedule on the same terms: on 160 seasons of 20 to 40
 participants with a fifth or a half of their rounds pinned in order it
-takes the gap slots from 244 to 6.
+takes the gap slots from 244 to 6. And where fewer events are still
+placed than could be, the events are planned once more in a fixed
+order scrambled from the order of the rounds, and that fifth schedule
+is returned on the same terms; it costs nothing on a request whose
+events are all placed.
 
 **The ids decide as little as they can.** The repacker takes the
 participants and the events in an order made from the request itself:

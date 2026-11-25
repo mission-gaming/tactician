@@ -53,7 +53,9 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * placed comes first. Where the result still leaves an event unplaced or
  * a gap and pins fill a position, the rounds are laid out once more on
  * the positions with room only, and that fourth schedule is returned on
- * the same terms. Properness — no participant twice at one position,
+ * the same terms. Where fewer events are still placed than the ceiling,
+ * they are planned once more in a fixed scrambled order, a fifth
+ * schedule returned on the same terms. Properness — no participant twice at one position,
  * pins immovable — is never traded; contiguity is satisfied or reported,
  * never silently relaxed.
  *
@@ -189,6 +191,9 @@ final readonly class ScheduleRepacker
      * first layout counts the full ones among its rounds, which leaves a
      * season with its first rounds pinned in order too few), searched for
      * fewer gap slots where they are already better, and take its place on
+     * the same terms. Where the result then still places fewer events than
+     * that bound, the events are planned once more in a fixed order
+     * scrambled from the order of the rounds, and that takes its place on
      * the same terms.
      *
      * @throws RepackViolationsException Only when the options opted into
@@ -604,6 +609,22 @@ final readonly class ScheduleRepacker
      * the events that had to do with what the one before it did worse.
      */
     private const int KEEP_ATTEMPTS = 3;
+
+    /**
+     * The order the fifth schedule of solve() plans the events in: each
+     * event's place in the order of the rounds times this prime (the one
+     * nearest 2^32 over the golden ratio), modulo the largest prime below
+     * 2^32, ascending. A fixed, scrambled order that spreads the events of
+     * one round over the whole list; any such order would do, and this one
+     * is fixed so that the output is. Below the modulus the map is one to
+     * one, and the product stays an integer for every place below
+     * 3,474,701,543 (PHP_INT_MAX over this number), far more events than
+     * a request can hold.
+     */
+    private const int SCRAMBLE_FACTOR = 2_654_435_761;
+
+    /** The prime of SCRAMBLE_FACTOR */
+    private const int SCRAMBLE_MODULUS = 4_294_967_291;
 
     /**
      * The schedule with the fewest moved events that is found, for a
@@ -1161,8 +1182,8 @@ final readonly class ScheduleRepacker
      * nothing that outranks them is at stake: between the planned
      * schedule and the rounds as they were laid out when both place as
      * many events and neither has a gap, and between the schedule so far
-     * and the third or the fourth one when both place as many events with
-     * as many gap slots. Either way the schedule returned places as many events, with
+     * and the third, the fourth or the fifth one when both place as many
+     * events with as many gap slots. Either way the schedule returned places as many events, with
      * as many gap slots, as it would with no score.
      *
      * @param list<int> $subset The events to place, as indexes into $allPairs and $ids, ascending
@@ -1186,10 +1207,11 @@ final readonly class ScheduleRepacker
      * @param bool $layoutStopped Set when the caller's budget cut the laying out of the rounds short
      * @param bool $searchGaps Whether the search for fewer gap slots is run on the schedules made
      *                         here; the reshaped layouts run it once, on the one chosen
-     * @param bool $roundsOnRoom Whether the rounds laid on the positions with room are offered as a
-     *                           fourth schedule: only for the schedule of the whole request that
-     *                           every outcome is held to, not for the schedules of the objectives
-     *                           made after it, whose later choices could then turn out worse
+     * @param bool $floor Whether this is the schedule of the whole request that every outcome is
+     *                    made from and held to: only it is offered the fourth schedule (the rounds
+     *                    laid on the positions with room) and the fifth (the events planned in a
+     *                    scrambled order), not the schedules of the objectives made after it, whose
+     *                    later choices could then turn out worse
      *
      * @return array{array<int, array{int, int}>, list<UnplacedEvent>, array<RepackViolation>, array<int, int>, list<array<int, array{int, int}>>}
      *         The positions by index into $ids (ascending), the events of the subset with none and
@@ -1214,7 +1236,7 @@ final readonly class ScheduleRepacker
         ?\Closure $ranked,
         bool &$layoutStopped,
         bool $searchGaps = true,
-        bool $roundsOnRoom = false
+        bool $floor = false
     ): array {
         // The events of the subset, still in the repacker's order
         $pairsInOrder = [];
@@ -1367,15 +1389,10 @@ final readonly class ScheduleRepacker
             )
             && $byParticipants !== array_keys($byParticipants)
         ) {
-            $otherEdges = [];
-            $otherIds = [];
-            foreach ($byParticipants as $eventIndex) {
-                $otherEdges[] = $edges[$eventIndex];
-                $otherIds[] = $eventIds[$eventIndex];
-            }
-            [$otherPositions, $otherLeft, $otherDropped, $otherPlan] = $this->planned(
-                $otherEdges,
-                $otherIds,
+            [$otherPositions, $otherLeft, $otherDropped, $otherPlan] = $this->plannedInOrder(
+                $byParticipants,
+                $edges,
+                $eventIds,
                 $participants,
                 $pinSlots,
                 $pinCounts,
@@ -1385,21 +1402,6 @@ final readonly class ScheduleRepacker
                 $budget,
                 $recolourBudget
             );
-
-            // Back to the indexes everything else is written in
-            $inRoundOrder = [];
-            foreach ($otherPositions as $at => $position) {
-                $inRoundOrder[$byParticipants[$at]] = $position;
-            }
-            ksort($inRoundOrder);
-            $otherPositions = $inRoundOrder;
-            $inRoundOrder = [];
-            foreach ($otherDropped as $at => $drop) {
-                $inRoundOrder[$byParticipants[$at]] = $drop;
-            }
-            $otherDropped = $inRoundOrder;
-            $otherLeft = array_map(static fn(int $at): int => $byParticipants[$at], $otherLeft);
-            sort($otherLeft);
 
             if (count($otherLeft) <= count($stillLeft)) {
                 $other = null;
@@ -1446,7 +1448,7 @@ final readonly class ScheduleRepacker
         // every choice above is made on
         $gapSlots = self::gapSlots($positions, $edges, $pinSlots);
         if (
-            $roundsOnRoom
+            $floor
             && ($stillLeft !== [] || $gapSlots > 0)
             && RoundColouring::fillsAPosition($pinCounts, $capacityPerSlot)
         ) {
@@ -1491,6 +1493,49 @@ final readonly class ScheduleRepacker
             if ($better($freeLayout, $freeLeft)) {
                 $positions = $freeLayout;
                 $stillLeft = $freeLeft;
+            }
+        }
+
+        // And where the schedule still places fewer events than the
+        // ceiling of the last placement step, the events are planned once
+        // more in an order scrambled from the order of the rounds (by
+        // their place in it, times a large odd number, modulo a prime):
+        // the last placement step, which places what the planner and the
+        // packer left over, finds room from another start. It is the
+        // fifth schedule, made on what the two budgets have left, and it
+        // is returned on the same terms as the third. The order is made
+        // from the order of the rounds, so it depends on the ids no more
+        // than they do (#162)
+        if ($floor && $ceiling !== null && count($positions) < $ceiling) {
+            $scrambled = array_keys($edges);
+            usort(
+                $scrambled,
+                static fn(int $x, int $y): int => [($x * self::SCRAMBLE_FACTOR) % self::SCRAMBLE_MODULUS, $x]
+                    <=> [($y * self::SCRAMBLE_FACTOR) % self::SCRAMBLE_MODULUS, $y]
+            );
+            [$otherPositions, $otherLeft, $otherDropped, $otherPlan] = $this->plannedInOrder(
+                $scrambled,
+                $edges,
+                $eventIds,
+                $participants,
+                $pinSlots,
+                $pinCounts,
+                $slotCounts,
+                $capacityPerSlot,
+                $options,
+                $budget,
+                $recolourBudget
+            );
+            if (
+                $ranked instanceof \Closure
+                    ? $keyOf($otherPositions, $otherLeft) < $keyOf($positions, $stillLeft)
+                    : [count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots), ...$scoreOf($otherPositions)]
+                        < [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots), ...$scoreOf($positions)]
+            ) {
+                $positions = $otherPositions;
+                $stillLeft = $otherLeft;
+                $dropped = $otherDropped;
+                $plan = $otherPlan;
             }
         }
 
@@ -1591,6 +1636,73 @@ final readonly class ScheduleRepacker
         $other = [$trial, $trialLeft];
 
         return $stillLeft;
+    }
+
+    /**
+     * The planned schedule of the events taken in another order: planned()
+     * on the events listed in that order, with what it returns written
+     * again by the indexes of the order of the rounds, which everything
+     * else in solve() is written in.
+     *
+     * @param list<int> $order The events by their index in the order of the rounds, in the order
+     *                         to plan them in
+     * @param array<int, array{int, int}> $edges
+     * @param array<string> $eventIds
+     * @param array<Participant> $participants
+     * @param array<int, array<int, array<int>>> $pinSlots
+     * @param array<int, array<int, int>> $pinCounts
+     * @param array<int, int> $slotCounts
+     *
+     * @return array{array<int, array{int, int}>, list<int>, array<int, UnplacedEvent>, LoadPlan}
+     *         The positions, the events with none (ascending), the over-capacity drops and the
+     *         plan, by index in the order of the rounds
+     */
+    private function plannedInOrder(
+        array $order,
+        array $edges,
+        array $eventIds,
+        array $participants,
+        array $pinSlots,
+        array $pinCounts,
+        array $slotCounts,
+        int $capacityPerSlot,
+        RepackOptions $options,
+        StepBudget $budget,
+        StepBudget $recolourBudget
+    ): array {
+        $otherEdges = [];
+        $otherIds = [];
+        foreach ($order as $eventIndex) {
+            $otherEdges[] = $edges[$eventIndex];
+            $otherIds[] = $eventIds[$eventIndex];
+        }
+        [$otherPositions, $otherLeft, $otherDropped, $otherPlan] = $this->planned(
+            $otherEdges,
+            $otherIds,
+            $participants,
+            $pinSlots,
+            $pinCounts,
+            $slotCounts,
+            $capacityPerSlot,
+            $options,
+            $budget,
+            $recolourBudget
+        );
+
+        // Back to the indexes everything else is written in
+        $positions = [];
+        foreach ($otherPositions as $at => $position) {
+            $positions[$order[$at]] = $position;
+        }
+        ksort($positions);
+        $dropped = [];
+        foreach ($otherDropped as $at => $drop) {
+            $dropped[$order[$at]] = $drop;
+        }
+        $left = array_map(static fn(int $at): int => $order[$at], $otherLeft);
+        sort($left);
+
+        return [$positions, $left, $dropped, $otherPlan];
     }
 
     /**

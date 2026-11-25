@@ -127,6 +127,28 @@ heading **Output change (fix)**.
   four of a figure and none by an event placed. The
   median time is unchanged; the slowest season took 1.3 seconds where it
   took 1.1.
+- **A repack that places fewer events than it could tries one more order of
+  the events** (part of #162). Where the schedule still places fewer
+  events than the ceiling of the last placement step, the events are
+  planned once more in a fixed order scrambled from the order of the
+  rounds, and that schedule is returned only where it places more events,
+  or as many with fewer gap slots (then by the objectives' own ranking).
+  On 200 round robins of 16 to 40 participants with an eighth to a half
+  of their events pinned at random, 24 requests place more events and
+  none fewer (53,368 of 53,744, where it was 53,299 and 0.2.3 placed
+  53,002), and 4 of the 8 that placed fewer than 0.2.3 now place as many;
+  the other 4 are still 1 or 2 events short (the roadmap's known
+  limitations). At 2,000 steps the same
+  requests place 52,027 events where they placed 51,916. Who is affected:
+  requests that leave events unplaced where more could be placed; a
+  request whose events are all placed comes out as before, and so do the
+  golden fixtures and examples. The slowest of those requests took 2.3
+  seconds where it took 1.8. Below the default budget the fifth schedule
+  spends steps that the objectives' later steps can then lack: on 5,974
+  small repacks at 2,000 steps, 5 under a list with `LeastChurn` came out
+  worse by their own ranking, each with the budget reported stopped, one
+  of them with two events fewer placed (7 unplaced became 9, as many as
+  with no objective).
 
 The next four entries of this section come from one decision: **a round drawn by
 hand is read as drawn** (ADR 0025,
