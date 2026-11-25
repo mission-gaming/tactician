@@ -263,30 +263,44 @@ describe('the format version of an array that is read', function (): void {
         expect($read(['format_version' => 1, ...$form['sample']]))->toEqual($read($form['sample']));
     })->with(fn(): array => array_keys(PlainDataForms::all()));
 
+    it('may be the newest version of the form, and the sample then reads as it does without it', function (string $name): void {
+        $form = PlainDataForms::all()[$name];
+        $read = fn(array $data): object => $form['read']($data, PlainDataForms::registry());
+
+        expect($read(['format_version' => PlainDataForms::versionOf($name), ...$form['sample']]))->toEqual($read($form['sample']));
+    })->with(fn(): array => array_keys(PlainDataForms::all()));
+
     it('is refused when it is not a version this release reads', function (string $name, mixed $version, string $fault): void {
         $form = PlainDataForms::all()[$name];
+        $newest = PlainDataForms::versionOf($name);
+        $reads = $newest === 1 ? 'version 1' : "versions 1 to {$newest}";
+        if ($version === 'the next one') {
+            $version = $newest + 1;
+            $fault = "Unsupported format version {$version} in ";
+        }
 
         try {
             $form['read'](['format_version' => $version, ...$form['sample']], PlainDataForms::registry());
         } catch (InvalidConfigurationException $exception) {
             expect($form['kind'])->toBe(PlainDataForms::CONFIGURATION)
                 ->and($exception->getReason())->toBe(InvalidConfigurationReason::UnsupportedFormatVersion)
-                ->and($exception->getContext())->toBe(['format_version' => $version, 'newest_supported' => 1])
+                ->and($exception->getContext())->toBe(['format_version' => $version, 'newest_supported' => $newest])
                 ->and($exception->getConfigurationIssue())->toContain($fault)
-                ->and($exception->getConfigurationIssue())->toContain('this version of the library reads version 1');
+                ->and($exception->getConfigurationIssue())->toContain("this version of the library reads {$reads}");
 
             return;
         } catch (InvalidInputException $exception) {
             expect($form['kind'])->toBe(PlainDataForms::DATA)
                 ->and($exception->getMessage())->toContain($fault)
-                ->and($exception->getMessage())->toContain('this version of the library reads version 1');
+                ->and($exception->getMessage())->toContain("this version of the library reads {$reads}");
 
             return;
         }
 
         $this->fail("{$name} read an array of format version " . var_export($version, true) . '.');
     })->with(fn(): array => array_keys(PlainDataForms::all()))->with([
-        'the next version' => [2, 'Unsupported format version 2 in '],
+        // The fault is worked out from the newest version of the form
+        'the next version' => ['the next one', ''],
         'a far later version' => [PHP_INT_MAX, 'The data was written by a later release'],
         'zero' => [0, 'format versions start at 1'],
         'a negative number' => [-1, 'format versions start at 1'],

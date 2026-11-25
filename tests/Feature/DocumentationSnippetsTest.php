@@ -215,6 +215,8 @@ describe('Documentation snippets', function () use ($extracted, $blocks, $skippe
 
     it('expects only the blocks listed here to throw', function () use ($extracted): void {
         expect(snippetsMarked($extracted, DocumentationSnippet::THROWS))->toBe([
+            // A timeline that declares the abbreviation BST as its timezone
+            'docs/USAGE.md / Timeline Assignment: ' . InvalidConfigurationException::class,
             // A timeline that starts "tomorrow", which is read from the clock
             'docs/USAGE.md / Timeline Assignment: ' . InvalidConfigurationException::class,
             // Asking a shape-only session grid for a slot time
@@ -276,6 +278,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             expect($output)->not->toContain($text);
         }
     })->with([
+        'a kickoff with a fraction of a second read back' => [
+            'docs/USAGE.md',
+            '$quarterPast = new TimelineDefinition(',
+            ["2026-08-01T17:00:00.250000Z\nbool(true)\n"],
+            [],
+        ],
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player9\nbool(false)\n", "player3\nTeam Alpha\n2\nEurope\n"], []],
         'a generation failure rendered from typed data' => [
             'docs/USAGE.md',
@@ -763,8 +771,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$plain->getLoneEventSessions()',
             [
-                "0\n0\n[2]\n0\n[\"n08\"]\n"
-                . "{\"unplaced\":0,\"gap_slots\":0,\"lone_event_sessions\":[2],\"idle_sessions\":0,\"moved\":[\"n08\"]}\n",
+                "0\n0\n[2]\n4\n0\n[\"n08\"]\n"
+                . "{\"unplaced\":0,\"gap_slots\":0,\"lone_event_sessions\":[2],\"lone_participant_sessions\":4,\"idle_sessions\":0,\"moved\":[\"n08\"]}\n",
             ],
             [],
         ],
@@ -777,6 +785,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 . '{"format_version":1,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,'
                 . "\"throw_on_violations\":false,\"objectives\":[\"least_churn\",\"fewest_idle_sessions\"]}\n",
             ],
+            [],
+        ],
+        'repack objectives ahead of gap slots' => [
+            'docs/USAGE.md',
+            'echo json_encode($figures($compact))',
+            ["[0,2,0]\n[0,0,2]\n[0,2,0]\n[\"m3\"] 0\n[] 2\n[\"least_churn\",\"fewest_gap_slots\"]\n"],
             [],
         ],
         'the shortest grid' => [
@@ -948,6 +962,18 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00\nPT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00\n"],
             [],
         ],
+        'a round after a gap, told the round played before it and not told' => [
+            'docs/USAGE.md',
+            '$afterRoundOne = (new TimelineAssigner())->assignRound(',
+            ["2027-02-28 19:00\nOverlappingTime: round 2\n"],
+            [],
+        ],
+        'the slots of the rounds asked for, read without a schedule' => [
+            'docs/USAGE.md',
+            '$evenings->getRoundSlotTimes(1, 3)',
+            ["Round 1: 17 Oct 18:00, 17 Oct 19:30 UTC\nRound 3: 31 Oct 19:00, 31 Oct 20:30 UTC\n31 Oct 20:30 UTC\n"],
+            [],
+        ],
         'shuffled legs from plain data repeat the schedule of their seed on every call' => [
             'docs/USAGE.md',
             '$shuffledOptions = RoundRobinOptions::fromArray(',
@@ -1001,6 +1027,13 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             '$byHand = StageState::fromHistory(',
             ["bool(true)\nAda v Di\nBo v Cy\nCy v Bo\n"],
             ['bool(false)'],
+        ],
+        // Issue #172: a withdrawn entrant a round drawn by hand leaves alone holds no place
+        'a round drawn by hand after a withdrawal is followed by the round that pairs whom it sent on' => [
+            'docs/USAGE.md',
+            '$afterRoundOne = StageState::start($sixteen)',
+            ["semifinal: P8 v P5, P7 v P6\n"],
+            ['quarterfinal'],
         ],
         'a withdrawal gives the tie away and draws nothing again' => [
             'docs/USAGE.md',
@@ -2364,18 +2397,18 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
                     assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime);
                 }
-                // "A grid has at most 100,000 positions (`SessionGrid::MAX_POSITIONS`) ... The number
+                // "A grid has at most 200,000 positions (`SessionGrid::MAX_POSITIONS`) ... The number
                 // of sessions, `slots_per_session`, each slot count in `slots_per_session_overrides`
                 // and their sum are each refused above it", and "`capacity_per_slot` has a limit as
                 // well, of a million million"; under Unbounded Capacity, "a number written to mean
                 // 'no limit' (2,147,483,647, say) is below it and works as before"
-                assert(SessionGrid::MAX_POSITIONS === 100_000);
+                assert(SessionGrid::MAX_POSITIONS === 200_000);
                 assert(SessionGrid::MAX_CAPACITY_PER_SLOT === 1_000_000_000_000);
                 $tooLarge = [
-                    ['session_count' => 100_001],
-                    ['session_count' => 1, 'slots_per_session' => 100_001],
-                    ['session_count' => 2, 'slots_per_session_overrides' => [1 => 100_001]],
-                    ['session_count' => 1000, 'slots_per_session' => 101],
+                    ['session_count' => 200_001],
+                    ['session_count' => 1, 'slots_per_session' => 200_001],
+                    ['session_count' => 2, 'slots_per_session_overrides' => [1 => 200_001]],
+                    ['session_count' => 1000, 'slots_per_session' => 201],
                     ['session_count' => 2, 'capacity_per_slot' => 1_000_000_000_001],
                 ];
                 foreach ($tooLarge as $config) {
@@ -2386,8 +2419,20 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                         assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
                     }
                 }
-                $atTheLimits = SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 100, 'capacity_per_slot' => 1_000_000_000_000]);
-                assert($atTheLimits->getPositionCount() === 100_000);
+                $atTheLimits = SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 200, 'capacity_per_slot' => 1_000_000_000_000]);
+                assert($atTheLimits->getPositionCount() === 200_000);
+                // "a session of it has the limit on steps of a timeline as well: 100,001 slots"
+                $relativeStart = new \DateTimeImmutable('2026-08-12 20:00', new \DateTimeZone('UTC'));
+                $fiveMinutes = \DateInterval::createFromDateString('5 minutes');
+                assert(new SessionGrid([$relativeStart], $fiveMinutes, 100_001)->getPositionCount() === 100_001);
+                try {
+                    new SessionGrid([$relativeStart], $fiveMinutes, 100_002);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                }
+                // "a leap year of them is 105,408"
+                assert(SessionGrid::fromArray(['session_count' => 1, 'slots_per_session' => 105_408])->getPositionCount() === 105_408);
                 assert(SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => 2_147_483_647])->getCapacityPerSlot() === 2_147_483_647);
                 PHP,
         ],
@@ -2465,6 +2510,21 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
+        // "a field of 5 plays 1 tie and has 3 byes, so 4 go on and 1 goes out" (issue #146)
+        'the composition validator counts one knockout round with the byes of a bracket' => [
+            'docs/USAGE.md',
+            '$fromFive = (new CompositionValidator())->validateChain(5, [',
+            <<<'PHP'
+                assert($fromFive === ["Stage 'next' expects 3 entrants but its selection yields 4 from the previous stage's 5."]);
+                $validator = new CompositionValidator();
+                assert($validator->validateChain(5, [new StageTransition('next', 4, MatchOutcomeSelector::winners())]) === []);
+                assert(MatchOutcomeSelector::losers()->getYield()->countFrom(5) === 1);
+                // "a field of 12 plays 4 ties and has 4 byes"
+                assert(MatchOutcomeSelector::winners()->getYield()->countFrom(12) === 8);
+                assert(MatchOutcomeSelector::losers()->getYield()->countFrom(12) === 4);
+                assert($validator->validateChain(16, [new StageTransition('next', 8, MatchOutcomeSelector::losers())]) === []);
+                PHP,
+        ],
         // "It is not what the selector returns from the outcome of a whole bracket"
         'the composition validator counts a match-outcome selector as one knockout round' => [
             'docs/USAGE.md',
@@ -2473,8 +2533,6 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($violations === []);
                 $validator = new CompositionValidator();
                 assert($validator->validateChain(8, [new StageTransition('next', 4, MatchOutcomeSelector::winners())]) === []);
-                assert($validator->validateChain(5, [new StageTransition('next', 3, MatchOutcomeSelector::winners())]) === []);
-                assert($validator->validateChain(5, [new StageTransition('repechage', 2, MatchOutcomeSelector::losers())]) === []);
                 // The four qualifiers above, played as one bracket: the validator counts two
                 // winners, and the selector returns the one winner of the final
                 assert($validator->validateChain(4, [new StageTransition('next', 2, MatchOutcomeSelector::winners())]) === []);

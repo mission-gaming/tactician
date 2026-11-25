@@ -17,10 +17,12 @@ use Random\Randomizer;
 
 /*
  * Which rounds the assigner compares. The rounds of a timeline must not
- * overlap, and the ones that can are the ones that are played: assign()
- * compares the rounds its schedule holds, in round order, each with the next
- * one it holds, and assignRound() compares its round with the one before it.
- * A round nobody plays is not a round to run into.
+ * overlap, and the ones that can are the ones that are played: each round is
+ * compared with the round played before it. assign() compares the rounds its
+ * schedule holds, in round order, each with the next one it holds, and
+ * assignRound() compares its round with the round it is told was played
+ * before it, by default the one numbered before it. A round nobody plays is
+ * not a round to run into.
  */
 
 /**
@@ -544,5 +546,163 @@ describe('No two rounds of an assigned schedule overlap', function (): void {
             ->and($refused)->toBeGreaterThan(100)
             ->and($refusedAcrossAGap)->toBeGreaterThan(5)
             ->and($assignedAlthoughNumberedNeighbourOverlaps)->toBeGreaterThan(100);
+    });
+});
+
+describe('assign() and assignRound() apply one rule: each round is compared with the round played before it', function (): void {
+    it('give the same answer for every set of rounds, assignRound() told the round played before each', function (): void {
+        $randomizer = new Randomizer(new Xoshiro256StarStar(173));
+        $utc = new DateTimeZone('UTC');
+        $localHour = new DateTimeImmutable('2026-01-01 00:00', $utc)->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+        $monthLessDays = static function (int $days): DateInterval {
+            $interval = new DateInterval('P1M');
+            $interval->d = -$days;
+
+            return $interval;
+        };
+
+        // The pools of the test above, intervals with a negative part and
+        // relative strings that step back included, since those are the
+        // timelines on which the rounds compared make a difference
+        /** @var list<Closure(): DateInterval> $roundIntervals */
+        $roundIntervals = [
+            static fn(): DateInterval => new DateInterval('P1M'),
+            static fn(): DateInterval => new DateInterval('P1M1D'),
+            static fn(): DateInterval => new DateInterval('P7D'),
+            static fn(): DateInterval => new DateInterval('PT1H'),
+            static fn(): DateInterval => $localHour,
+            roundsHeldLocalHalfHour(...),
+            static fn(): DateInterval => DateInterval::createFromDateString('1 month'),
+            static fn(): DateInterval => DateInterval::createFromDateString('next weekday'),
+            static fn(): DateInterval => DateInterval::createFromDateString('+1 month -30 days'),
+            static fn(): DateInterval => DateInterval::createFromDateString('+1 month -27 days'),
+            static fn(): DateInterval => $monthLessDays(27),
+            static fn(): DateInterval => $monthLessDays(29),
+            static fn(): DateInterval => $monthLessDays(30),
+        ];
+        /** @var list<Closure(): DateInterval> $slotIntervals */
+        $slotIntervals = [
+            static fn(): DateInterval => new DateInterval('PT20M'),
+            static fn(): DateInterval => new DateInterval('PT1H'),
+            static fn(): DateInterval => new DateInterval('P1D'),
+            static fn(): DateInterval => new DateInterval('P27D'),
+            static fn(): DateInterval => new DateInterval('P29D'),
+            static fn(): DateInterval => new DateInterval('P30D'),
+            static fn(): DateInterval => $localHour,
+            static fn(): DateInterval => DateInterval::createFromDateString('1 day'),
+        ];
+        $zones = ['UTC', 'Europe/London', 'Australia/Sydney', 'America/New_York', 'Pacific/Apia'];
+        $starts = ['2026-01-30', '2026-01-31', '2026-03-01', '2026-03-29', '2026-03-31', '2026-10-25', '2026-12-31', '2011-12-28'];
+        $times = ['00:00', '00:30', '01:30', '19:00', '23:30'];
+        $pick = static fn(array $from): mixed => $from[$randomizer->getInt(0, count($from) - 1)];
+
+        $assigner = new TimelineAssigner();
+        $agreed = ['assigned' => 0, 'refused' => 0];
+        $byDefaultDisagrees = 0;
+
+        for ($case = 0; $case < 2500; ++$case) {
+            try {
+                $timeline = new TimelineDefinition(
+                    new DateTimeImmutable($pick($starts) . ' ' . $pick($times), new DateTimeZone($pick($zones))),
+                    $pick($roundIntervals)(),
+                    $slots = $randomizer->getInt(1, 3),
+                    $slots > 1 || $randomizer->getInt(0, 1) === 1 ? $pick($slotIntervals)() : null
+                );
+            } catch (InvalidConfigurationException) {
+                continue;
+            }
+
+            // One to six rounds out of the first twelve, most with gaps,
+            // and every round from 1 now and then
+            $rounds = $case % 7 === 0
+                ? range(1, $randomizer->getInt(1, 12))
+                : array_map(intval(...), $randomizer->pickArrayKeys(array_fill(1, 12, true), $randomizer->getInt(1, 6)));
+            sort($rounds);
+
+            $whole = roundsHeldRefusal(fn() => $assigner->assign(roundsHeldSchedule(...$rounds), $timeline));
+
+            // Round by round in play order, each told the round played
+            // before it, and stopped at the first refusal as a stage is
+            $told = null;
+            $byDefault = null;
+            $previous = 0;
+            foreach ($rounds as $round) {
+                $told ??= roundsHeldRefusal(fn() => $assigner->assignRound(roundsHeldPairing($round), $timeline, $previous));
+                $byDefault ??= roundsHeldRefusal(fn() => $assigner->assignRound(roundsHeldPairing($round), $timeline));
+                $previous = $round;
+            }
+
+            $described = json_encode([
+                'start' => $timeline->getStart()->format('Y-m-d H:i e'),
+                'round_interval' => TimelineDefinition::formatInterval($timeline->getRoundInterval()),
+                'slots' => $timeline->getSlotsPerRound(),
+                'rounds' => $rounds,
+            ]);
+
+            // The same answer, and the same refusal: the same reason and
+            // the same two rounds named
+            Assert::assertSame($whole?->getReason(), $told?->getReason(), (string) $described);
+            Assert::assertSame($whole?->getContext(), $told?->getContext(), (string) $described);
+            ++$agreed[$whole === null ? 'assigned' : 'refused'];
+
+            // Without being told, assignRound() compares each round with the
+            // one numbered before it, which is the round played before it
+            // where the rounds are 1, 2, 3 and so on
+            if ($rounds === range(1, count($rounds))) {
+                Assert::assertSame($whole?->getContext(), $byDefault?->getContext(), (string) $described);
+            } elseif ($whole?->getContext() !== $byDefault?->getContext()) {
+                ++$byDefaultDisagrees;
+            }
+        }
+
+        // Both answers are reached, and so is the case the parameter is for
+        expect($agreed['assigned'])->toBeGreaterThan(800)
+            ->and($agreed['refused'])->toBeGreaterThan(100)
+            ->and($byDefaultDisagrees)->toBeGreaterThan(20);
+    });
+
+    it('refuses a round played before that is not before the round, or below 0', function (int $previous): void {
+        $timeline = new TimelineDefinition(new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')), new DateInterval('P7D'));
+
+        $refusal = roundsHeldRefusal(fn() => new TimelineAssigner()->assignRound(roundsHeldPairing(3), $timeline, $previous));
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::RoundOutOfSequence)
+            ->and($refusal?->getContext())->toBe(['round' => 3, 'previous_round' => $previous]);
+    })->with([3, 4, -1, PHP_INT_MIN]);
+
+    it('compares the round with no round when told none was played before it', function (): void {
+        // The monthly timeline: round 2 runs into round 3. A stage whose first
+        // round on this timeline is round 3 is told so, and round 3 is
+        // assigned; by default it is compared with round 2
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P1M'),
+            slotsPerRound: 2,
+            slotInterval: new DateInterval('P30D')
+        );
+        $assigner = new TimelineAssigner();
+
+        expect($assigner->assignRound(roundsHeldPairing(3), $timeline, 0))->toHaveCount(1)
+            ->and($assigner->assignRound(roundsHeldPairing(3), $timeline, 1))->toHaveCount(1)
+            ->and(roundsHeldRefusal(fn() => $assigner->assignRound(roundsHeldPairing(3), $timeline))?->getReason())
+            ->toBe(InvalidConfigurationReason::OverlappingTime);
+    });
+
+    it('assigns a pairing with no events nothing, whatever round it is told was played before, and still refuses one out of sequence', function (): void {
+        // Round 2 runs into round 3 on this timeline, but a pairing with no
+        // events is not a round played: it has no slot to compare
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P1M'),
+            slotsPerRound: 2,
+            slotInterval: new DateInterval('P30D')
+        );
+        $assigner = new TimelineAssigner();
+        $empty = new RoundPairing(3, null, []);
+
+        expect($assigner->assignRound($empty, $timeline, 2))->toBe([])
+            ->and($assigner->assignRound($empty, $timeline))->toBe([])
+            ->and(roundsHeldRefusal(fn() => $assigner->assignRound($empty, $timeline, 3))?->getReason())
+            ->toBe(InvalidConfigurationReason::RoundOutOfSequence);
     });
 });

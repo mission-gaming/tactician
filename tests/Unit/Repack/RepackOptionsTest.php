@@ -78,7 +78,7 @@ describe('RepackOptions objectives', function (): void {
             ->and(RepackOptions::fromArray($options->toArray()))->toEqual($options);
     });
 
-    it('writes options that name no objective as they were written before objectives existed', function (): void {
+    it('writes options that name no objective with no objectives key, in version 1 of the form', function (): void {
         expect(new RepackOptions()->toArray())->toBe([
             'format_version' => 1,
             'consolidation_weight' => 3,
@@ -90,7 +90,50 @@ describe('RepackOptions objectives', function (): void {
 
     it('has a stable identifier for every objective', function (): void {
         expect(array_map(static fn(RepackObjective $objective): string => $objective->value, RepackObjective::cases()))
-            ->toBe(['least_churn', 'fewest_lone_event_sessions', 'fewest_idle_sessions']);
+            ->toBe(['least_churn', 'fewest_lone_event_sessions', 'fewest_idle_sessions', 'fewest_gap_slots', 'fewest_lone_participant_sessions']);
+    });
+
+    it('reads gap slots and the lone participant-sessions in version 1 of the form, with the version and without it, and writes them back', function (): void {
+        // A new identifier of an existing key is not a new key (ADR 0005):
+        // the form stays version 1, and a release that does not know the
+        // identifier refuses it
+        $stored = ['objectives' => ['fewest_lone_participant_sessions', 'fewest_idle_sessions', 'fewest_gap_slots']];
+        $expected = new RepackOptions(objectives: [
+            RepackObjective::FewestLoneParticipantSessions,
+            RepackObjective::FewestIdleSessions,
+            RepackObjective::FewestGapSlots,
+        ]);
+
+        expect(RepackOptions::fromArray($stored))->toEqual($expected)
+            ->and(RepackOptions::fromArray(['format_version' => 1, ...$stored]))->toEqual($expected)
+            ->and($expected->toArray())->toBe([
+                'format_version' => 1,
+                'consolidation_weight' => 3,
+                'early_fill_weight' => 1,
+                'step_budget' => 200_000,
+                'throw_on_violations' => false,
+                'objectives' => ['fewest_lone_participant_sessions', 'fewest_idle_sessions', 'fewest_gap_slots'],
+            ])
+            ->and(RepackOptions::fromArray($expected->toArray()))->toEqual($expected);
+    });
+
+    it('reads options as 0.3.x wrote them', function (): void {
+        $stored = ['consolidation_weight' => 5, 'objectives' => ['fewest_idle_sessions', 'least_churn']];
+        $expected = new RepackOptions(consolidationWeight: 5, objectives: [RepackObjective::FewestIdleSessions, RepackObjective::LeastChurn]);
+
+        expect(RepackOptions::fromArray($stored))->toEqual($expected)
+            ->and(RepackOptions::fromArray(['format_version' => 1, ...$stored]))->toEqual($expected);
+    });
+
+    it('refuses a version 2 of the form, which no release has written', function (): void {
+        try {
+            RepackOptions::fromArray(['format_version' => 2]);
+            $thrown = null;
+        } catch (InvalidConfigurationException $exception) {
+            $thrown = $exception->getReason();
+        }
+
+        expect($thrown)->toBe(InvalidConfigurationReason::UnsupportedFormatVersion);
     });
 
     it('refuses objectives that are not a list of distinct cases', function (array $objectives, InvalidConfigurationReason $reason): void {
@@ -137,7 +180,7 @@ describe('RepackOptions objectives', function (): void {
 
         expect($context)->toBe([
             'objective' => 'least_travel',
-            'known' => ['least_churn', 'fewest_lone_event_sessions', 'fewest_idle_sessions'],
+            'known' => ['least_churn', 'fewest_lone_event_sessions', 'fewest_idle_sessions', 'fewest_gap_slots', 'fewest_lone_participant_sessions'],
         ]);
     });
 });

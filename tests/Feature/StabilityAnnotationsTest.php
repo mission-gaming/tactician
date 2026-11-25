@@ -156,6 +156,9 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
         sort($internal);
 
         expect($internal)->toBe([
+            // New in 0.4.0 and never public: the role extractor of the
+            // factories of ConsecutiveRoleConstraint
+            'Constraints\PositionRole',
             'Diagnostics\SchedulingDiagnostics',
             // New in 0.3.0 and never public: the rule BalancedRoleAssignment
             // states, handed out as a ConstraintInterface
