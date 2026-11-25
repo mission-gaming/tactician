@@ -60,6 +60,21 @@ describe('A kickoff with a fraction of a second', function (): void {
         expect(new SlotAssignment('e1', 0, 0, $kickoff)->toArray()['kickoff'])->toBe("2026-08-12T19:15:00{$written}Z");
     })->with(kickoffFractions());
 
+    // PHP holds a time before 1970 as a negative count of seconds and a
+    // positive fraction; the string written must still be the instant held
+    it('is written with it and read back before 1970', function (): void {
+        $event = new Event([new Participant('a', 'A'), new Participant('b', 'B')], new Round(1));
+        $participants = ['a' => new Participant('a', 'A'), 'b' => new Participant('b', 'B')];
+        $kickoff = new DateTimeImmutable('1969-12-31 23:59:59.75', new DateTimeZone('UTC'));
+
+        $data = new ScheduledEvent($event, $kickoff)->toArray();
+        $readBack = ScheduledEvent::fromArray($data, $participants)->getKickoff();
+
+        expect($data['kickoff'])->toBe('1969-12-31T23:59:59.750000Z')
+            ->and($readBack->format('Y-m-d H:i:s.u'))->toBe('1969-12-31 23:59:59.750000')
+            ->and(new SlotAssignment('e1', 0, 0, $kickoff)->toArray()['kickoff'])->toBe('1969-12-31T23:59:59.750000Z');
+    });
+
     it('is written to the second when it is on a whole second', function (): void {
         $event = new Event([new Participant('a', 'A'), new Participant('b', 'B')], new Round(1));
         $kickoff = new DateTimeImmutable('2026-08-01 18:00:00', new DateTimeZone('Europe/London'));
