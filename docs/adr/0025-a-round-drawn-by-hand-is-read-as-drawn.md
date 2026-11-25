@@ -57,7 +57,11 @@ round the engine paired itself never leaves an entrant alone beside one in
 a tie, so no round the engines pair is read otherwise. The rule is
 `EliminationBracketSupport::readRound()`, and is read by both engines: in
 double elimination it means that such a stage no longer leaves one place
-too many, which the engine refused (`RecordedRoundMismatch`).
+too many, which the engine refused (`RecordedRoundMismatch`). There the
+withdrawn entrant drops nobody to the losers bracket and goes out as the
+two of a void winners tie do, with those the next stage that puts an
+entrant out puts out: where it would have gone out had the engine paired
+the round and given its tie away.
 
 **The last round of a single elimination bracket with a third-place tie is
 read as drawn.** The tie of the round marked `BracketTie::ThirdPlace` is

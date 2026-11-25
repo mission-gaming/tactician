@@ -34,7 +34,9 @@ wrongly, and a new version would refuse the stamps of every bracket.
   then the final). The bracket view shows the entrant in a `Void` node of
   its own that fills no slot. In double elimination such a stage no longer
   leaves one place too many, which the engine refused
-  (`RecordedRoundMismatch`); it is now read. A round the engines pair never
+  (`RecordedRoundMismatch`); it is now read, and the withdrawn entrant goes
+  out with those the next losers round puts out, as the two of a void
+  winners tie do. A round the engines pair never
   holds such an entrant, so no state paired by the engines alone reads
   otherwise. Who is affected: a bracket with a round drawn by hand after a
   withdrawal. What to check: the round paired after it and the table.

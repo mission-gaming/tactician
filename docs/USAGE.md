@@ -4625,7 +4625,11 @@ echo $next->getLabel() . ': ' . implode(', ', array_map(
 
 Before 0.4.0 the withdrawn entrant kept an empty place there: the engine
 paired a quarterfinal of one tie, P5 v P7, with byes for P8 and P6, and a
-semifinal after it.
+semifinal after it. In double elimination a winners round drawn so used to
+leave one place too many and was refused (`RecordedRoundMismatch`); it is
+read now, and the withdrawn entrant drops nobody to the losers bracket: it
+goes out with those the next losers round puts out, as the two of a void
+winners tie do.
 
 The derivation is there to be shown, and nothing is paired from it. It is
 the round the engine pairs from what was known when the recorded round was

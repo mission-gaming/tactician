@@ -204,6 +204,22 @@ describe('a round drawn by hand after a withdrawal (issue #172)', function (): v
             $next = $engine->pairNextRound($state);
         }
         expect(handDrawnShape($next))->toBe('p4 v p3');
+
+        // And p1, which holds no place, drops nobody and goes out as the two
+        // of a void winners tie do: with the entrant the next losers round
+        // puts out (p7, beaten by p2 in losers round 2), above the two who
+        // lost twice in losers round 1, as when the engine pairs the round
+        // and gives p1's tie away
+        while (!$engine->isComplete($state)) {
+            $state = $state->withRoundPlayed($next, handDrawnFirstWins($next->getEvents()));
+            if (!$engine->isComplete($state)) {
+                $next = $engine->pairNextRound($state);
+            }
+        }
+        $tiers = handDrawnTiers($engine, $state);
+        expect($tiers['p1'])->toBe($tiers['p7'])
+            ->and($tiers['p1'])->toBeLessThan($tiers['p5'])
+            ->and($tiers['p5'])->toBe($tiers['p6']);
     });
 });
 
