@@ -91,6 +91,14 @@ final class SwissRoundSearch
     /** @var list<Participant> The participants to pair, in pairing order; a vertex is a position here */
     private array $participants = [];
 
+    /**
+     * What havePlayed() has answered in this pair() call, by the lower
+     * position and then the higher one.
+     *
+     * @var array<int, array<int, bool>>
+     */
+    private array $played = [];
+
     /** How many candidates the plain search may still try; null for no limit. */
     private ?int $allowance = null;
 
@@ -131,6 +139,8 @@ final class SwissRoundSearch
     public function pair(array $orderedParticipants): ?array
     {
         $this->participants = array_values($orderedParticipants);
+        // The answers are by position, and the positions are this call's
+        $this->played = [];
         $positions = array_keys($this->participants);
 
         if (!$this->constraintsAreKnown) {
@@ -325,9 +335,19 @@ final class SwissRoundSearch
         return $roundEvents;
     }
 
+    /**
+     * Whether the participants at two positions have played. Each pair of
+     * positions builds its key once per pair() call: the search asks about
+     * a pair again on every branch that reaches it, and building the key
+     * was a quarter of a Swiss round.
+     */
     private function havePlayed(int $first, int $second): bool
     {
-        return isset($this->playedPairings[PairKey::of(
+        if ($first > $second) {
+            [$first, $second] = [$second, $first];
+        }
+
+        return $this->played[$first][$second] ??= isset($this->playedPairings[PairKey::of(
             $this->participants[$first]->getId(),
             $this->participants[$second]->getId()
         )]);
