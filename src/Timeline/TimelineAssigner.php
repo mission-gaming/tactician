@@ -143,12 +143,17 @@ final readonly class TimelineAssigner
 
         // The rounds the schedule holds, in round order, each against the
         // next one it holds. The slots of a round rise, so a round that
-        // ends before the next one starts ends before every later one
+        // ends before the next one starts ends before every later one. The
+        // rounds' slots are computed in one pass, each round's as it is
+        // reached, so a round refused leaves the later ones uncomputed
+        $slotTimesOfRounds = $timeline->getRoundSlotTimes(...array_keys($eventsByRound));
         $scheduledEvents = [];
         $previousRound = null;
         $previousLastSlot = null;
         foreach ($eventsByRound as $roundNumber => $events) {
-            $slotTimes = $this->slotTimesOf($events, $roundNumber, $timeline);
+            $this->refuseOverCapacity($events, $roundNumber, $timeline);
+            $slotTimes = $this->risingSlotTimes($roundNumber, $slotTimesOfRounds->current());
+            $slotTimesOfRounds->next();
 
             if ($previousRound !== null && $previousLastSlot instanceof DateTimeImmutable) {
                 $this->refuseOverlap($previousRound, $previousLastSlot, $roundNumber, $slotTimes[0], $timeline);
@@ -238,7 +243,10 @@ final readonly class TimelineAssigner
         // none, and is refused for its number below
         $previousRound ??= $roundNumber > 1 ? $roundNumber - 1 : 0;
 
-        $slotTimes = $this->slotTimesOf($events, $roundNumber, $timeline);
+        $this->refuseOverCapacity($events, $roundNumber, $timeline);
+        $slotTimes = $events === []
+            ? []
+            : $this->risingSlotTimes($roundNumber, $timeline->getRoundSlotTimes($roundNumber)->current());
 
         if ($slotTimes !== [] && $previousRound >= 1) {
             $this->refuseOverlap(
@@ -282,20 +290,14 @@ final readonly class TimelineAssigner
     }
 
     /**
-     * Every slot the timeline declares for a round, in UTC and in slot
-     * order, once the round is known to fit and its slots to be at rising
-     * times. A round with no events has no slots to give and is checked
-     * for its size alone.
+     * Refuse a round with more events than the timeline can hold in it:
+     * slots per round times capacity per slot.
      *
-     * @param array<Event> $events In schedule order
+     * @param array<Event> $events
      *
-     * @return list<DateTimeImmutable> Empty when the round has no events
-     *
-     * @throws InvalidConfigurationException When the round overflows the timeline's capacity, two
-     *                                       of its slots are not at rising times, or it is too
-     *                                       far from the start to be computed
+     * @throws InvalidConfigurationException When the round overflows the timeline's capacity
      */
-    private function slotTimesOf(array $events, int $roundNumber, TimelineDefinition $timeline): array
+    private function refuseOverCapacity(array $events, int $roundNumber, TimelineDefinition $timeline): void
     {
         $capacityPerSlot = $timeline->getCapacityPerSlot();
         $roundCapacity = $timeline->getSlotsPerRound() * $capacityPerSlot;
@@ -313,17 +315,29 @@ final readonly class TimelineAssigner
                 reason: InvalidConfigurationReason::TimelineCapacityExceeded
             );
         }
+    }
 
-        if ($events === []) {
-            return [];
-        }
+    /**
+     * Every slot the timeline declares for a round, in UTC and in slot
+     * order, once they are known to be at rising times.
+     *
+     * @param list<DateTimeImmutable>|null $slotTimes The round's slots, from
+     *                                                TimelineDefinition::getRoundSlotTimes()
+     *
+     * @return list<DateTimeImmutable> The same slots
+     *
+     * @throws InvalidConfigurationException When two of the slots are not at rising times
+     */
+    private function risingSlotTimes(int $roundNumber, ?array $slotTimes): array
+    {
+        $slotTimes ??= [];
+        foreach ($slotTimes as $slot => $time) {
+            if ($slot === 0) {
+                continue;
+            }
 
-        // Every slot the round declares, in order, each after the one
-        // before it: a count the definition limits
-        $slotTimes = [];
-        $lastSlot = null;
-        foreach ($timeline->roundSlotTimes($roundNumber) as $slot => $time) {
-            if ($lastSlot !== null && $time <= $lastSlot) {
+            $lastSlot = $slotTimes[$slot - 1];
+            if ($time <= $lastSlot) {
                 throw new InvalidConfigurationException(
                     "Round {$roundNumber} has two slots that are not at rising times: slot {$slot} is at "
                         . $time->format('Y-m-d H:i:s') . ' UTC and the slot before it at ' . $lastSlot->format('Y-m-d H:i:s') . ' UTC',
@@ -336,8 +350,6 @@ final readonly class TimelineAssigner
                     reason: InvalidConfigurationReason::OverlappingTime
                 );
             }
-            $slotTimes[] = $time;
-            $lastSlot = $time;
         }
 
         return $slotTimes;
@@ -385,7 +397,7 @@ final readonly class TimelineAssigner
      * within a slot resource by resource in declared order.
      *
      * @param array<Event> $events In schedule order
-     * @param list<DateTimeImmutable> $slotTimes The round's slots, from slotTimesOf()
+     * @param list<DateTimeImmutable> $slotTimes The round's slots, from risingSlotTimes()
      *
      * @return array<ScheduledEvent>
      *

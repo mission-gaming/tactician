@@ -954,6 +954,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["2027-02-28 19:00\nOverlappingTime: round 2\n"],
             [],
         ],
+        'the slots of the rounds asked for, read without a schedule' => [
+            'docs/USAGE.md',
+            '$evenings->getRoundSlotTimes(1, 3)',
+            ["Round 1: 17 Oct 18:00, 17 Oct 19:30 UTC\nRound 3: 31 Oct 19:00, 31 Oct 20:30 UTC\n31 Oct 20:30 UTC\n"],
+            [],
+        ],
         'shuffled legs from plain data repeat the schedule of their seed on every call' => [
             'docs/USAGE.md',
             '$shuffledOptions = RoundRobinOptions::fromArray(',

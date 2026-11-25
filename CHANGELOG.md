@@ -13,7 +13,46 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **A pre-drawn Swiss schedule of a field of odd size gives nobody a second
+  bye** (#150). At the largest round counts of a field of odd size the
+  engine gives a participant a second bye where a round has no pairing
+  otherwise, and `SwissScheduler` returned such a draw, although a schedule
+  in which a different participant sits out each round always exists (there
+  are fewer rounds than participants). It happened for about one seed in
+  five at the most rounds: of seeds 1 to 200, 17 at 7 participants and 6
+  rounds, 42 at 9 and 8, 39 at 11 and 10, 40 at 13 and 12, 46 at 15 and 14,
+  47 at 21 and 20, 49 at 23 and 22, 55 at 25 and 24; and without a source of
+  draws at 33 participants and 32 rounds. The scheduler now takes such a
+  draw as failed and draws again, as it does for a draw that cannot be
+  completed, and without constraints builds the rounds by rotation when
+  twenty draws are not enough (or, without a source of draws, at once). No
+  seed of those measured needs more than five draws. A schedule whose draws
+  gave nobody a second bye is unchanged; one that did is now another
+  schedule for the same seed, and without a source of draws the
+  33-participant, 32-round schedule is now the rotation, whose first round
+  is still the list as given. Under constraints the rotation is not tried,
+  since the constraints may reject it: where every complete draw gives a
+  participant a second bye, the first of them is still returned, and where
+  none is complete the failure of the last draw is still reported. An
+  application that stored a pre-drawn schedule keeps it; one that draws
+  again from a seed at those round counts may get another schedule.
+
 ### Added
+
+- **`TimelineDefinition::getRoundSlotTimes()` gives every slot of the
+  rounds asked for
+  ([#174](https://github.com/mission-gaming/tactician/issues/174)).**
+  `getRoundSlotTimes(int ...$rounds)` yields a list per round, keyed by
+  round number and in the order the rounds are given, of the times
+  `getSlotTime()` gives for its slots, in UTC; each round is computed
+  when its list is read. A round number below 1 is refused when it is
+  called (`PositionOutOfRange`), and a round too far from the start while
+  it is read (`ValueOutOfRange`). It replaces `roundSlotTimes()`, the one
+  public method in `src/` that was marked `@internal`: that method was
+  for the assigner alone and is removed; the new one is part of the
+  definition's experimental API, and the assigner uses it.
 
 - **`TimelineAssigner::assignRound()` can be told the round played before
   ([#173](https://github.com/mission-gaming/tactician/issues/173)).** The
@@ -31,6 +70,54 @@ heading **Output change (fix)**.
   rounds either side of the gap compared by no call. A round named as
   played before that is not below the round's number, or is below 0, is
   refused (`InvalidConfigurationException`, `RoundOutOfSequence`).
+
+### Changed
+
+- The release checklist (`docs/RELEASING.md`) says what the notes of a GitHub
+  release hold when the changelog section is longer than GitHub accepts.
+  Documentation only; no output and no public signature changes.
+
+- **A round robin that fails under a factory-built `ConsecutiveRoleConstraint`
+  is analysed once** (#149). The constraints `ConsecutiveRoleConstraint::homeAway()`
+  and `position()` build now count among those the library knows to run no
+  code of the caller's, beside `NoRepeatPairings`,
+  `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+  `SeedProtectionConstraint`: a round robin that cannot be completed builds
+  its failure analysis for the order whose failure it reports, and not for
+  every rotated order it goes on from, and a Swiss round search skips the
+  branches that hold no pairing. The results are what they were, the
+  failure analysis included. Measured for 24 participants, three repeated
+  legs, `ConsecutiveRoleConstraint::homeAway(1)` and
+  `RoundParityRoleAssignment` named (no schedule exists): 43 to 128 s on
+  0.3.0, 2.0 to 2.3 s now; with mirrored legs 55 s and 4.6 s. Under the
+  default role assignment the failure was analysed once already. A
+  `ConsecutiveRoleConstraint` given a role extractor of the caller's is
+  asked as before, since the library cannot tell what the extractor
+  does. The factories now hand the constraint an extractor of an internal
+  class (`Constraints\PositionRole`) rather than a closure, which reads the
+  same roles.
+
+### Fixed
+
+- The `Benchmarks` job installs the benchmark runner again. Composer refused
+  the runner's lock file (`tools/phpbench/composer.lock`) over a security
+  advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
+  holds 7.4.23, the fixed release that runs on the PHP 8.4.0 platform it is
+  pinned to. The library's own development lock file (`composer.lock`) takes
+  the same release, so the `Dependency audit` job passes again. Tooling and
+  development dependencies only; no output and no public signature changes.
+
+- **Assigning a schedule under a relative round interval is linear in its
+  rounds ([#170](https://github.com/mission-gaming/tactician/issues/170)).**
+  Under a round interval made by `DateInterval::createFromDateString()`
+  (`1 week`, `first monday of next month`), which is added one step at a
+  time, `TimelineAssigner::assign()` computed each round's start from the
+  timeline's start again, so the time it took rose with the square of the
+  rounds: 10,000 rounds took 33 seconds. Each round's start is now counted
+  on from the start of the round before it that the schedule holds, which
+  is the same time, and 10,000 rounds take some 50 milliseconds. The
+  kickoffs are the same; an interval written as an ISO 8601 duration was
+  linear already and is computed as before.
 
 ## [0.3.0] - 2026-11-03
 
