@@ -478,6 +478,20 @@ none.
   unused parameter of a test helper that Rector 2.8 reports removed.
   Development dependencies only; no output and no public signature changes.
 
+- **The last placement step of a repack checks each position once per
+  insertion** (#255). Finding a position for an event left over, the step
+  scans the positions up to three times, and checked each one again in
+  every scan, although the answers cannot change within one insertion. It
+  now remembers them, and its second lifting pass goes only to the
+  positions where two events are in the way. The work limit counts the
+  checks exactly as before, so a request that reaches it stops where it
+  did: on 2,938 random inputs at every work limit and on 400 pinned
+  requests at five step budgets, the outcome is identical. Measured with
+  `composer bench-compare`: 24 participants on uneven sessions with pins,
+  35.1 ms to 30.2; 40, 97.5 ms to 93.1. Most of that time is the search's
+  own steps, which a change that keeps the outcome cannot remove. No
+  output changes and no public signature changes.
+
 ### Fixed
 
 - `SessionGrid::ordinalOf()`, `positionOf()` and `getPositionCount()` no
