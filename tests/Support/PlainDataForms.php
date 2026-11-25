@@ -201,8 +201,8 @@ final class PlainDataForms
                     'objectives' => ['least_churn', 'fewest_idle_sessions'],
                 ],
                 'read' => static fn(array $data, array $registry): object => RepackOptions::fromArray(self::stringKeyed($data)),
-                // Half of them with objectives, some of the three in a
-                // random order, which writes the key `objectives`; the
+                // Half of them with objectives, one to three of the five in
+                // a random order, which writes the key `objectives`; the
                 // rest write no such key
                 'generate' => static fn(Randomizer $random, array $field): object => new RepackOptions(
                     $random->getInt(0, 50),
@@ -760,12 +760,29 @@ final class PlainDataForms
                     $random->getInt(0, 1) === 1,
                     $stated ? [$random->getInt(0, 4), $random->getInt(5, 9)] : [],
                     $stated ? $random->getInt(0, 12) : 0,
-                    $stated ? ['e' . $random->getInt(1, 9_999)] : []
+                    $stated ? ['e' . $random->getInt(1, 9_999)] : [],
+                    $stated ? $random->getInt(0, 20) : 0
                 );
             },
         ];
 
         return $forms;
+    }
+
+    /**
+     * The newest format version of a form, which its `toArray()` writes and
+     * up to which its `fromArray()` reads: 1 for every form but the ones
+     * listed, which have changed since 0.3.0 (ADR 0005, "Changing a form").
+     */
+    public static function versionOf(string $name): int
+    {
+        return [
+            // 0.4.0: the objectives fewest_gap_slots and
+            // fewest_lone_participant_sessions
+            'repack options' => 2,
+            // 0.4.0: lone_participant_sessions among the metrics
+            'repack outcome' => 2,
+        ][$name] ?? 1;
     }
 
     /**

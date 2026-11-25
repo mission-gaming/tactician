@@ -59,15 +59,23 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * ("The Step Budget") has the measured times.
  *
  * The objectives name further figures of the outcome to keep low, in the
- * order given: fewer moved events, fewer lone-event sessions, fewer idle
- * sessions ({@see RepackObjective}). They rank after events placed and gap
- * slots and before the two weights, and they are opt-in: with none, a
- * repack does what it did before they existed. With any, the repacker
- * makes more schedules to choose from (at most three more for the fewest
- * moved events) and moves single events afterwards, all of it on what the
- * two budgets have left, so a repack still spends at most twice the
- * budget; it takes longer, because the work that is not counted in steps
- * is done once for each schedule.
+ * order given: fewer moved events, fewer lone-event sessions, fewer lone
+ * participant-sessions, fewer idle sessions ({@see RepackObjective}). They
+ * rank after events placed and before the two weights, and they are
+ * opt-in: with none, a repack does what it did before they existed. Gap
+ * slots rank ahead of every objective unless the list names them
+ * (RepackObjective::FewestGapSlots): named after some objectives, they
+ * rank after those, so `[FewestLoneParticipantSessions, FewestIdleSessions,
+ * FewestGapSlots]` keeps a participant from turning up for a single event
+ * at the cost of waits, and `[LeastChurn, FewestGapSlots]` keeps a
+ * calendar as it stands, gaps and all. Events placed always come first.
+ * With any objective, the repacker makes more schedules to choose from (at
+ * most three more for the fewest moved events, and up to six laid out on
+ * the sessions in other shapes for an objective about the shape of the
+ * sessions ahead of gap slots) and moves single events afterwards, all of
+ * it on what the two budgets have left, so a repack still spends at most
+ * twice the budget; it takes longer, because the work that is not counted
+ * in steps is done once for each schedule.
  *
  * The weights are bounded so that the objective stays an integer. The
  * repacker scores a move as at most earlyFillWeight x (sessions - 1) +
@@ -94,6 +102,13 @@ final readonly class RepackOptions
     public const int MAX_CONSOLIDATION_WEIGHT = PHP_INT_MAX >> 1;
 
     /**
+     * The version of the form toArray() writes. Version 2 knows the
+     * objectives FewestGapSlots and FewestLoneParticipantSessions; version
+     * 1, which 0.3.x wrote, does not.
+     */
+    private const int FORMAT_VERSION = 2;
+
+    /**
      * @param int $consolidationWeight Preference for concentrating a participant's
      *                                 events into fewer sessions (0 disables)
      * @param int $earlyFillWeight Preference for filling earliest sessions first
@@ -106,10 +121,12 @@ final readonly class RepackOptions
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
      * @param list<RepackObjective> $objectives The figures to keep low after events
-     *                                          placed and gap slots, most important
-     *                                          first, each at most once; none by
-     *                                          default, and then a repack is what it
-     *                                          was before objectives existed
+     *                                          placed, most important first, each at
+     *                                          most once: after gap slots as well
+     *                                          unless the list names FewestGapSlots,
+     *                                          which then ranks where it is named;
+     *                                          none by default, and then a repack is
+     *                                          what it was before objectives existed
      *
      * @throws InvalidConfigurationException When a weight is negative, the consolidation
      *                                       weight is above MAX_CONSOLIDATION_WEIGHT, the
@@ -187,9 +204,19 @@ final readonly class RepackOptions
      * constructor's default; a key given as null is read as not given. The
      * objectives are a list of the backing strings of RepackObjective
      * (`least_churn`, `fewest_lone_event_sessions`,
-     * `fewest_idle_sessions`), most important first. A key the method does
-     * not know is refused, so that a misspelt option is not silently read
-     * as its default.
+     * `fewest_idle_sessions`, `fewest_gap_slots`,
+     * `fewest_lone_participant_sessions`), most important first. A key the
+     * method does not know is refused, so that a misspelt option is not
+     * silently read as its default.
+     *
+     * The form has two versions. Version 2, which toArray() writes, knows
+     * every objective. Version 1, which 0.3.x wrote, knows the first three
+     * only, so an array that states no format version (which is read as
+     * version 1) and names `fewest_gap_slots` or
+     * `fewest_lone_participant_sessions` is refused, with the reason
+     * `UnknownIdentifier`: an array that names them says
+     * `'format_version' => 2`. The keys and every other value mean the
+     * same in both.
      *
      * @param array<string, mixed> $config
      *
@@ -202,11 +229,15 @@ final readonly class RepackOptions
      */
     public static function fromArray(array $config): self
     {
-        PlainData::checkOptions(
+        $version = PlainData::checkOptions(
             $config,
             ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations', 'objectives'],
-            'repack options'
+            'repack options',
+            newest: self::FORMAT_VERSION
         );
+        $known = $version === 1
+            ? [RepackObjective::LeastChurn, RepackObjective::FewestLoneEventSessions, RepackObjective::FewestIdleSessions]
+            : RepackObjective::cases();
 
         $consolidationWeight = $config['consolidation_weight'] ?? 3;
         $earlyFillWeight = $config['early_fill_weight'] ?? 1;
@@ -233,15 +264,18 @@ final readonly class RepackOptions
             }
 
             $objective = RepackObjective::tryFrom($identifier);
-            if (!$objective instanceof RepackObjective) {
+            if (!$objective instanceof RepackObjective || !in_array($objective, $known, true)) {
                 throw new InvalidConfigurationException(
-                    'Unknown repack objective',
+                    $objective instanceof RepackObjective
+                        ? sprintf(
+                            "The repack objective '%s' is not one of version 1 of repack options; options that name it state 'format_version' => %d",
+                            $identifier,
+                            self::FORMAT_VERSION
+                        )
+                        : 'Unknown repack objective',
                     [
                         'objective' => $identifier,
-                        'known' => array_map(
-                            static fn(RepackObjective $case): string => $case->value,
-                            RepackObjective::cases()
-                        ),
+                        'known' => array_map(static fn(RepackObjective $case): string => $case->value, $known),
                     ],
                     reason: InvalidConfigurationReason::UnknownIdentifier
                 );
@@ -274,7 +308,7 @@ final readonly class RepackOptions
 
     /**
      * Serialize back to the plain configuration data fromArray() accepts:
-     * `format_version`, the version of this form (1), then the two
+     * `format_version`, the version of this form (2), then the two
      * weights, the budget and the flag, always present, and `objectives`
      * (their backing strings, in order) only when there is one. Options
      * with no objective are written as they were before objectives
@@ -285,7 +319,7 @@ final readonly class RepackOptions
     public function toArray(): array
     {
         $data = [
-            PlainData::VERSION_KEY => PlainData::VERSION,
+            PlainData::VERSION_KEY => self::FORMAT_VERSION,
             'consolidation_weight' => $this->consolidationWeight,
             'early_fill_weight' => $this->earlyFillWeight,
             'step_budget' => $this->stepBudget,

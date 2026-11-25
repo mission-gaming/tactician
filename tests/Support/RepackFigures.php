@@ -20,7 +20,7 @@ use MissionGaming\Tactician\Repack\RepackRequest;
 final class RepackFigures
 {
     /**
-     * @return array{unplaced: int, gap_slots: int, lone_event_sessions: list<int>, idle_sessions: int, moved: list<string>}
+     * @return array{unplaced: int, gap_slots: int, lone_event_sessions: list<int>, lone_participant_sessions: int, idle_sessions: int, moved: list<string>}
      */
     public static function of(RepackRequest $request, RepackOutcome $outcome): array
     {
@@ -28,6 +28,7 @@ final class RepackFigures
             'unplaced' => self::unplaced($request, $outcome),
             'gap_slots' => self::gapSlots($request, $outcome),
             'lone_event_sessions' => self::loneEventSessions($request, $outcome),
+            'lone_participant_sessions' => self::loneParticipantSessions($request, $outcome),
             'idle_sessions' => self::idleSessions($request, $outcome),
             'moved' => self::moved($request, $outcome),
         ];
@@ -104,6 +105,27 @@ final class RepackFigures
             }
             if ($movable === 1 && $pinned === 0) {
                 $lone[] = $session;
+            }
+        }
+
+        return $lone;
+    }
+
+    /**
+     * For every participant and session: one when the participant has
+     * exactly one event there, pinned or movable, and that one a placed
+     * movable event.
+     */
+    public static function loneParticipantSessions(RepackRequest $request, RepackOutcome $outcome): int
+    {
+        $lone = 0;
+        foreach (self::participantIds($request) as $id) {
+            for ($session = 0; $session < $request->getGrid()->getSessionCount(); ++$session) {
+                $movable = self::slotsOf($request, $outcome, $id, $session, false);
+                $all = self::slotsOf($request, $outcome, $id, $session, true);
+                if (count($movable) === 1 && count($all) === 1) {
+                    ++$lone;
+                }
             }
         }
 
