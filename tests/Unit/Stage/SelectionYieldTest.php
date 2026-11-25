@@ -145,6 +145,26 @@ describe('SelectionYield', function (): void {
         'winners, below none' => [SelectionYield::winnersOfLastRound(), -3],
     ]);
 
+    // A negative entrant count gave a negative yield: -3 winners of the
+    // last round of a stage of -3 entrants, and a validator violation built
+    // on it.
+    it('refuses a stage before of fewer than 0 entrants, whatever the kind', function (SelectionYield $yield, int $entrants): void {
+        expect(fn() => $yield->countFrom($entrants, 2))
+            ->toThrow(InvalidInputException::class, "A stage has 0 entrants or more, {$entrants} given");
+    })->with([
+        'winners' => [SelectionYield::winnersOfLastRound(), -3],
+        'losers' => [SelectionYield::losersOfLastRound(), -1],
+        'fixed' => [SelectionYield::fixed(4), -1],
+        'per pool' => [SelectionYield::perPool(2), -8],
+        'per pool plus' => [SelectionYield::perPoolPlus(1, 2), -1],
+        'depends on the outcome' => [SelectionYield::dependsOnOutcome(), -2],
+    ]);
+
+    it('counts a stage before of no entrants as yielding none of its winners or losers', function (): void {
+        expect(SelectionYield::winnersOfLastRound()->countFrom(0))->toBe(0)
+            ->and(SelectionYield::losersOfLastRound()->countFrom(0))->toBe(0);
+    });
+
     it('counts a stage before of 1 pool', function (): void {
         expect(SelectionYield::perPool(2)->countFrom(8, 1))->toBe(2);
     });

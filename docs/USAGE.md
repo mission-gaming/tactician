@@ -5598,6 +5598,13 @@ echo $threePools[0] . "\n";
 // Stage 'quarterfinals' expects 8 entrants but its selection yields 6 from the previous stage's 12.
 ```
 
+`countFrom()` refuses a stage before of fewer than 0 entrants or fewer
+than 1 pool with an `InvalidInputException`, whatever the kind: either is
+a mistake in the calling code. The validator never throws: it reports a
+stage of fewer than 2 entrants, or a transition that declares fewer than 1
+pool, and counts no yield from that count, so one mistake is reported
+once.
+
 `getSelectionSize()` stays: it is the count of a `Fixed` yield and null
 for every other kind.
 

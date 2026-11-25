@@ -120,6 +120,27 @@ describe('CompositionValidator', function (): void {
         expect($violations)->toHaveCount(2); // too small AND yields 2, not 1
     });
 
+    // A negative opening count was reported, and then counted: the winners
+    // of a stage of -3 entrants came out at -3 and gave a second violation
+    // built on the first.
+    it('reports a count of entrants once, and computes no yield from it', function (): void {
+        $validator = new CompositionValidator();
+
+        expect($validator->validateChain(-3, [
+            new StageTransition('final', 2, MatchOutcomeSelector::winners()),
+        ]))->toBe(['The opening stage needs at least 2 entrants, -3 declared.'])
+            ->and($validator->validateChain(1, [
+                new StageTransition('final', 2, MatchOutcomeSelector::losers()),
+            ]))->toBe(['The opening stage needs at least 2 entrants, 1 declared.'])
+            ->and($validator->validateChain(8, [
+                new StageTransition('degenerate', -1, RankRangeSelector::overall(1, 4)),
+                new StageTransition('final', 2, MatchOutcomeSelector::winners()),
+            ]))->toBe([
+                "Stage 'degenerate' needs at least 2 entrants, -1 declared.",
+                "Stage 'degenerate' expects -1 entrants but its selection yields 4 from the previous stage's 8.",
+            ]);
+    });
+
     // The validator runs nothing, so it cannot see that a stage plays a whole
     // bracket. It counted every match-outcome selection as the hand-off after
     // one round, and had no way to be told otherwise: 16 entrants, the
