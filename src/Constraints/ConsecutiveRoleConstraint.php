@@ -87,16 +87,36 @@ final readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         $participantEvents = $context->getEventsForParticipant($participant);
 
-        // Add the new event to get the full sequence
-        $allEvents = [...$participantEvents, $newEvent];
+        // Add the new event to get the full sequence. The context keeps the
+        // keys of the events it was given, which may be strings, and the
+        // streak is read by list position: the list is renumbered here, as
+        // the sort renumbers it when it runs.
+        $allEvents = array_values($participantEvents);
+        $allEvents[] = $newEvent;
 
-        // Sort by round number
-        usort($allEvents, function (Event $a, Event $b) {
-            $roundA = $a->getRound()?->getNumber() ?? 0;
-            $roundB = $b->getRound()?->getNumber() ?? 0;
+        // Sort by round number, stably. The events nearly always come in
+        // round order already, the candidate last, and a stable sort leaves
+        // such a list as it is: it is sorted only when it is not. Sorting
+        // on every question was a fifth of a Swiss stage under a role
+        // streak limit.
+        $inRoundOrder = true;
+        $previousRound = PHP_INT_MIN;
+        foreach ($allEvents as $event) {
+            $round = $event->getRound()?->getNumber() ?? 0;
+            if ($round < $previousRound) {
+                $inRoundOrder = false;
+                break;
+            }
+            $previousRound = $round;
+        }
+        if (!$inRoundOrder) {
+            usort($allEvents, function (Event $a, Event $b) {
+                $roundA = $a->getRound()?->getNumber() ?? 0;
+                $roundB = $b->getRound()?->getNumber() ?? 0;
 
-            return $roundA <=> $roundB;
-        });
+                return $roundA <=> $roundB;
+            });
+        }
 
         // The constructor rejects an extractor that is not callable; the
         // property stays `mixed` so that the constructor accepts what it
