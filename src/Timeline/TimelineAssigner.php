@@ -37,22 +37,23 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  * change can make a later round shorter than the first. The check is of
  * the slots the timeline declares for a round, filled or not.
  *
- * Which rounds are compared is decided by what is played, as far as each
- * call can see it:
+ * Which rounds are compared follows one rule in both calls: each round is
+ * compared with the round played before it, and with no other. A round
+ * nobody plays is not a round to run into, and the first round played is
+ * compared with nothing, as the last is with nothing after it. Since the
+ * slots of every round rise, this is every pair: no slot of a round played
+ * is at or after a slot of a later round played.
  *
- * - assign() compares the rounds the schedule holds, in round order, each
- *   with the next one it holds. A schedule of rounds 1 and 3 has round 1
- *   compared with round 3, and its last round is compared with no round
- *   after it. Since the slots of every round rise, this is every pair: no
- *   slot of a round the schedule holds is at or after a slot of a later
- *   round it holds.
- * - assignRound() is given one round and keeps nothing between calls. It
- *   compares the round with the one before it by number, which a stage
- *   that plays its rounds in order from round 1 has played; round 1 is
- *   compared with nothing, and so is no round with the one after it,
- *   which the stage may not have. The round before is the one before by
- *   number, played or not: where a caller's rounds have a gap, assign()
- *   on the rounds played is the call that compares them.
+ * - assign() knows the rounds played: they are the rounds the schedule
+ *   holds, in round order. A schedule of rounds 1 and 3 has round 1
+ *   compared with round 3.
+ * - assignRound() is given one round and keeps nothing between calls, so
+ *   it is told the round played before it (`previousRound`, 0 for none).
+ *   Not told, it takes the round numbered before it, which is the round
+ *   played before wherever the rounds are numbered 1, 2, 3 and so on, as
+ *   the rounds of a stage state are; round 1 then has none. A stage that
+ *   plays rounds with a gap tells it, and is then assigned round by round
+ *   exactly as assign() assigns the schedule of the rounds it played.
  *
  * A round that puts one participant in two events at the same instant
  * fails as well, with or without rules: a slot with two or more resources
@@ -104,7 +105,10 @@ final readonly class TimelineAssigner
      * of each later round it holds, or the assignment is refused. Rounds
      * the schedule does not hold are not looked at, so a gap in the round
      * numbers is not a round to run into, and the last round is refused for
-     * nothing that would follow it.
+     * nothing that would follow it. This is the rule assignRound() applies,
+     * each round compared with the round played before it: assigned round
+     * by round and told the round played before each, the schedule's rounds
+     * are refused exactly as here.
      *
      * When the assigner carries time-aware rules, the assigned timeline is
      * validated against every rule and assignment fails loudly with all
@@ -186,44 +190,68 @@ final readonly class TimelineAssigner
      * and call the rule's validate() on it.
      *
      * For the same reason the round is compared with one other round, the
-     * one before it by number: its first slot must be after the last slot
-     * the timeline declares for that round. A stage that plays its rounds
-     * in order from round 1 has played that round, so the check is of two
-     * rounds that are both played, and each round of the stage is compared
-     * with the next when the next is assigned. Round 1 is compared with
-     * nothing, and no round with the one after it, which the stage may not
-     * have: its last round is refused for nothing that would follow it. A
-     * pairing with no events is assigned nothing and checked for nothing.
-     * The round before is the one before by number whether or not it was
-     * played: after a gap in a caller's rounds (a number skipped, or a
-     * pairing with no events) the round is compared with one nobody played,
-     * which can refuse it, and with no played round before the gap. To
-     * compare the rounds that were played, give them to assign() as one
-     * schedule.
+     * round played before it, as assign() compares each round of a
+     * schedule with the round before it that the schedule holds: the
+     * round's first slot must be after the last slot the timeline declares
+     * for that round. Each round of a stage is so compared with the next
+     * when the next is assigned, and no round with the one after it, which
+     * the stage may not have: its last round is refused for nothing that
+     * would follow it. A pairing with no events is assigned nothing and
+     * checked for nothing, so it is not a round played.
+     *
+     * The assigner cannot see which round was played before, so the caller
+     * says it with `$previousRound`. Not said, it is the round numbered
+     * before (round 1 has none), which is right for a stage whose rounds
+     * are numbered 1, 2, 3 and so on, as the rounds of a StageState are. A
+     * caller whose rounds have a gap (a number skipped, or a pairing with no
+     * events) passes the round played before, or 0 for the first round
+     * played. Told so for every round, the calls refuse exactly what
+     * assign() refuses for the schedule of the same rounds, with the same
+     * reason and the same two rounds named. Not told, a round after a gap is
+     * compared with a round nobody played, which can refuse it, and not with
+     * the round played before the gap.
+     *
+     * @param int|null $previousRound The number of the round played before this one, below
+     *                                its number; 0 when none was. Null (the default) is the
+     *                                round numbered before it, or none for round 1
      *
      * @return array<ScheduledEvent> In slot order, the pairing's events in their order
      *
-     * @throws InvalidConfigurationException When the round has more events than the timeline has
-     *                                       slots, its slots are not at rising times, the last
-     *                                       slot of the round before it is at or after its
-     *                                       first, it is too far from the start to be computed,
-     *                                       a participant is in two events at one instant, or a
-     *                                       time-aware rule is violated
+     * @throws InvalidConfigurationException When the round played before is below 0 or not
+     *                                       below the round's number (reason
+     *                                       `RoundOutOfSequence`), the round has more events than
+     *                                       the timeline has slots, its slots are not at rising
+     *                                       times, the last slot of the round played before it is
+     *                                       at or after its first, it is too far from the start to
+     *                                       be computed, a participant is in two events at one
+     *                                       instant, or a time-aware rule is violated
      */
-    public function assignRound(RoundPairing $pairing, TimelineDefinition $timeline): array
+    public function assignRound(RoundPairing $pairing, TimelineDefinition $timeline, ?int $previousRound = null): array
     {
         $events = $pairing->getEvents();
         $roundNumber = $pairing->getRoundNumber();
+
+        if ($previousRound !== null && ($previousRound < 0 || $previousRound >= $roundNumber)) {
+            throw new InvalidConfigurationException(
+                "The round played before round {$roundNumber} must be a round before it, or 0 for none; {$previousRound} was given",
+                ['round' => $roundNumber, 'previous_round' => $previousRound],
+                reason: InvalidConfigurationReason::RoundOutOfSequence
+            );
+        }
+
+        // By default the round numbered before it; a round below 1 has
+        // none, and is refused for its number below
+        $previousRound ??= $roundNumber > 1 ? $roundNumber - 1 : 0;
 
         $this->refuseOverCapacity($events, $roundNumber, $timeline);
         $slotTimes = $events === []
             ? []
             : $this->risingSlotTimes($roundNumber, $timeline->getRoundSlotTimes($roundNumber)->current());
 
-        if ($slotTimes !== [] && $roundNumber > 1) {
+        if ($slotTimes !== [] && $previousRound >= 1) {
             $this->refuseOverlap(
-                $roundNumber - 1,
-                $timeline->getSlotTime($roundNumber - 1, $timeline->getSlotsPerRound() - 1),
+                $previousRound,
+                $timeline->getSlotTime($previousRound, $timeline->getSlotsPerRound() - 1),
                 $roundNumber,
                 $slotTimes[0],
                 $timeline
