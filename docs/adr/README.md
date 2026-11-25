@@ -32,6 +32,7 @@ there is not repeated here.
 | [0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md) | Nobody is in a round of a stage state twice (amends 0007; amended by 0021) |
 | [0021](0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md) | Everyone in a round of a stage state is an entrant (amends 0007 and 0020) |
 | [0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md) | Classes are final, and the interfaces are the extension points (amends 0009 and 0014) |
+| [0024](0024-only-a-winners-tie-its-results-decided-drops-its-loser.md) | Only a winners tie its results decided drops its loser to the losers bracket (narrows 0011) |
 
 ## Adding a record
 

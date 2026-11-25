@@ -529,7 +529,8 @@ final class BracketViewBuilder
      *
      * @param SourceSpec $spec
      * @param array<string, NodeDraft> $nodes
-     * @param bool $voidDropsNobody Whether a void node has no loser to give
+     * @param bool $voidDropsNobody Whether only a node its results decided has a loser to give
+     *                              (double elimination, docs/adr/0024)
      */
     private static function filledBy(array $spec, array $nodes, bool $voidDropsNobody): ?Participant
     {
@@ -544,7 +545,7 @@ final class BracketViewBuilder
 
         return match ($spec['source']) {
             SlotSource::AdvancerOf => $node['advancer'],
-            SlotSource::LoserOf => $voidDropsNobody && $node['advancer'] === null ? null : ($node['losers'][0] ?? null),
+            SlotSource::LoserOf => $voidDropsNobody && $node['status'] !== BracketNodeStatus::Decided ? null : ($node['losers'][0] ?? null),
             default => null,
         };
     }

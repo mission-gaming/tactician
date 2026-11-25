@@ -1956,3 +1956,83 @@ it('shows the bracket as the engine reads it after every step, whatever happens 
     ['double, two legs'],
     ['double, no reset'],
 ]);
+
+// Issue #182: in double elimination a withdrawn loser of a winners tie was
+// shown two ways in the losers bracket. Where its tie was given away while
+// the other entrant was in, it dropped, and the losers tie it would have
+// played was uncontested; where the tie was read as void and the other
+// entrant found later to have gone through, it did not drop, and that losers
+// tie was a bye. So a later withdrawal changed how an earlier round looked.
+// Now only a winners tie its results decided drops its loser (ADR 0024).
+// Whatever happens, once the next round on its side of the bracket is
+// recorded, the view of a recorded round stays as it was: the same nodes,
+// the same statuses, advancers, losers and slots. (Before that, a tie given
+// away can still turn void: the entrant it was given to goes through only if
+// it is still in the stage when its next tie is paired, ADR 0011.)
+
+/**
+ * What the view shows of a round, as plain values.
+ *
+ * @return list<string>
+ */
+function settledRoundView(BracketRound $round): array
+{
+    $nodes = [];
+    foreach ($round->getNodes() as $node) {
+        $slots = array_map(
+            static fn($slot): string => $slot->getParticipant()?->getId() ?? ('[' . $slot->getPlaceholder()?->value . ']'),
+            $node->getSlots()
+        );
+        $nodes[] = $node->getId() . ' ' . $node->getStatus()->value . ' (' . implode(' v ', $slots) . ')'
+            . ' -> ' . ($node->getAdvancer()?->getId() ?? '-') . ' out ' . implode(',', bracketViewIds($node->getLosers()));
+    }
+
+    return $nodes;
+}
+
+it('shows a recorded round the same once a later round is recorded, whatever happens after it', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $compared = 0;
+    $withdrawn = 0;
+
+    foreach ([3, 4, 5, 6, 7, 8, 9, 12, 16, 17] as $fieldSize) {
+        foreach ([1, 2, 3, 4] as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $seen = [];
+
+            $check = static function (StageState $state) use ($engine, $where, &$seen, &$compared): void {
+                $rounds = $engine->getBracket($state)->getRounds();
+                $recorded = [];
+                foreach ($rounds as $round) {
+                    $recorded[$round->getSide()->value . ' ' . $round->getRound()] = $round->isRecorded();
+                }
+                foreach ($rounds as $round) {
+                    $number = $round->getRoundNumber();
+                    if ($number === null || !($recorded[$round->getSide()->value . ' ' . ($round->getRound() + 1)] ?? false)) {
+                        continue;
+                    }
+
+                    $view = settledRoundView($round);
+                    if (isset($seen[$number])) {
+                        expect($view)->toBe($seen[$number], "{$where}, round {$number}");
+                        ++$compared;
+                    }
+                    $seen[$number] = $view;
+                }
+            };
+
+            [, $withdrawals] = knownThenPlay($engine, invariantField($fieldSize), 900 * $fieldSize + $seed, $check);
+            $withdrawn += $withdrawals;
+        }
+    }
+
+    expect($compared)->toBeGreaterThan(200)
+        ->and($withdrawn)->toBeGreaterThan(20);
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, third place'],
+    ['double'],
+    ['double, two legs'],
+    ['double, no reset'],
+]);

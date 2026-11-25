@@ -847,7 +847,10 @@ trait EliminationBracketSupport
      * @param int|null $pairedAt The number of the recorded round the slots were paired for (the
      *                           round itself, or the one this round was skipped before); null
      *                           when the round is read from the state as it stands
-     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, byes: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
+     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, beaten: list<Participant|null>, extra: array{winner: Participant|null, losers: list<Participant>}|null, nodes: list<WalkedNode>, extraNode: WalkedNode|null, byes: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
+     *                                                                                                                                                                                                                                                                              `beaten` holds, for each unit in the same order, the entrant
+     *                                                                                                                                                                                                                                                                              its results beat (null for a unit no result decided: a tie
+     *                                                                                                                                                                                                                                                                              given away, a void tie, an entrant alone; docs/adr/0024);
      *                                                                                                                                                                                                                                                                              `nodes` is what the bracket view shows of each unit, in
      *                                                                                                                                                                                                                                                                              the same order, and `extraNode` of the extra tie;
      *                                                                                                                                                                                                                                                                              `byes` lists who stood alone and went on, the nodes the
@@ -1081,6 +1084,10 @@ trait EliminationBracketSupport
             'manual' => $manual,
             'units' => array_map(
                 static fn(array $row): array => ['winner' => $row[2]['winner'], 'losers' => $row[2]['losers']],
+                $rows
+            ),
+            'beaten' => array_map(
+                static fn(array $row): ?Participant => $row[3]['status'] === BracketNodeStatus::Decided ? ($row[2]['losers'][0] ?? null) : null,
                 $rows
             ),
             'extra' => $extra === null ? null : ['winner' => $extra['winner'], 'losers' => $extra['losers']],
