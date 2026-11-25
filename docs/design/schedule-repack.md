@@ -478,13 +478,24 @@ slot count there looped without end in the check decision 37 added,
 where 0.2.3 had built the grid at once and failed later, when the
 positions of two such sessions were counted. No arithmetic replaces the check: where two slots
 fall on one instant depends on the timezone's clocks. So the positions
-are limited (`SessionGrid::MAX_POSITIONS`, 100,000) and every count is
+are limited (`SessionGrid::MAX_POSITIONS`, 100,000 in 0.3.0 and
+200,000 from 0.4.0) and every count is
 refused above the limit before anything of its size is allocated or
-visited. The value is set by the instant-based grid, some 40 MB and a
-sixth of a second at the limit, and applies to the shape-only one too,
+visited. The value is set by the instant-based grid, some 80 MB and a
+quarter to half a second at the limit, and applies to the shape-only one too,
 so that one number describes a grid; one limit on the positions was
 chosen over a limit for each count because the positions are what is
-paid for. The capacity has a limit for another reason
+paid for. 0.4.0 doubled the limit (#175): a slot every five minutes for
+a year is 105,120 positions (105,408 in a leap year), which 100,000
+refused. Measured at one, two, five and ten times the old limit, every
+cost rises in proportion to the positions: building an instant-based
+grid takes about 0.4 KB a position and a repack about 1.2 KB, so 200,000
+is some 80 MB for the grid and 250 MB for a repack of it, against 400 MB
+and 1.1 GB at a million. 200,000 is the round number that covers a year
+of five-minute slots with room to spare while a grid at the limit still
+fits PHP's default memory limit of 128 MB; a repack of a grid of 100,000
+positions or more needs a higher one, which was already so at the old
+limit. The capacity has a limit for another reason
 (`MAX_CAPACITY_PER_SLOT`, a million million): the planner adds it up
 over the positions, and that sum left PHP's integers for a capacity near
 the largest integer (a `TypeError` inside the repacker, in 0.2.3 as
@@ -1564,6 +1575,368 @@ bench-compare` runs one benchmark class against two copies of the
 source, and a subject that states a current position or an objective
 does not run against a copy from before this change.
 
+## Objectives ahead of gap slots (0.4.0)
+
+Decisions made when a caller was let rank an objective ahead of gap
+slots (issues #176 and #209) and the outcome was given the lone
+participant-sessions. Decision 58 put gap slots ahead of every objective
+and measured what churn ahead of contiguity would buy; two callers then
+asked for it with numbers. A league that plays match nights asked for a
+round robin with no participant turning up for one event (#209), which
+the repacker's habit of filling the sessions from the first on defeats:
+the rounds that do not divide into the sessions end up together in the
+last, one round on its own, where every participant has one event. And
+a caller with a published calendar asked that an event stay where it
+is at the price of a wait (#176): on seasons in which nothing had
+changed, `LeastChurn` still moved 7,192 of 54,922 events, nearly all of
+them to close the gaps of a round robin of an odd number. Everything
+here is opt-in: a list that does not name `FewestGapSlots` is repacked
+exactly as before, the default among them, and the golden fixtures are
+untouched.
+
+65. **Gap slots are an objective the list may name.** The one mechanism
+    for both issues is a fifth case, `RepackObjective::FewestGapSlots`,
+    which says where gap slots rank: what the list names before it
+    ranks ahead of them, what it names after it behind. A list that
+    does not name it ranks gap slots first, as decision 58 has them, so
+    every list a caller could write before keeps its meaning, and a
+    list that starts with it is the same list without it (a test holds
+    both). Two other shapes were considered and not chosen. A second
+    list on the options (`aheadOfGapSlots: [...]`) says the same thing
+    in two places, needs a rule that a case is in one list only, and
+    makes the order between the two lists something the reader has to
+    know; and a count or a flag (`objectivesAheadOfGapSlots: 1`, or a
+    bool for each objective) is a number whose meaning depends on the
+    list beside it. With the case, the ranking is the list, read from
+    the left, which is how decision 57 already has it.
+66. **Events placed stay first, and the schedule with no objective
+    stays the floor.** Whatever the list, the schedule of the request
+    with no objective is made first, and nothing made after it is
+    returned unless it is better on events placed and then on the
+    figures in the order the list ranks them. Where something ranks
+    ahead of gap slots that schedule is made with no score at all, not
+    with the objectives as a tie-break inside it as decision 59 does
+    for a list after gap slots, so that it is exactly the repack with
+    no objective and the guarantee is against that repack: an outcome
+    places at least as many events, and where it places as many it is
+    no worse by its own ranking. The ranking is held in one place
+    (`Repack\Internal\Ranking`), which the repacker, the attempts for
+    the fewest moved events and the polish all read, so that no two of
+    them can rank differently.
+67. **Ranked ahead, an objective is searched for, not only a
+    tie-break.** A tie-break would change nothing on the requests the
+    issues are about: the schedule with no gap is the one the repacker
+    makes, and nothing level with it on gap slots has fewer lone
+    participant-sessions. So inside the making of every schedule after
+    the first, the choices `solve()` makes (the rounds as laid out or
+    the planned schedule, whether to make the third schedule, whether to
+    keep what the search for fewer gap slots found) are made on the key
+    of events placed and then the ranking, and the search for fewer gap
+    slots is kept only where it is better on that key.
+68. **The lone participant-sessions, the lone-event sessions and the
+    idle sessions are searched for by reshaping the grid.** The events
+    are placed again, each time on the first sessions of the grid with
+    their slots cut: to as many slots in all as the events need (the
+    busiest participant's events, or the events over the most that fit
+    in one slot, whichever is more, and one more where no shape of
+    that many places every event), spread evenly over the fewest sessions that hold
+    them and over one and two more. A session with a pinned event
+    keeps all its slots, the sessions up to the last pinned one are
+    kept, and a shape that leaves a session fewer than two slots is not
+    tried, because a session of one slot is a lone participant-session
+    for everyone in it. Each shape is made without the search for fewer
+    gap slots, and the search runs once, on the best shape by the
+    ranking; a shape counts only where it places every event with no
+    capacity violation, and the search stops at the first shape whose
+    ranked figures are all 0. Nothing is reshaped where the schedule
+    with no objective leaves an event unplaced, because a cut grid
+    holds no more. At most six shapes are made, each on what the two
+    budgets have left, so the bound of decision 62 holds. A search over
+    the decomposition of the round robin itself (an edge colouring
+    chosen for the sessions, as the issue's comparison does) was the
+    alternative; reshaping gets there with the placement the repacker
+    already has, and on the requests measured it is never worse than
+    the colouring (below).
+69. **The fewest moved events ahead of gap slots are held to what ranks
+    before them only.** The attempts of decision 60 hold every event
+    that can stay where it is and place the others around them; an
+    attempt that placed fewer events or left more gap slots than the
+    schedule with no objective was repaired, through the last placement
+    step and the search for fewer gap slots, and that search is what
+    moved the events around a gap. Ahead of gap slots an attempt is
+    compared with that schedule on events placed and on the figures the
+    list ranks before `LeastChurn`, the gap search runs on an attempt
+    only where gap slots are among those, and the events let go between
+    attempts are the ones around the gaps and around the lone
+    participant-sessions, then the ones of the lone-event sessions. So
+    `[LeastChurn, FewestGapSlots]` leaves a schedule whose only fault is
+    its gaps where it is.
+70. **A lone participant-session is a figure of a participant.** For
+    each participant, the sessions in which it has exactly one event,
+    pinned events counted, where that event is a movable one; summed
+    over the participants. As for the lone-event sessions (decision 53),
+    a participant whose one event in a session is pinned is history the
+    repack did not arrange and is not counted. It is a figure of every
+    outcome, whatever the options, because a caller ranking outcomes
+    (decision 52) needs it for outcomes made without the objective as
+    much as with it.
+71. **The options stay version 1; the outcome takes version 2.** The
+    repack options gain two identifiers of the `objectives` key, and no
+    key. A reader that does not know an identifier refuses it as
+    unknown, loudly, and never misreads it, so the options stay version
+    1, as `balanced_where_possible` stayed in version 1 of round-robin
+    options (ADR 0005, which now says so of every new identifier).
+    Version 2 of the options was considered and not taken: 0.3.x would
+    refuse every options array 0.4.0 writes, the default ones included,
+    where now it refuses only the ones that name a new objective. The
+    outcome's `metrics` gain a key, so the outcome is version 2, though
+    it has no `fromArray()`, and 0.3.x refuses it. It is the first form
+    of the library to reach version 2, so the tests of the forms now
+    read each form's newest version from
+    `tests/Support/PlainDataForms.php`.
+
+*Measurements.* Run outside the suite with scripts that are not shipped,
+PHP 8.4, no OPcache, on a machine doing other work (so read the times as
+proportions). "Ahead" is `[FewestLoneParticipantSessions,
+FewestIdleSessions, FewestGapSlots]`.
+
+The comparison #209 asks for: every complete single round robin of 4 to
+24 participants with nothing pinned, on sessions of four slots, from the
+fewest sessions that hold its rounds up to two more (63 requests),
+compared on (events placed, lone participant-sessions, idle sessions,
+gap slots) with a reference edge colouring: the rounds of the circle
+method, whole rounds to a session, in the composition of rounds over
+the sessions with the fewest lone participant-sessions and then the
+fewest gap slots. The application's own colouring was not available;
+the issue's two data points are checked separately below.
+
+| Capacity of a slot | Setting | Lone participant-sessions | Idle sessions | Gap slots | Against the reference (better / level / worse) | Median / 90th percentile / slowest, ms |
+|---|---|---|---|---|---|---|
+| No limit | No objective | 406 | 91 | 20 | 5 / 18 / 40 | 2 / 126 / 234 |
+| No limit | Ahead | 0 | 0 | 150 | 8 / 55 / 0 | 7 / 210 / 419 |
+| Half the participants | No objective | 300 | 0 | 0 | 18 / 18 / 27 | 1 / 4 / 30 |
+| Half the participants | Ahead | 0 | 0 | 74 | 18 / 45 / 0 | 4 / 62 / 124 |
+| Either | Reference | 6 | 0 | 164 | | |
+
+Every event was placed in every case. The issue's data points, with no
+limit on a slot: 14 participants on four sessions, no lone
+participant-session and no idle session (the colouring had 0 and 5
+waits); 22 participants on eight sessions, 0 and 0 (the colouring had 0
+and 14).
+
+Seasons in progress: 200 single and double round robins of 8 to 30
+participants laid out round by round on sessions of one to four slots,
+two events to a slot for each four participants, their first rounds
+pinned in order and every other event at its place, then one of four
+changes (nothing, a round postponed into a session added for it, a few
+new events on a session added for them, the last session taken away).
+And 120 round robins with a fifth of the events pinned at scattered
+positions (nothing changed, some events said to be elsewhere, a quarter
+of them with no position).
+
+| Requests | Setting | Unplaced | Gap slots | Lone participant-sessions | Idle sessions | Moved | Median / 90th percentile, ms |
+|---|---|---|---|---|---|---|---|
+| Seasons | No objective | 679 | 184 | 18,956 | 1,076 | 34,146 of 37,119 | 26 / 267 |
+| Seasons | Ahead | 679 | 554 | 18,173 | 986 | 34,179 | 40 / 413 |
+| Seasons | `[LeastChurn]` | 679 | 123 | 18,794 | 509 | 4,060 | 34 / 442 |
+| Seasons | `[LeastChurn, FewestGapSlots]` | 679 | 449 | 18,578 | 493 | 6 | 26 / 284 |
+| Scattered pins | No objective | 2 | 265 | 15,436 | 333 | 25,277 of 28,354 | 87 / 702 |
+| Scattered pins | Ahead | 2 | 409 | 15,187 | 354 | 25,286 | 82 / 666 |
+| Scattered pins | `[LeastChurn]` | 2 | 174 | 15,466 | 323 | 3,817 | 101 / 800 |
+| Scattered pins | `[LeastChurn, FewestGapSlots]` | 2 | 287 | 15,437 | 322 | 2,130 | 94 / 821 |
+
+No setting placed fewer events than the repack with no objective on any
+request, and none was worse by its own ranking than that repack on any
+request: ahead was better by its ranking on 87 of the seasons and 38 of
+the scattered requests and level on the rest, `[LeastChurn,
+FewestGapSlots]` better on all 320. Ahead gains little on these
+requests, and that is the shape of them, not the search: a session of
+one slot is a lone participant-session for everyone in it, and the
+seasons pinned in order keep the rounds already played where they are,
+so most of the lone participant-sessions there cannot be removed.
+
+#176's case: the 200 seasons with nothing changed (39,296 movable
+events). The repack with no objective moved 37,453 and `LeastChurn`
+4,427 with 100 gap slots; `[LeastChurn, FewestGapSlots]` moved none and
+left 360 gap slots, the waits of the schedule as it was. Its median was
+50 ms and its 90th percentile 620, against 80 and 953 for `LeastChurn`
+alone, because the first attempt holds every event and nothing needs
+repairing.
+
+*The search for fewer gap slots (#169).* Its cost is what makes a large
+repack slow, and reshaping meets it six times where it would run it on
+every shape; running it once, on the shape kept, is what holds the
+reshape to less than twice the time of a repack with no objective at
+the 90th percentile of the round robins (210 ms for 126), where the
+median, a few milliseconds either way, is mostly the shapes themselves. A lower
+bound on the gap slots a session can reach, from the parity of each
+participant's events in it, would let both stop early; it was not
+needed for this change and is left to #169 (decision 72 takes such a
+bound, of the whole request).
+
+## Hard requests (0.4.0)
+
+Decisions made when the search for fewer gap slots was given a lower
+bound (#169).
+
+72. **The search for fewer gap slots stops at a lower bound.** It ran to
+    its limit wherever no placement without a gap exists: three events
+    among three participants on one session (each plays two of them, and
+    no three slots are each next to the other two) took half a second on
+    1,000 slots and a second on 100,000, where 0.2.3 took milliseconds,
+    and below the default the time followed `stepBudget`. `GapLowerBound`
+    works out, from the request alone, a number of gap slots that no
+    placement of every event goes below; the search does not start where
+    the schedule it is given has no more, and stops at the first
+    placement it finds with that few. The bound is a sum over sessions.
+    The events that can be played in one session alone (a slot of it has
+    room once the pins are counted and neither participant is pinned
+    there, and no slot of another session has) are split into groups that
+    share participants, and a group counts where its participants have
+    nothing else in the session (no pin, no event that could go there or
+    elsewhere), so that their events there are the group's whatever the
+    rest of the schedule is. Of such a group three things are known.
+    *Parity*: a participant whose slots in a session are one run plays as
+    many even slots as odd ones, give or take one, and each gap slot can
+    change that by one more; a group in which every participant has an
+    even number of events and the group an odd number has no colouring of
+    its events by the parity of their slots that balances every
+    participant, so it has a gap slot, and every other group has such a
+    colouring, so parity gives it nothing. *One event to a slot*: a
+    session is then a sequence, a participant is without a gap only where
+    its events follow each other, and two events in a row share one
+    participant (two when they are between the same two), so m events
+    among v participants with p repeated pairings leave at least
+    m - v + 1 - p gap slots. *Exactly*, for a group of up to 12 events:
+    the fewest gap slots of the group alone on a session of its length,
+    by a search that leaves out the slots none of its events plays (such
+    a slot inside a participant's run is a gap slot of that participant,
+    so a placement without them is never worse) and cuts a branch on the
+    gap slots it can no longer close. It has a limit of 20,000 slot checks
+    for all the groups of one bound, and a group it does not finish gets
+    the larger of the other two. Leaving out the room the group shares
+    with other events and pins makes the bound smaller, never wrong. A
+    placement that may leave events out has no bound here (leaving one
+    out can break a group), so the search asks for one only when every
+    event is placed.
+
+    *What it changes.* Nothing the search returns: it took a placement
+    only with strictly fewer gap slots, and none has fewer than the
+    bound, so stopping there drops only the part of the search that could
+    find nothing. It spends fewer steps, which leaves more to the steps
+    after it and could in principle change what they do; on 6,000 small
+    random requests (up to seven participants and ten events on one to
+    three sessions) at 100 steps, at 2,000 and at the default, on 200
+    round robins of 16 to 40 with an eighth to a half of their events
+    pinned at random, and on 160 seasons of 20 to 40 with their first
+    rounds pinned in order, every assignment came back the same as
+    without the bound. The budget flag did not: 19 of the small requests
+    at 100 steps and 3 at 2,000 are now false where the budget stopped the
+    search before (never the other way), which is what the flag promises,
+    since a larger budget gives them the same outcome. The large requests
+    never reach the bound (on them the search stops at its limit without
+    a better placement, and the bound is 0), so their time is what it was.
+
+    *Measured* (milliseconds, one event to a slot, one session; before /
+    after / 0.2.3):
+
+    | Request | Slots | 2,000 steps | 20,000 | 200,000 (default) |
+    |---|---|---|---|---|
+    | Three who all meet | 100 | 6 / 0.3 / 0.1 | 53 / 0.3 / 0.1 | 79 / 0.2 / 0.1 |
+    | Three who all meet | 1,000 | 10 / 1.7 / 0.8 | 54 / 1.7 / 0.8 | 527 / 1.7 / 0.8 |
+    | Three who all meet | 100,000 | 453 / 166 / 80 | 448 / 164 / 73 | 970 / 167 / 81 |
+    | A ring of five | 100 | 6 / 1.1 / 0.3 | 56 / 1.1 / 0.3 | 540 / 1.1 / 0.3 |
+    | A ring of five | 1,000 | 13 / 4.8 / 2.2 | 60 / 4.7 / 2.2 | 570 / 4.9 / 2.2 |
+    | Four who all meet | 1,000 | 10 / 18 / 2.6 | 64 / 12 / 3.2 | 578 / 7.6 / 2.2 |
+    | Four who all meet | 100,000 | 1,002 / 622 / 287 | 1,008 / 590 / 304 | 1,008 / 522 / 268 |
+
+    The ring needs three gap slots and the four who all meet five, both
+    found by the exact bound. Before, the search reported a stopped
+    budget at 2,000 and 20,000 steps on all of these, and now on none.
+    What is left at 100,000 slots is the work of the other phases, which
+    look at every position once or a few times, and not this search.
+
+    Considered and not taken: cutting the search where a session with no
+    pin has its events anywhere but in its first slots (every placement
+    there has one as good that starts at the first slot and leaves no
+    slot empty). It would end the search on wide sessions without a
+    bound, but it drops branches the search takes today in its order, so
+    it would change which of several placements with as many gap slots is
+    returned, where the bound changes nothing. A bound for events that can
+    go to more than one session was not attempted: where a group can be
+    split over sessions it usually can be without a gap, and the search
+    then finds a placement without one and stops there already.
+
+## Ranked choices (0.4.0)
+
+Decisions made when the choice by the ranking between the search for
+fewer gap slots and the schedule it started from was made to keep both
+sides (#231). They follow decisions 66 to 69.
+
+73. **What a ranked choice turns down is polished too.** With an
+    objective ahead of gap slots, the search for fewer gap slots is kept
+    only where its result ranks better (decision 67), and the polish then
+    works from the schedule kept. That choice is greedy: the polish can
+    make the schedule turned down the better of the two, and a repack
+    could return a schedule worse by its own ranking than one it had in
+    hand. In 4,000 small random requests, always keeping the search's
+    result changed five outcomes, three for the worse and two for the
+    better (#231). Where a ranked choice has both schedules in hand and
+    the one turned down places every event, that one is kept aside: the
+    other schedule of the search run on the reshaped layout (decision 68),
+    and, for the fewest moved events (decision 69), the other schedule of
+    each search for fewer gap slots inside an attempt and of the search
+    run on the attempt, each with the held events added. After the
+    schedule chosen is polished, each of those is polished in turn, with
+    what the second budget has left, and replaces it where it then ranks
+    better by events placed and then the ranking; on a tie the schedule
+    chosen stands, and a schedule already tried is not polished twice. So
+    the outcome is never worse than before by its own ranking, and the
+    schedule chosen and its polish are made exactly as before, which keeps
+    decision 66's guarantee as it was. With gap slots first nothing is
+    turned down (the search's result is always kept), so no outcome of a
+    list that ranks gap slots first, the default among them, changes.
+    The extra polishes spend steps of the second budget like the first,
+    so below the default budget one of them can be the search the budget
+    stops, and `isBudgetExhausted()` is then true where it was false
+    before (never the other way): a larger budget may let that polish
+    finish and give a schedule that ranks better.
+
+    Carried no further than the polish, and why. Each schedule kept aside
+    could also be carried through the steps between its choice and the
+    polish: the third schedule of `solve()`, the comparison of the
+    attempts for the fewest moved events, and the attempts after it. Each
+    of those makes its own choices by the ranking and would then have to
+    make them for two schedules, and the attempts let go of held events
+    by what the one before went wrong around, which has no meaning for
+    two; it would be a search over every combination of choices, not two
+    candidates. The polish is the last step and the one that can change
+    what the ranking says of a schedule without a search, so it is where
+    the two are compared.
+
+    *Measured*, with #169's bound in place on both sides (times as
+    proportions, as above):
+
+    | Requests | Ranking | Better | Worse | Median / 90th percentile / slowest, ms (before) |
+    |---|---|---|---|---|
+    | 3,583 small random requests | `[FewestLoneParticipantSessions, FewestGapSlots]`, `[FewestIdleSessions, FewestGapSlots]` | 25 of 7,166 | 0 | under 1 |
+    | 2,693 small random requests with current positions | three lists with `LeastChurn` and an objective ahead of gap slots | 173 of 8,079 | 0 | under 1 |
+    | The 63 round robins, no limit on a slot | Ahead | 0 | 0 | 6 / 231 / 383 (6 / 229 / 362) |
+    | The 63 round robins, half the participants to a slot | Ahead | 0 | 0 | 4 / 72 / 150 (5 / 64 / 150) |
+    | 200 seasons | Ahead | 5 | 0 | 35 / 261 / 2,375 (32 / 252 / 2,312) |
+    | 200 seasons | `[LeastChurn]`, `[LeastChurn, FewestGapSlots]` | 0 | 0 | 26 / 342 / 1,244 and 21 / 224 / 906 (25 / 309 / 1,217 and 23 / 213 / 1,078) |
+    | 120 round robins with scattered pins | Ahead, `[LeastChurn]`, `[LeastChurn, FewestGapSlots]` | 0 | 0 | 89 / 457 / 2,190, 128 / 615 / 2,225, 96 / 543 / 2,188 (88 / 456 / 2,596, 125 / 619 / 2,341, 95 / 594 / 2,397) |
+
+    "Ahead" is `[FewestLoneParticipantSessions, FewestIdleSessions,
+    FewestGapSlots]`; the lists with `LeastChurn` on the small requests
+    are `[FewestLoneParticipantSessions, FewestGapSlots, LeastChurn]`,
+    `[FewestIdleSessions, FewestGapSlots, LeastChurn]` and
+    `[FewestLoneParticipantSessions, LeastChurn, FewestGapSlots]`. With
+    no objective every outcome is the same. The gain is on small
+    requests, where the polish moves a large share of the events; on the
+    large ones the schedule turned down rarely polishes past the one
+    kept, and the extra polish costs a few per cent of the time.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,
@@ -1733,6 +2106,21 @@ events on one session of three slots, five of them of one participant,
 at 100 steps, where every search ends by 75 steps and a needless
 exchange search keeps the flag true up to 160. It fails with the count
 not passed.
+
+The lower bound of decision 72 has a unit test of its own
+(`tests/Unit/Repack/GapLowerBoundTest.php`): each of its three bounds on a
+group a reader can check (three who all meet, a ring of five, four who all
+meet, with one and two events to a slot), the bounds that need no search
+when the exact one is given a limit of one check, a group that is split or
+has something else in its session, and 300 random requests of one or two
+sessions on which the bound must never be more than the exhaustive search
+(`RepackBruteForce::fewestGapSlots()`) finds, and must be reached on some.
+The search itself is tested on a schedule at the bound (it spends no step)
+and on one above it (it stops at the bound in under 100 steps); both tests
+fail with the bound taken out. A feature test repacks three who all meet
+and a ring of five on sessions of 100 and 1,000 slots at three budgets,
+where the budget flag must be false; before the bound it was true at 2,000
+and 20,000 steps.
 
 One thing has no test: that the search for shared events follows the
 budget when the unplaced events are given their reasons, as it does in

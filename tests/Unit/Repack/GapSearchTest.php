@@ -127,6 +127,42 @@ describe('GapSearch', function (): void {
             ->and($oneStep->stoppedASearch())->toBeTrue();
     });
 
+    it('does not start on a schedule with no more gap slots than every placement has', function (): void {
+        // Three participants who all meet, on one session of 100 slots:
+        // one of them waits a slot whatever the placement (GapLowerBound),
+        // and this schedule has that one gap slot. Without the bound the
+        // search would look through the 100 slots for each event until its
+        // limit stopped it; with a budget of no step, a search that was
+        // started would be recorded as stopped
+        $edges = [[0, 1], [1, 2], [0, 2]];
+        $positions = [0 => [0, 0], 1 => [0, 1], 2 => [0, 2]];
+        $budget = new StepBudget(0);
+
+        $unplaced = new GapSearch($budget)->improve($edges, $positions, [], [], [], [100], 1);
+
+        expect($unplaced)->toBe([])
+            ->and($positions)->toBe([0 => [0, 0], 1 => [0, 1], 2 => [0, 2]])
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
+    it('stops at the first placement with as few gap slots as every placement has', function (): void {
+        // Five participants in a ring, one event to a slot, on a session of
+        // twelve: every placement has three gap slots at least, and this
+        // one has eleven (0 plays slots 0 and 8, and 4 slots 3 and 8). The
+        // search finds three and stops there, where it used to search on
+        // for fewer to its limit
+        $edges = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 4]];
+        $positions = [0 => [0, 0], 1 => [0, 1], 2 => [0, 2], 3 => [0, 3], 4 => [0, 8]];
+        expect(gapSlotsOf($edges, $positions))->toBe(11);
+        $budget = new StepBudget(PHP_INT_MAX);
+
+        new GapSearch($budget)->improve($edges, $positions, [], [], [], [12], 1);
+
+        expect(gapSlotsOf($edges, $positions))->toBe(3)
+            ->and(PHP_INT_MAX - $budget->stepsLeft())->toBeLessThan(100)
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
     it('may change which event is left out, and never leaves out more', function (): void {
         // One session of three slots. Participant 0 has four events, one
         // more than there are slots, so one is left out: the one against

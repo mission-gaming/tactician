@@ -25,6 +25,13 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * out that a free position could hold; the search stops at the first
  * placement with no gap.
  *
+ * Where every event is placed it also stops at the first placement with
+ * as few gap slots as a lower bound worked out from the request
+ * (GapLowerBound), and does not start where the schedule it is given has
+ * no more than that: no placement has fewer, so the search could only
+ * spend its limit on finding none. What it returns is what it returned
+ * without the bound; only the work and the steps it spends are less.
+ *
  * The events are taken in an order that puts last the ones that have to
  * do with a gap (an event of a participant with a gap, or in a session
  * with one). The search changes the last events first, so within its
@@ -108,6 +115,9 @@ final class GapSearch
 
     private int $bestGaps = 0;
 
+    /** Gap slots no placement of every event goes below (GapLowerBound); 0 where events may be left out */
+    private int $lowerBound = 0;
+
     private int $work = 0;
 
     /** Position checks after which the search stops */
@@ -162,6 +172,7 @@ final class GapSearch
         $this->totalGaps = 0;
         $this->current = [];
         $this->best = null;
+        $this->lowerBound = 0;
         $this->work = 0;
         $this->stopped = false;
 
@@ -200,6 +211,16 @@ final class GapSearch
             sort($unplaced);
 
             return $unplaced;
+        }
+
+        // No placement of every event has fewer gap slots than the bound:
+        // a schedule that has no more is the best there is, and nothing is
+        // searched for
+        if ($unplaced === []) {
+            $this->lowerBound = GapLowerBound::of($edges, $pinSlots, $pinCounts, $slotCounts, $capacityPerSlot);
+            if ($this->bestGaps <= $this->lowerBound) {
+                return [];
+            }
         }
 
         $gapSessions = [];
@@ -263,7 +284,7 @@ final class GapSearch
      */
     private function search(int $at, int $mayLeaveOut): void
     {
-        if ($this->bound >= $this->bestGaps) {
+        if ($this->bound >= $this->bestGaps || $this->bestGaps <= $this->lowerBound) {
             return;
         }
         if (!isset($this->order[$at])) {
@@ -306,7 +327,7 @@ final class GapSearch
             }
         }
         foreach (array_keys($this->positionList) as $index) {
-            if ($this->stopped || $this->bestGaps === 0) {
+            if ($this->stopped || $this->bestGaps <= $this->lowerBound) {
                 break;
             }
             if ($index === $first || !$this->fits($a, $b, $index)) {
@@ -316,7 +337,7 @@ final class GapSearch
             $this->search($at + 1, $mayLeaveOut);
             $this->take($eventIndex);
         }
-        if ($first !== null && $mayLeaveOut > 0 && !$this->stopped && $this->bestGaps > 0) {
+        if ($first !== null && $mayLeaveOut > 0 && !$this->stopped && $this->bestGaps > $this->lowerBound) {
             $this->search($at + 1, $mayLeaveOut - 1);
         }
         $this->decided($a, $b, 1);

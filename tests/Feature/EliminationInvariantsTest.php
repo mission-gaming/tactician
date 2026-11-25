@@ -15,6 +15,7 @@ use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\BracketNode;
 use MissionGaming\Tactician\Stage\BracketNodeStatus;
 use MissionGaming\Tactician\Stage\BracketRound;
+use MissionGaming\Tactician\Stage\BracketSide;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
@@ -1954,5 +1955,523 @@ it('shows the bracket as the engine reads it after every step, whatever happens 
     ['single, two legs, re-seeded, third place'],
     ['double'],
     ['double, two legs'],
+    ['double, no reset'],
+]);
+
+// Issue #182: in double elimination a withdrawn loser of a winners tie was
+// shown two ways in the losers bracket. Where its tie was given away while
+// the other entrant was in, it dropped, and the losers tie it would have
+// played was uncontested; where the tie was read as void and the other
+// entrant found later to have gone through, it did not drop, and that losers
+// tie was a bye. So a later withdrawal changed how an earlier round looked.
+// Now only a winners tie its results decided drops its loser (ADR 0026).
+// Whatever happens, once the next round on its side of the bracket is
+// recorded, the view of a recorded round stays as it was: the same nodes,
+// the same statuses, advancers, losers and slots. (Before that, a tie given
+// away can still turn void: the entrant it was given to goes through only if
+// it is still in the stage when its next tie is paired, ADR 0011.)
+
+/**
+ * What the view shows of a round, as plain values.
+ *
+ * @return list<string>
+ */
+function settledRoundView(BracketRound $round): array
+{
+    $nodes = [];
+    foreach ($round->getNodes() as $node) {
+        $slots = array_map(
+            static fn($slot): string => $slot->getParticipant()?->getId() ?? ('[' . $slot->getPlaceholder()?->value . ']'),
+            $node->getSlots()
+        );
+        $nodes[] = $node->getId() . ' ' . $node->getStatus()->value . ' (' . implode(' v ', $slots) . ')'
+            . ' -> ' . ($node->getAdvancer()?->getId() ?? '-') . ' out ' . implode(',', bracketViewIds($node->getLosers()));
+    }
+
+    return $nodes;
+}
+
+it('shows a recorded round the same once a later round is recorded, whatever happens after it', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $compared = 0;
+    $withdrawn = 0;
+
+    foreach ([3, 4, 5, 6, 7, 8, 9, 12, 16, 17] as $fieldSize) {
+        foreach ([1, 2, 3, 4] as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $seen = [];
+
+            $check = static function (StageState $state) use ($engine, $where, &$seen, &$compared): void {
+                $rounds = $engine->getBracket($state)->getRounds();
+                $recorded = [];
+                foreach ($rounds as $round) {
+                    $recorded[$round->getSide()->value . ' ' . $round->getRound()] = $round->isRecorded();
+                }
+                foreach ($rounds as $round) {
+                    $number = $round->getRoundNumber();
+                    if ($number === null || !($recorded[$round->getSide()->value . ' ' . ($round->getRound() + 1)] ?? false)) {
+                        continue;
+                    }
+
+                    $view = settledRoundView($round);
+                    if (isset($seen[$number])) {
+                        expect($view)->toBe($seen[$number], "{$where}, round {$number}");
+                        ++$compared;
+                    }
+                    $seen[$number] = $view;
+                }
+            };
+
+            [, $withdrawals] = knownThenPlay($engine, invariantField($fieldSize), 900 * $fieldSize + $seed, $check);
+            $withdrawn += $withdrawals;
+        }
+    }
+
+    expect($compared)->toBeGreaterThan(200)
+        ->and($withdrawn)->toBeGreaterThan(20);
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, third place'],
+    ['double'],
+    ['double, two legs'],
+    ['double, no reset'],
+]);
+
+// A round drawn by hand is read as drawn (ADR 0025, issues #172 and #183).
+// Brackets are played with withdrawals, and now and then the round the
+// engine would pair is drawn again by hand among the entrants it names: they
+// are shuffled and paired in order, the odd one out given a bye, and a last
+// round with a third-place tie is drawn as a final and a third-place tie of
+// its four. After such a round has its results, the next round pairs exactly
+// the entrants it sent on, two to a tie, so that no slot is left for an
+// entrant who had withdrawn (before, a withdrawn entrant left alone beside a
+// tie kept an empty slot, and the next round paired one tie fewer); and a
+// last round drawn by hand ends the bracket, its final and third-place tie
+// placing their four (before, an entrant of the slots of the final drawn
+// into the third-place tie went on alone to a second final).
+it('reads a round drawn by hand among the entrants left as drawn, and leaves no place for the withdrawn', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $handDrawn = 0;
+    $lastRoundsDrawn = 0;
+    $withWithdrawals = 0;
+
+    foreach ([4, 5, 7, 8, 9, 12, 16, 17] as $fieldSize) {
+        foreach (range(1, 6) as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $field = invariantField($fieldSize);
+            $rng = new Randomizer(new Mt19937(31 * $fieldSize + $seed));
+            $state = StageState::start($field);
+
+            for ($guard = 0; !$engine->isComplete($state); ++$guard) {
+                expect($guard)->toBeLessThan(60, $where);
+                if ($state->getRoundsPlayed() !== [] && $rng->getInt(0, 2) === 0 && count($state->getParticipants()) > 2) {
+                    $active = array_values($state->getParticipants());
+                    $state = $state->withoutParticipant($active[$rng->getInt(0, count($active) - 1)]);
+
+                    continue;
+                }
+
+                $pairing = $engine->pairNextRound($state);
+                $named = [];
+                foreach ($pairing->getEvents() as $event) {
+                    foreach ($event->getParticipants() as $participant) {
+                        $named[] = $participant;
+                    }
+                }
+                $named = [...$named, ...array_values($pairing->getByes())];
+                $marked = array_filter($pairing->getEvents(), static fn(Event $event): bool => BracketTie::of($event) !== null) !== [];
+                $draw = $state->getRoundsPlayed() !== [] && $pairing->getEvents() !== [] && $rng->getInt(0, 1) === 0
+                    && (!$marked || (count($named) === 4 && count($pairing->getEvents()) === 2));
+
+                if ($draw && !$marked && count($named) > 3 && $rng->getInt(0, 1) === 0) {
+                    // One of them withdraws before the round is drawn, so
+                    // that the draw leaves an entrant who had withdrawn alone
+                    // in its slots, as often as not beside a tie
+                    $state = $state->withoutParticipant($named[$rng->getInt(0, count($named) - 1)]);
+                    $pairing = $engine->pairNextRound($state);
+                    $named = [];
+                    foreach ($pairing->getEvents() as $event) {
+                        foreach ($event->getParticipants() as $participant) {
+                            $named[] = $participant;
+                        }
+                    }
+                    $named = [...$named, ...array_values($pairing->getByes())];
+                    $draw = $pairing->getEvents() !== [];
+                    ++$withWithdrawals;
+                }
+
+                if ($draw) {
+                    $named = $rng->shuffleArray($named);
+                    $round = array_values($pairing->getEvents())[0]->getRound();
+                    $events = [];
+                    for ($index = 0; $index + 1 < count($named); $index += 2) {
+                        $metadata = $marked ? [BracketTie::METADATA_KEY => ($index === 0 ? BracketTie::Final : BracketTie::ThirdPlace)->value] : [];
+                        $events[] = new Event([$named[$index], $named[$index + 1]], $round, $metadata);
+                    }
+                    $byes = count($named) % 2 === 1 ? [$named[count($named) - 1]] : [];
+                    $pairing = new RoundPairing($pairing->getRoundNumber(), $pairing->getLabel(), $events, $byes);
+                    ++$handDrawn;
+                    $lastRoundsDrawn += $marked ? 1 : 0;
+                }
+
+                $results = array_map(
+                    static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[$rng->getInt(0, 1)]),
+                    $pairing->getEvents()
+                );
+                $state = $state->withRoundPlayed($pairing, $results);
+                if (!$draw) {
+                    continue;
+                }
+
+                $sentOn = [];
+                foreach ($results as $result) {
+                    $sentOn[] = (string) $result->getWinner()?->getId();
+                }
+                foreach ($pairing->getByes() as $bye) {
+                    $sentOn[] = $bye->getId();
+                }
+                sort($sentOn);
+
+                if ($marked) {
+                    // A last round drawn by hand ends the bracket: the final's
+                    // two first and second, the third-place tie's third and fourth
+                    expect($engine->isComplete($state))->toBeTrue($where);
+                    $tiers = knownThenTiers($engine, $state);
+                    foreach ([[$results[0], 0], [$results[1], 2]] as [$tie, $tier]) {
+                        $winner = (string) $tie->getWinner()?->getId();
+                        $loser = array_values(array_diff(bracketViewIds($tie->getEvent()->getParticipants()), [$winner]));
+                        expect($tiers[$winner])->toBe($tier, $where)
+                            ->and($tiers[$loser[0]])->toBe($tier + 1, $where);
+                    }
+                    $outcome = $engine->getOutcome($state);
+                    assert($outcome instanceof StageOutcome);
+                    expect(bracketViewIds(MatchOutcomeSelector::winners()->select($outcome)))
+                        ->toBe([(string) $results[0]->getWinner()?->getId()], $where);
+
+                    continue;
+                }
+
+                if ($engine->isComplete($state) || count($sentOn) < 2) {
+                    continue;
+                }
+
+                // The next round pairs the entrants the round sent on, all of
+                // them and nobody else, two to a tie (a third-place tie
+                // aside, which is between entrants who went out)
+                $next = $engine->pairNextRound($state);
+                $ties = array_values(array_filter(
+                    $next->getEvents(),
+                    static fn(Event $event): bool => BracketTie::of($event) !== BracketTie::ThirdPlace
+                ));
+                $paired = bracketViewIds($next->getByes());
+                foreach ($ties as $tie) {
+                    $paired = [...$paired, ...bracketViewIds($tie->getParticipants())];
+                }
+                sort($paired);
+                // A third-place tie the other entrant has left gives its
+                // place to one who went out in the round, listed among the byes
+                $lostThere = [];
+                foreach ($results as $result) {
+                    $lostThere = [...$lostThere, ...array_diff(bracketViewIds($result->getEvent()->getParticipants()), [(string) $result->getWinner()?->getId()])];
+                }
+                $besides = array_values(array_diff($paired, $sentOn));
+                expect(array_values(array_diff($sentOn, $paired)))->toBe([], $where)
+                    ->and(array_values(array_diff($besides, !str_contains($variant, 'third place') ? [] : $lostThere)))->toBe([], $where)
+                    ->and(count($besides))->toBeLessThan(2, $where)
+                    ->and(count($ties))->toBe(intdiv(count($sentOn), 2), $where);
+            }
+
+            // The rows of an application say the same
+            $fromRows = StageState::fromHistory($field, $state->getRoundsPlayed(), $state->getResults(), $state->getWithdrawals(), $state->getAdjustments());
+            expect(knownThenTiers($engine, $fromRows))->toBe(knownThenTiers($engine, $state), $where)
+                ->and($engine->getBracket($fromRows))->toEqual($engine->getBracket($state), $where);
+        }
+    }
+
+    // The sweep drew rounds by hand right after a withdrawal, and last rounds too
+    expect($handDrawn)->toBeGreaterThan(20)
+        ->and($withWithdrawals)->toBeGreaterThan(10);
+    if (str_contains($variant, 'third place')) {
+        expect($lastRoundsDrawn)->toBeGreaterThan(3);
+    }
+})->with([
+    ['single'],
+    ['single, third place'],
+]);
+
+// A round drawn by hand does not bring back an entrant who has gone out
+// (issue #230, ADR 0025). Brackets are played, and now and then the round
+// the engine pairs is drawn again by hand with an entrant who went out
+// earlier: against an entrant the round gives a bye, in every engine, and in
+// single elimination also in the place of an entrant of a tie (the
+// third-place tie included), who is then left alone in its slots. Double
+// elimination has few byes, so entrants withdraw there now and then, and the
+// entrant they were to meet has one. Who has gone out is counted here from
+// the results alone, and the results of a tie with an entrant who had gone
+// out do not count: in single elimination the loser of a tie, in double
+// elimination the entrant with two losses. Before,
+// the entrant who had gone out went on where the results said it won, and
+// was paired again.
+it('never pairs an entrant who has gone out, or sends it on, whatever a round drawn by hand names', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $single = $engine instanceof SingleEliminationEngine;
+    $drawn = ['against a bye' => 0, 'in a tie' => 0, 'in the third-place tie' => 0];
+
+    foreach ([4, 5, 6, 7, 8, 9, 12, 13, 16, 17] as $fieldSize) {
+        foreach (range(1, 5) as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $field = invariantField($fieldSize);
+            $rng = new Randomizer(new Mt19937(53 * $fieldSize + $seed));
+            $state = StageState::start($field);
+            // The recorded round each entrant went out in, and the losses of each
+            $outIn = [];
+            $losses = [];
+
+            for ($guard = 0; !$engine->isComplete($state); ++$guard) {
+                expect($guard)->toBeLessThan(80, $where);
+                if (!$single && $state->getRoundsPlayed() !== [] && count($state->getParticipants()) > 3 && $rng->getInt(0, 3) === 0) {
+                    $active = array_values($state->getParticipants());
+                    $state = $state->withoutParticipant($active[$rng->getInt(0, count($active) - 1)]);
+
+                    continue;
+                }
+                $pairing = $engine->pairNextRound($state);
+                $number = $pairing->getRoundNumber();
+                $gone = array_map(strval(...), array_keys($outIn));
+
+                // The engine pairs nobody who has gone out: the two of a
+                // third-place tie went out in the round before it
+                foreach ($pairing->getEvents() as $event) {
+                    if (BracketTie::of($event) !== BracketTie::ThirdPlace) {
+                        expect(array_values(array_intersect(bracketViewIds($event->getParticipants()), $gone)))->toBe([], "{$where}, round {$number}");
+                    }
+                }
+                expect(array_values(array_intersect(bracketViewIds($pairing->getByes()), $gone)))->toBe([], "{$where}, round {$number}");
+
+                // One who went out by its results, is in no event of the
+                // round and has not withdrawn
+                $named = bracketViewIds($pairing->getByes());
+                foreach ($pairing->getEvents() as $event) {
+                    $named = [...$named, ...bracketViewIds($event->getParticipants())];
+                }
+                $candidates = array_values(array_intersect(array_diff($gone, $named), bracketViewIds($state->getParticipants())));
+                if ($candidates !== [] && $rng->getInt(0, 1) === 0) {
+                    $returning = $field[(int) substr($candidates[$rng->getInt(0, count($candidates) - 1)], 1) - 1];
+                    $events = array_values($pairing->getEvents());
+                    $byes = array_values($pairing->getByes());
+                    $round = $events[0]->getRound();
+                    if ($byes !== []) {
+                        $index = $rng->getInt(0, count($byes) - 1);
+                        $against = $byes[$index];
+                        array_splice($byes, $index, 1);
+                        $events[] = new Event($rng->shuffleArray([$returning, $against]), $round);
+                        $pairing = new RoundPairing($number, $pairing->getLabel(), $events, $byes);
+                        ++$drawn['against a bye'];
+                    } elseif ($single) {
+                        $index = $rng->getInt(0, count($events) - 1);
+                        $two = array_values($events[$index]->getParticipants());
+                        $two[$rng->getInt(0, 1)] = $returning;
+                        $events[$index] = new Event($two, $round, $events[$index]->getMetadata());
+                        $pairing = new RoundPairing($number, $pairing->getLabel(), $events, $byes);
+                        ++$drawn[BracketTie::of($events[$index]) === BracketTie::ThirdPlace ? 'in the third-place tie' : 'in a tie'];
+                    }
+                }
+
+                $results = array_map(
+                    static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[$rng->getInt(0, 1)]),
+                    $pairing->getEvents()
+                );
+                $state = $state->withRoundPlayed($pairing, $results);
+
+                foreach ($results as $result) {
+                    $two = bracketViewIds($result->getEvent()->getParticipants());
+                    if (array_intersect($two, $gone) !== []) {
+                        continue;
+                    }
+                    $loser = array_values(array_diff($two, [(string) $result->getWinner()?->getId()]))[0];
+                    $losses[$loser] = ($losses[$loser] ?? 0) + 1;
+                    if ($single || $losses[$loser] === 2) {
+                        $outIn[$loser] = $number;
+                    }
+                }
+
+                // Nobody who had gone out goes on from a later round in the
+                // view, the third-place tie aside
+                foreach ($engine->getBracket($state)->getRounds() as $bracketRound) {
+                    foreach ($bracketRound->getNodes() as $node) {
+                        $advancer = $node->getAdvancer()?->getId();
+                        $at = $node->getRoundNumber();
+                        if ($advancer === null || $at === null || $node->getKind() === BracketTie::ThirdPlace) {
+                            continue;
+                        }
+                        expect(isset($outIn[$advancer]) && $outIn[$advancer] < $at)->toBeFalse("{$where}: {$advancer} goes on from round {$at}");
+                    }
+                }
+            }
+
+            // Nor wins the bracket; and the rows of an application, supplied
+            // in another order, say the same
+            $outcome = $engine->getOutcome($state);
+            assert($outcome instanceof StageOutcome);
+            expect(array_values(array_intersect(bracketViewIds(MatchOutcomeSelector::winners()->select($outcome)), array_map(strval(...), array_keys($outIn)))))->toBe([], $where);
+
+            $fromRows = StageState::fromHistory(
+                $field,
+                array_reverse($state->getRoundsPlayed()),
+                array_reverse($state->getResults()),
+                $state->getWithdrawals(),
+                $state->getAdjustments()
+            );
+            expect(knownThenTiers($engine, $fromRows))->toBe(knownThenTiers($engine, $state), $where)
+                ->and($engine->getBracket($fromRows))->toEqual($engine->getBracket($state), $where);
+        }
+    }
+
+    expect($drawn['against a bye'])->toBeGreaterThan(5);
+    if ($single) {
+        expect($drawn['in a tie'])->toBeGreaterThan(20);
+    }
+    if (str_contains($variant, 'third place')) {
+        expect($drawn['in the third-place tie'])->toBeGreaterThan(2);
+    }
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, third place'],
+    ['double'],
+    ['double, no reset'],
+]);
+
+// A round drawn by hand brings nobody into a stage of a double elimination
+// bracket who holds a place in another (issue #236, ADR 0025). Brackets are
+// played, entrants withdraw now and then, and now and then the stage the
+// engine pairs is drawn again by hand with an entrant who is still in the
+// bracket and not in the stage: against an entrant the stage gives a bye, or
+// against another such entrant, a tie of nobody in the stage. Whatever is drawn, no entrant is in a node of the losers bracket and then
+// in a node of the winners bracket, which would put it in both at once, none
+// is in two nodes of one round, and none is in two events of a round the
+// engine pairs. Before, the entrant from the other stage went on in the stage
+// it was drawn into when it won there, and was paired in both brackets.
+it('never puts an entrant in both brackets at once or pairs it twice in one round, whatever a stage drawn by hand names', function (string $variant): void {
+    $engine = deciderSweepEngine($variant);
+    $drawn = ['against a bye' => 0, 'between two from elsewhere' => 0];
+
+    foreach ([5, 6, 7, 8, 9, 12, 13, 16] as $fieldSize) {
+        foreach (range(1, 5) as $seed) {
+            $where = "{$variant}, {$fieldSize} entrants, seed {$seed}";
+            $field = invariantField($fieldSize);
+            $rng = new Randomizer(new Mt19937(67 * $fieldSize + $seed));
+            $state = StageState::start($field);
+            // The losses of each entrant by its results, those of a tie with
+            // an entrant drawn in from another stage aside
+            $losses = [];
+
+            for ($guard = 0; !$engine->isComplete($state); ++$guard) {
+                expect($guard)->toBeLessThan(80, $where);
+                if ($state->getRoundsPlayed() !== [] && count($state->getParticipants()) > 3 && $rng->getInt(0, 3) === 0) {
+                    $active = array_values($state->getParticipants());
+                    $state = $state->withoutParticipant($active[$rng->getInt(0, count($active) - 1)]);
+
+                    continue;
+                }
+                $pairing = $engine->pairNextRound($state);
+                $number = $pairing->getRoundNumber();
+
+                // The engine pairs nobody twice in a round
+                $named = bracketViewIds($pairing->getByes());
+                foreach ($pairing->getEvents() as $event) {
+                    $named = [...$named, ...bracketViewIds($event->getParticipants())];
+                }
+                expect(count($named))->toBe(count(array_unique($named)), "{$where}, round {$number}");
+
+                // One who is still in the bracket (it has not withdrawn and
+                // has lost fewer than twice) and is not in the stage holds a
+                // place in another stage
+                $elsewhere = array_values(array_filter(
+                    array_diff(bracketViewIds($state->getParticipants()), $named),
+                    static fn(string $id): bool => ($losses[$id] ?? 0) < 2
+                ));
+                $drawnIn = [];
+                $byes = array_values($pairing->getByes());
+                if ($pairing->getEvents() !== [] && ($byes !== [] ? $elsewhere !== [] : count($elsewhere) > 1) && $rng->getInt(0, 1) === 0) {
+                    $elsewhere = $rng->shuffleArray($elsewhere);
+                    $first = $field[(int) substr($elsewhere[0], 1) - 1];
+                    $events = array_values($pairing->getEvents());
+                    $round = $events[0]->getRound();
+                    if ($byes !== []) {
+                        $index = $rng->getInt(0, count($byes) - 1);
+                        $against = $byes[$index];
+                        array_splice($byes, $index, 1);
+                        ++$drawn['against a bye'];
+                    } else {
+                        $against = $field[(int) substr($elsewhere[1], 1) - 1];
+                        $drawnIn[$against->getId()] = true;
+                        ++$drawn['between two from elsewhere'];
+                    }
+                    $drawnIn[$first->getId()] = true;
+                    $events[] = new Event($rng->shuffleArray([$first, $against]), $round);
+                    $pairing = new RoundPairing($number, $pairing->getLabel(), $events, $byes);
+                }
+
+                $results = array_map(
+                    static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[$rng->getInt(0, 1)]),
+                    $pairing->getEvents()
+                );
+                $state = $state->withRoundPlayed($pairing, $results);
+
+                foreach ($results as $result) {
+                    $two = bracketViewIds($result->getEvent()->getParticipants());
+                    if (array_intersect_key(array_flip($two), $drawnIn) !== []) {
+                        continue;
+                    }
+                    $loser = array_values(array_diff($two, [(string) $result->getWinner()?->getId()]))[0];
+                    $losses[$loser] = ($losses[$loser] ?? 0) + 1;
+                }
+
+                // In the view nobody is in a losers round and then in a
+                // winners round, and nobody is in two nodes of one round
+                $lastInWinners = [];
+                $firstInLosers = [];
+                foreach ($engine->getBracket($state)->getRounds() as $bracketRound) {
+                    $at = $bracketRound->getRoundNumber();
+                    if ($at === null) {
+                        continue;
+                    }
+                    $inRound = [];
+                    foreach ($bracketRound->getNodes() as $node) {
+                        $inRound = [...$inRound, ...bracketViewIds($node->getParticipants())];
+                    }
+                    expect(count($inRound))->toBe(count(array_unique($inRound)), "{$where}: an entrant twice in round {$at}");
+                    foreach ($inRound as $id) {
+                        if ($bracketRound->getSide() === BracketSide::Winners) {
+                            $lastInWinners[$id] = max($lastInWinners[$id] ?? 0, $at);
+                        } elseif ($bracketRound->getSide() === BracketSide::Losers) {
+                            $firstInLosers[$id] = min($firstInLosers[$id] ?? PHP_INT_MAX, $at);
+                        }
+                    }
+                }
+                foreach ($firstInLosers as $id => $at) {
+                    expect($lastInWinners[$id] ?? 0)->toBeLessThan($at, "{$where}: {$id} in losers round {$at} and in a winners round after it");
+                }
+            }
+
+            // The rows of an application, supplied in another order, say the same
+            $fromRows = StageState::fromHistory(
+                $field,
+                array_reverse($state->getRoundsPlayed()),
+                array_reverse($state->getResults()),
+                $state->getWithdrawals(),
+                $state->getAdjustments()
+            );
+            expect(knownThenTiers($engine, $fromRows))->toBe(knownThenTiers($engine, $state), $where)
+                ->and($engine->getBracket($fromRows))->toEqual($engine->getBracket($state), $where);
+        }
+    }
+
+    expect($drawn['against a bye'])->toBeGreaterThan(10)
+        ->and($drawn['between two from elsewhere'])->toBeGreaterThan(10);
+})->with([
+    ['double'],
     ['double, no reset'],
 ]);

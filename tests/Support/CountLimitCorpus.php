@@ -19,6 +19,7 @@ use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Timeline\IntervalArithmetic;
+use MissionGaming\Tactician\Timeline\ScheduledSchedule;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use Throwable;
@@ -154,44 +155,67 @@ final class CountLimitCorpus
             // anchor again would take hours to get there
             ['series: a relative second read to the limit of steps', 'loaded', static fn() => iterator_to_array(IntervalArithmetic::series($start, $relative('1 second'), 100_001))],
             ['series: a relative second read one step past the limit', $range, static fn() => iterator_to_array(IntervalArithmetic::series($start, $relative('1 second'), 100_002))],
+            // Every round from the round before, in one pass: from the start
+            // again for each round, 20,000 rounds were two hundred million
+            // additions, and 100,001 rounds five thousand million
+            ['assign: a schedule of 20,000 rounds a relative week apart', 'loaded', static function () use ($a, $b, $start, $relative): ScheduledSchedule {
+                $events = [];
+                for ($round = 1; $round <= 20_000; ++$round) {
+                    $events[] = new Event([$a, $b], new Round($round));
+                }
+
+                return new TimelineAssigner()->assign(new Schedule($events), new TimelineDefinition($start, $relative('1 week')));
+            }],
+            ['timeline: the slots of 100,001 rounds a relative week apart, read together', 'loaded', static function () use ($start, $relative): int {
+                $read = 0;
+                foreach (new TimelineDefinition($start, $relative('1 week'))->getRoundSlotTimes(...range(1, 100_001)) as $slots) {
+                    $read += count($slots);
+                }
+
+                return $read;
+            }],
+            ['timeline: the slots of rounds 1 and 100,002 a relative week apart, read together', $range, static fn() => iterator_to_array(new TimelineDefinition($start, $relative('1 week'))->getRoundSlotTimes(1, 100_002))],
             ['assign: a schedule with an event in the largest round number, weekly', $range, static fn() => new TimelineAssigner()->assign($inRound($huge), $timeline([]))],
             ['assign: a schedule with an event in the largest round number, a relative week apart', $range, static fn() => new TimelineAssigner()->assign($inRound($huge), new TimelineDefinition($start, $relative('1 week')))],
             ['assignRound: a pairing of the largest round number, weekly', $range, static fn() => new TimelineAssigner()->assignRound($pairing($huge), $timeline([]))],
             ['assignRound: a pairing of the largest round number, a relative week apart', $range, static fn() => new TimelineAssigner()->assignRound($pairing($huge), new TimelineDefinition($start, $relative('1 week')))],
 
-            // --- positions of a grid: at most 100,000
+            // --- positions of a grid: at most 200,000
             ['grid: session_count at the largest integer', $range, static fn() => $shape(['session_count' => $huge])],
-            ['grid: session_count one over the limit', $range, static fn() => $shape(['session_count' => 100_001])],
-            ['grid: session_count at the limit', 'loaded', static fn() => $shape(['session_count' => 100_000])],
+            ['grid: session_count one over the limit', $range, static fn() => $shape(['session_count' => 200_001])],
+            ['grid: session_count at the limit', 'loaded', static fn() => $shape(['session_count' => 200_000])],
             ['grid: slots_per_session at the largest integer, shape-only', $range, static fn() => $shape(['session_count' => 1, 'slots_per_session' => $huge])],
             ['grid: slots_per_session at the largest integer, two sessions', $range, static fn() => $shape(['session_count' => 2, 'slots_per_session' => $huge])],
             ['grid: slots_per_session at the largest integer, with instants', $range, static fn() => $instant(['slots_per_session' => $huge])],
-            ['grid: slots_per_session one over the limit, with instants', $range, static fn() => $instant(['slots_per_session' => 100_001])],
-            ['grid: slots_per_session at the limit, with instants', 'loaded', static fn() => $instant(['slots_per_session' => 100_000])],
+            ['grid: slots_per_session one over the limit, with instants', $range, static fn() => $instant(['slots_per_session' => 200_001])],
+            ['grid: slots_per_session at the limit, with instants', 'loaded', static fn() => $instant(['slots_per_session' => 200_000])],
             ['grid: an override at the largest integer, shape-only', $range, static fn() => $shape(['session_count' => 2, 'slots_per_session_overrides' => [1 => $huge]])],
             ['grid: an override at the largest integer, with instants', $range, static fn() => $instant(['slots_per_session_overrides' => [0 => $huge]])],
-            ['grid: an override that brings the positions one over the limit', $range, static fn() => $shape(['session_count' => 2, 'slots_per_session_overrides' => [1 => 100_000]])],
-            ['grid: an override that brings the positions to the limit', 'loaded', static fn() => $shape(['session_count' => 2, 'slots_per_session_overrides' => [1 => 99_999]])],
-            ['grid: 1,000 sessions of 101 slots', $range, static fn() => $shape(['session_count' => 1000, 'slots_per_session' => 101])],
-            ['grid: 1,000 sessions of 100 slots', 'loaded', static fn() => $shape(['session_count' => 1000, 'slots_per_session' => 100])],
-            ['grid: 99,999 sessions of 99,999 slots, each count under the limit', $range, static fn() => $shape(['session_count' => 99_999, 'slots_per_session' => 99_999])],
-            // The sum refused before an instant is computed: a hundred million of them otherwise
-            ['grid: 1,000 sessions with instants of 100,000 slots each, each count under the limit', $range, static function () use ($start): SessionGrid {
+            ['grid: an override that brings the positions one over the limit', $range, static fn() => $shape(['session_count' => 2, 'slots_per_session_overrides' => [1 => 200_000]])],
+            ['grid: an override that brings the positions to the limit', 'loaded', static fn() => $shape(['session_count' => 2, 'slots_per_session_overrides' => [1 => 199_999]])],
+            ['grid: 1,000 sessions of 201 slots', $range, static fn() => $shape(['session_count' => 1000, 'slots_per_session' => 201])],
+            ['grid: 1,000 sessions of 200 slots', 'loaded', static fn() => $shape(['session_count' => 1000, 'slots_per_session' => 200])],
+            ['grid: 199,999 sessions of 199,999 slots, each count under the limit', $range, static fn() => $shape(['session_count' => 199_999, 'slots_per_session' => 199_999])],
+            // The sum refused before an instant is computed: two hundred million of them otherwise
+            ['grid: 1,000 sessions with instants of 200,000 slots each, each count under the limit', $range, static function () use ($start): SessionGrid {
                 $starts = [];
                 for ($session = 0; $session < 1000; ++$session) {
-                    $starts[] = $start->setTimestamp($start->getTimestamp() + $session * 2 * 86_400);
+                    $starts[] = $start->setTimestamp($start->getTimestamp() + $session * 3 * 86_400);
                 }
 
-                return new SessionGrid($starts, new DateInterval('PT1S'), 100_000);
+                return new SessionGrid($starts, new DateInterval('PT1S'), 200_000);
             }],
             ['grid: shapeOnly() given the largest integer for the sessions', $range, static fn() => SessionGrid::shapeOnly($huge)],
             ['grid: shapeOnly() given the largest integer for the slots', $range, static fn() => SessionGrid::shapeOnly(1, $huge)],
             ['grid: the constructor given the largest integer and a relative slot interval', $range, static fn() => new SessionGrid([$start], $relative('1 second'), $huge)],
-            // 100,000 slots of a relative interval were five thousand million additions
-            ['grid: slots at the limit, a relative second apart', 'loaded', static fn() => new SessionGrid([$start], $relative('1 second'), 100_000)],
-            ['grid: 100,001 session starts', $range, static function () use ($start): SessionGrid {
+            // 100,000 slots of a relative interval were five thousand million
+            // additions. A session of such an interval is held to the limit
+            // on its steps, which is below the limit on the positions
+            ['grid: slots at the limit of steps, a relative second apart', 'loaded', static fn() => new SessionGrid([$start], $relative('1 second'), 100_001)],
+            ['grid: slots one past the limit of steps, a relative second apart', $range, static fn() => new SessionGrid([$start], $relative('1 second'), 100_002)],
+            ['grid: 200,001 session starts', $range, static function () use ($start): SessionGrid {
                 $starts = [];
-                for ($session = 0; $session <= 100_000; ++$session) {
+                for ($session = 0; $session <= 200_000; ++$session) {
                     $starts[] = $start->setTimestamp($start->getTimestamp() + $session * 3600);
                 }
 
@@ -202,7 +226,7 @@ final class CountLimitCorpus
             ['grid: capacity_per_slot at the largest integer', $range, static fn() => $shape(['session_count' => 2, 'capacity_per_slot' => $huge])],
             ['grid: capacity_per_slot one over the limit', $range, static fn() => $shape(['session_count' => 2, 'capacity_per_slot' => 1_000_000_000_001])],
             ['grid: shapeOnly() given the largest integer for the capacity', $range, static fn() => SessionGrid::shapeOnly(2, 3, [], $huge)],
-            ['grid: the largest capacity on the most positions, repacked', 'loaded', static fn() => $repack(SessionGrid::shapeOnly(100_000, 1, [], 1_000_000_000_000))],
+            ['grid: the largest capacity on the most positions, repacked', 'loaded', static fn() => $repack(SessionGrid::shapeOnly(200_000, 1, [], 1_000_000_000_000))],
             ['grid: a number written to mean no limit, repacked', 'loaded', static fn() => $repack($shape(['session_count' => 2, 'slots_per_session' => 3, 'capacity_per_slot' => 2_147_483_647]))],
             ['grid: an unbounded capacity, repacked', 'loaded', static fn() => $repack($shape(['session_count' => 2, 'slots_per_session' => 3, 'capacity_per_slot' => SessionGrid::UNBOUNDED]))],
         ];

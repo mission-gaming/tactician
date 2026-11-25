@@ -177,6 +177,10 @@ describe('The benchmark suite', function (): void {
                 'benchRetriesUnderSeedProtection32',
                 'benchUnsatisfiable24TwoLegs',
             ],
+            'SessionGridBench' => [
+                'benchOrdinalRoundTripOf10000Sessions',
+                'benchInstantLookupOf10000Positions',
+            ],
             'SwissBench' => [
                 'benchSchedule24UnderARoleStreakLimit',
                 'benchSchedule24ToTheLastRound',
@@ -199,7 +203,7 @@ describe('The benchmark suite', function (): void {
         // for the gate: a class that named a symbol of the runner could not
         // be analysed. How a subject is run is in phpbench.json instead, and
         // the runner is told not to look for its attributes.
-        expect(benchmarkClassFiles())->toHaveCount(3);
+        expect(benchmarkClassFiles())->toHaveCount(4);
         foreach (benchmarkClassFiles() as $file) {
             Assert::assertDoesNotMatchRegularExpression(
                 '/PhpBench\\\\|^\s*#\[/m',
