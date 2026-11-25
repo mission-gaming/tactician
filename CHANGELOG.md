@@ -121,10 +121,10 @@ heading **Output change (fix)**.
   measured (#162's 200 round robins with scattered pins, 320 requests
   with current positions under four settings of the objectives, and the
   63 round robins of #209) no outcome is worse by its own ranking at the
-  default budget. Below it, with an objective ranked ahead of gap slots,
-  an outcome whose budget is reported stopped can come out worse by its
-  own ranking: 5 of 5,974 small repacks at 2,000 steps, each by one to
-  four of a figure and none by an event placed. The
+  default budget, and on 5,974 small repacks none is at 2,000 or at 300
+  steps either: below the default budget the second layout runs on a
+  work limit of its own, and with an objective ranked ahead of gap slots
+  it is kept only where it places more events (#244). The
   median time is unchanged; the slowest season took 1.3 seconds where it
   took 1.1.
 - **A repack that places fewer events than it could tries one more order of
@@ -143,12 +143,12 @@ heading **Output change (fix)**.
   requests that leave events unplaced where more could be placed; a
   request whose events are all placed comes out as before, and so do the
   golden fixtures and examples. The slowest of those requests took 2.3
-  seconds where it took 1.8. Below the default budget the fifth schedule
-  spends steps that the objectives' later steps can then lack: on 5,974
-  small repacks at 2,000 steps, 5 under a list with `LeastChurn` came out
-  worse by their own ranking, each with the budget reported stopped, one
-  of them with two events fewer placed (7 unplaced became 9, as many as
-  with no objective).
+  seconds where it took 1.8. Below the default budget the extra order is
+  planned on a work limit of its own, which spends none of the steps the
+  objectives' later steps have, and with an objective ranked ahead of gap
+  slots it is kept only where it places more events, so that on 5,974
+  small repacks no outcome is worse by its own ranking at 2,000 or at 300
+  steps than without it (#244).
 
 - **The packer no longer spends its whole first budget on a season with
   its first rounds pinned** (#242). The exact search of a session tried
@@ -451,6 +451,16 @@ No golden fixture changed.
   that name neither new objective, and refuses options that name
   `fewest_gap_slots` or `fewest_lone_participant_sessions` as an unknown
   identifier (`InvalidConfigurationException`, reason `UnknownIdentifier`).
+- **Below the default budget a repack can spend up to four times
+  `stepBudget`, where it spent at most twice** (#244). The rounds laid on
+  the positions with room and the events planned in a scrambled order
+  are made there on copies of what each of the two budgets has left, and
+  their steps are not taken from it, so that a schedule that is not kept
+  leaves the steps after it as many as they would have without it. At
+  the default budget and above the bound is still twice `stepBudget`.
+  Who is affected: callers who size `stepBudget` below the default to
+  bound the work of a repack. The usage guide ("The Step Budget") and the
+  `RepackOptions` docblock state the new bound.
 
 ### Fixed
 

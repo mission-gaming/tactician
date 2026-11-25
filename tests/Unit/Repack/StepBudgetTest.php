@@ -37,6 +37,30 @@ describe('StepBudget', function (): void {
         expect($budget->stoppedASearch())->toBeFalse();
     });
 
+    it('takes on the searches a copy stopped and none of its steps', function (): void {
+        $budget = new StepBudget(10);
+        $copy = $budget->share(1);
+
+        expect($copy->stepsLeft())->toBe(10)
+            ->and($copy->consume(11))->toBeFalse();
+
+        $budget->recordStopsOf($copy);
+
+        expect($budget->stepsLeft())->toBe(10)
+            ->and($budget->stoppedASearch())->toBeTrue();
+    });
+
+    it('records nothing from a copy that stopped no search', function (): void {
+        $budget = new StepBudget(10);
+        $copy = $budget->share(1);
+        $copy->consume(4);
+
+        $budget->recordStopsOf($copy);
+
+        expect($budget->stepsLeft())->toBe(10)
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
     it('says whether every work limit is whole', function (int $callersBudget, bool $whole): void {
         $budget = new StepBudget(10, $callersBudget);
 

@@ -8,7 +8,11 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * The shared elementary-step counter bounding every repack search.
  *
  * A repack makes two instances, each of RepackOptions::$stepBudget
- * steps, so a whole repack spends at most twice the budget. The first is
+ * steps, so at the default budget and above a whole repack spends at most
+ * twice the budget. Below the default, the fourth and the fifth schedule
+ * are made on copies of what the two have left (share(1)), whose steps
+ * are not spent from them, so a whole repack can spend up to four times
+ * the budget there (ScheduleRepacker::solve()). The first is
  * threaded through the load planning and the packing of every session,
  * and bounds them together; the exact search of one session is given a
  * share of what is left of it (share()), so that one session cannot
@@ -16,8 +20,9 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * placement step (LeftoverRecolourer) and the search for fewer gap slots
  * (GapSearch), so that they run even when the phases before them spent
  * the first. The third schedule the repacker makes, where the first two
- * leave something to gain, is made on what the two have left, as are
- * the fifth and the search for fewer gap slots on the fourth (the rounds laid on the
+ * leave something to gain, is made on what the two have left, as are,
+ * at the default budget and above, the fifth and the search for fewer
+ * gap slots on the fourth (the rounds laid on the
  * positions with room, whose layout has steps of its own like the
  * first). Steps, not wall clock: behaviour is reproducible.
  *
@@ -119,6 +124,17 @@ final class StepBudget
     {
         $this->remaining -= $steps - $share->remaining;
         $this->stoppedASearch = $this->stoppedASearch || $share->stoppedASearch;
+    }
+
+    /**
+     * Take on the searches another budget stopped, and none of its steps:
+     * for work done on a copy of what is left (share(1)) whose steps are
+     * not spent here, whether or not its result is kept, since a larger
+     * budget could have let the search end and the result be kept.
+     */
+    public function recordStopsOf(self $other): void
+    {
+        $this->stoppedASearch = $this->stoppedASearch || $other->stoppedASearch;
     }
 
     /**
