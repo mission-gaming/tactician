@@ -16,7 +16,7 @@ there is not repeated here.
 | [0004](0004-position-decides-where-results-do-not.md) | Position decides where results do not |
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
 | [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
-| [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived (amended by 0018 for round numbers, by 0020 for a participant twice in a round and by 0021 for a participant who is not an entrant) |
+| [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived (amended by 0018 for round numbers, by 0020 for a participant twice in a round and by 0021 for a participant who is not an entrant; narrowed by 0025 for a round drawn by hand) |
 | [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
 | [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says (amended by 0014, 0019 and 0022; narrowed by 0017 for a league) |
 | [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table (amended by 0014) |
@@ -32,6 +32,7 @@ there is not repeated here.
 | [0020](0020-nobody-is-in-a-round-of-a-stage-state-twice.md) | Nobody is in a round of a stage state twice (amends 0007; amended by 0021) |
 | [0021](0021-everyone-in-a-round-of-a-stage-state-is-an-entrant.md) | Everyone in a round of a stage state is an entrant (amends 0007 and 0020) |
 | [0022](0022-classes-are-final-and-the-interfaces-are-the-extension-points.md) | Classes are final, and the interfaces are the extension points (amends 0009 and 0014) |
+| [0025](0025-a-round-drawn-by-hand-is-read-as-drawn.md) | A round drawn by hand is read as drawn: a withdrawn entrant it leaves alone holds no place, and a last round's marked ties are its final and third-place tie (narrows 0007) |
 | [0026](0026-only-a-winners-tie-its-results-decided-drops-its-loser.md) | Only a winners tie its results decided drops its loser to the losers bracket (narrows 0011) |
 
 ## Adding a record

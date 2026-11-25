@@ -4571,7 +4571,7 @@ Every later round follows from the round as recorded:
 | Engine | After a manual round |
 | --- | --- |
 | `SwissPairingEngine` | The next round is paired from the table of the results and avoids the pairs that were played. An engine that holds a `Randomizer` has no derivation to show (`getDerivation()` is null, `isManual()` false): what it drew at the time is not part of the state. A seeded engine has one: it draws each round from the seed and the round number |
-| `SingleEliminationEngine` | The entrants who advanced from the recorded ties are the next round. On a fixed path a tie stands where the earlier of its two entrants stood in the bracket; a re-seeded bracket folds them by the table as it always does. A last round recorded without its [third-place tie](#a-third-place-tie) decides places 1 and 2 only |
+| `SingleEliminationEngine` | The entrants who advanced from the recorded ties are the next round. On a fixed path a tie stands where the earlier of its two entrants stood in the bracket; a re-seeded bracket folds them by the table as it always does. A last round recorded without its [third-place tie](#a-third-place-tie) decides places 1 and 2 only. A last round drawn by hand is read as drawn: the tie it marks as the third-place tie (`BracketTie::ThirdPlace`) is that tie and its other tie the final, whoever they hold, so a round that swaps a semifinal winner into the third-place tie ends the bracket; a round whose events carry no mark is read as two ties of a round before the last |
 | `DoubleEliminationEngine` | The same, stage by stage. The later stages take their entrants by place (which dropper meets which survivor), so a recorded stage must leave as many places as the stage has: one that leaves more or fewer entrants in the bracket is refused (`RecordedRoundMismatch`) |
 
 An event of a bracket round between two entrants neither of whom is in the
@@ -4579,6 +4579,57 @@ round, or with an entrant who is in another tie of that round already, is
 no tie of the bracket: it is read by nothing, as an event the application
 added always was. (`fromHistory()` refuses the second kind before an engine
 sees it.)
+
+**Who a bracket round drawn by hand sends on.** Each tie of the round sends
+on the entrant who won it, and an entrant the round leaves out of its ties
+goes on alone, a bye, if it was still in the stage when the round was
+paired. One who had withdrawn by then goes out in the round and holds no
+place in the next one: where the entrant beside it in the slots is in a
+tie, that tie holds the place of the pair. So a round drawn by hand among
+the entrants left after a withdrawal is followed by the round that pairs
+exactly the entrants it sent on
+([ADR 0025](adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md)):
+
+```php
+// Sixteen entrants; the first round is played as the engine pairs it, the
+// first-named winning every tie, and P1 withdraws
+$sixteen = array_map(static fn(int $i): Participant => new Participant("p{$i}", "P{$i}"), range(1, 16));
+$roundOne = $bracket->pairNextRound(StageState::start($sixteen));
+$afterRoundOne = StageState::start($sixteen)
+    ->withRoundPlayed($roundOne, array_map(
+        static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+        $roundOne->getEvents()
+    ))
+    ->withoutParticipant($sixteen[0]);
+
+// The quarterfinals are drawn by hand among the seven left: three ties and
+// a bye. P1 stood beside P8, who is in a tie: P1 holds no place
+[, $p2, $p3, $p4, $p5, $p6, $p7, $p8] = $sixteen;
+$drawnQuarterfinal = new Round(2);
+$drawnTies = [
+    new Event([$p8, $p4], $drawnQuarterfinal),
+    new Event([$p5, $p2], $drawnQuarterfinal),
+    new Event([$p7, $p3], $drawnQuarterfinal),
+];
+$afterDraw = $afterRoundOne->withRoundPlayed(
+    new RoundPairing(2, 'quarterfinal', $drawnTies, [$p6]),
+    array_map(static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]), $drawnTies)
+);
+
+$next = $bracket->pairNextRound($afterDraw);
+echo $next->getLabel() . ': ' . implode(', ', array_map(
+    static fn(Event $event): string => implode(' v ', array_map(static fn(Participant $p): string => $p->getLabel(), $event->getParticipants())),
+    $next->getEvents()
+)) . "\n"; // semifinal: P8 v P5, P7 v P6
+```
+
+Before 0.4.0 the withdrawn entrant kept an empty place there: the engine
+paired a quarterfinal of one tie, P5 v P7, with byes for P8 and P6, and a
+semifinal after it. In double elimination a winners round drawn so used to
+leave one place too many and was refused (`RecordedRoundMismatch`); it is
+read now, and the withdrawn entrant drops nobody to the losers bracket: it
+goes out with those the next losers round puts out, as the two of a void
+winners tie do.
 
 The derivation is there to be shown, and nothing is paired from it. It is
 the round the engine pairs from what was known when the recorded round was
