@@ -278,6 +278,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             expect($output)->not->toContain($text);
         }
     })->with([
+        'a kickoff with a fraction of a second read back' => [
+            'docs/USAGE.md',
+            '$quarterPast = new TimelineDefinition(',
+            ["2026-08-01T17:00:00.250000Z\nbool(true)\n"],
+            [],
+        ],
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player9\nbool(false)\n", "player3\nTeam Alpha\n2\nEurope\n"], []],
         'a generation failure rendered from typed data' => [
             'docs/USAGE.md',

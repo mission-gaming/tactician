@@ -47,6 +47,28 @@ heading **Output change (fix)**.
   rest of billions of years from a kickoff billions of years out is
   affected (#171).
 
+- **A kickoff with a fraction of a second is written with it
+  ([#148](https://github.com/mission-gaming/tactician/issues/148)).**
+  `ScheduledEvent::toArray()`, `ScheduledSchedule::toArray()` and
+  `SlotAssignment::toArray()` wrote a kickoff to the second, so a kickoff
+  assigned from a `TimelineDefinition` or a `SessionGrid` whose start has a
+  fraction of a second (which they have written and read back since
+  0.3.0) was read back a fraction of a second before its slot time. The
+  kickoff is now written with the six digits of its fraction after the
+  seconds when it has one (`2026-08-01T17:00:00.250000Z`), which
+  `ScheduledEvent::fromArray()` reads back as the same instant; a kickoff
+  on a whole second is written as before (`2026-08-01T17:00:00Z`), so
+  nothing changes for a start without a fraction. The forms keep
+  `format_version` 1 and `RepackOutcome::fingerprint()` keeps scheme `v1`,
+  whose kickoff is what `SlotAssignment::toArray()` writes: an outcome on a
+  grid whose session starts on a fraction of a second has a new
+  fingerprint, and every other outcome the one it had. A reader that
+  parses kickoffs with a fixed pattern of whole seconds has to accept the
+  fraction. ADR 0024
+  (`docs/adr/0024-a-kickoff-is-written-with-its-fraction-of-a-second.md`)
+  records the decision and why a start with a fraction is not refused
+  instead.
+
 ### Added
 
 - **`TimelineDefinition::getRoundSlotTimes()` gives every slot of the

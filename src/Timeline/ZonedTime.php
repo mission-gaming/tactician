@@ -162,6 +162,22 @@ final readonly class ZonedTime
     }
 
     /**
+     * Write an instant as a kickoff is written: ISO 8601 in UTC, to the
+     * second (`2026-08-01T18:00:00Z`), with the fraction of a second after
+     * the seconds when there is one (`2026-08-01T18:00:00.250000Z`, six
+     * digits, as PHP holds it). A time in another timezone is converted
+     * first, so the string states the instant the object holds. Every
+     * string it writes is one `ScheduledEvent::fromArray()` reads back as
+     * the same instant, to the microsecond.
+     */
+    public static function writeUtc(DateTimeImmutable $time): string
+    {
+        $utc = $time->setTimezone(new DateTimeZone('UTC'));
+
+        return $utc->format($utc->format('u') === '000000' ? 'Y-m-d\TH:i:s\Z' : 'Y-m-d\TH:i:s.u\Z');
+    }
+
+    /**
      * Write the name of a time's timezone as parse() reads it back: a region
      * identifier or an offset, as the object holds it. A time held in a
      * timezone abbreviation (built in code as

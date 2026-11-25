@@ -455,7 +455,8 @@ final readonly class RepackOutcome
      * id as a string, a session, a slot and a count as integers, a
      * participant as its id or null, a kind and a reason as their backing
      * strings, the lists as lists, and a kickoff as the string
-     * `2026-08-12T19:00:00Z` or null. The keys are named here because
+     * `2026-08-12T19:00:00Z`, or `2026-08-12T19:00:00.250000Z` when it has
+     * a fraction of a second, or null. The keys are named here because
      * they are the scheme: a key that toArray() gains in a later version
      * is not part of scheme v1 and does not change a v1 fingerprint. A
      * violation of any other class is the whole of what its toArray()
@@ -490,9 +491,12 @@ final readonly class RepackOutcome
      * - Every field the records have today is covered, so a change to any
      *   field of any assignment, unplaced event or violation changes the
      *   fingerprint. A participant is covered by its id and by nothing
-     *   else of it. The kickoff is covered to the second, and is null for
-     *   a shape-only grid, so the same positions on a shape-only grid and
-     *   on an instant-based one have different fingerprints.
+     *   else of it. The kickoff is covered to the microsecond (to the
+     *   second for a kickoff on a whole second, which is written as it
+     *   always was), and is null for a shape-only grid, so the same
+     *   positions on a shape-only grid and on an instant-based one have
+     *   different fingerprints, and so do two grids whose starts are a
+     *   fraction of a second apart.
      * - isBudgetExhausted() is not covered. Two outcomes holding the same
      *   plan are the same plan, however each search ended.
      * - Nothing in it depends on the PHP version, the platform, the
