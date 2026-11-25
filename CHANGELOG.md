@@ -495,6 +495,10 @@ none.
     no position (`NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
     `SeedProtectionConstraint`). A set that holds a constraint of the
     caller's is asked exactly as before, as `ConstraintInterface` promises.
+    That docblock now names the `ConsecutiveRoleConstraint` objects built
+    by `homeAway()` or `position()` among the constraints the shortcuts are
+    taken for; since #149 it had listed them among those asked every
+    question as before.
 
   Measured with `composer bench-compare` (fastest of five rounds, 0.4.0's
   release preparation against the change): 32 participants unconstrained,
