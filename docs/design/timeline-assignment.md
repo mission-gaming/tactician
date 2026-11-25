@@ -109,6 +109,27 @@ Settled decisions beyond the sketch:
   refused and no `assignRound()` call did, all 10 under a hand-built
   interval with a negative part. For rounds played in order from round 1
   the two calls agreed in every case.
+  In 0.4.0 ([#173](https://github.com/mission-gaming/tactician/issues/173))
+  the two calls apply one rule: **each round is compared with the round
+  played before it**. `assign()` reads that round from the schedule;
+  `assignRound()` takes it as an optional argument (`previousRound`, 0
+  for none) and, without it, the round numbered before, which is the
+  round played before for a stage state, whose rounds are numbered 1, 2,
+  3 (ADR 0018). Told it for every round, the calls refuse exactly the
+  sets of rounds `assign()` refuses, with the same reason and the same
+  two rounds named; a generated comparison in
+  `tests/Feature/TimelineRoundsHeldTest.php` checks that over thousands of
+  timelines and sets of rounds with gaps. Two other rules were measured
+  and set aside. Comparing each round with the one numbered before it in
+  both calls needs no argument, but it refuses a schedule for a round it
+  does not hold, and it is not complete: over 40,000 generated cases it
+  assigned 72 sets of rounds that overlap (13 under intervals with a
+  negative part, 57 under relative strings that step back, such as
+  `+1 month -30 days`, and 2 under intervals of neither kind), because two
+  played rounds on either side of a gap are compared by no call.
+  Checking every round from 1 to the highest assigned is complete
+  without an argument, but it does work in proportion to a round number
+  and would need a limit on the round numbers that can be assigned.
 - **A round has a furthest time** (0.3.0): the steps are multiplied out,
   and PHP adds an interval too large for its timestamps without an error
   and returns a date that has wrapped round. `IntervalArithmetic` refuses
@@ -146,7 +167,20 @@ Settled decisions beyond the sketch:
   such an interval are each computed from the one before, in one pass
   (`IntervalArithmetic::series()`): computing each from the round's
   first slot cost the square of the slot count in additions, 25 seconds
-  for 10,000 slots.
+  for 10,000 slots. The rounds of one schedule are computed the same way
+  (0.4.0, [#170](https://github.com/mission-gaming/tactician/issues/170)):
+  `assign()` asks the definition for the slots of all the rounds it holds
+  at once (`getRoundSlotTimes()`), and under such an interval each
+  round's first slot is counted on from the round before it in the list,
+  which is the same time, where computing each from the start again took
+  33 seconds for 10,000 rounds. The method is public and documented
+  ([#174](https://github.com/mission-gaming/tactician/issues/174)): it
+  replaced `roundSlotTimes()`, a public method marked `@internal` for the
+  assigner alone. A caller who shows a stage's slots before a schedule
+  exists needs the same thing, and a public method of a class that is to
+  become `@api` must be part of its API or not public; moving the
+  computation into the assigner instead would have put the slot-time
+  arithmetic in two classes.
 - **One check of who plays: nobody is in two events at one instant.** The
   sketch below lists "a participant assigned overlapping slots" among the
   things that fail loudly. The assigner at first validated capacity and

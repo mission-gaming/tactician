@@ -132,7 +132,8 @@ anything else that competes.
 | **Gap slot** | A slot a participant waits through between two of its own events in one session: with events at slots 0 and 3, slots 1 and 2. `ContiguityBroken` reports them for a participant and a session, and `RepackOutcome::getGapSlotCount()` adds them up. A late start is not one. |
 | **Lone-event session** | A session of a repacked grid that holds exactly one event, pinned events counted, where that event is a movable one (`RepackOutcome::getLoneEventSessions()`): the session is opened for it alone. A figure of the grid, not of a participant. |
 | **Idle session** | A session a participant has no event in, between two sessions it has one in, pinned events counted (`RepackOutcome::getIdleSessionCount()`, summed over the participants that have a placed movable event). The sessions before a participant's first and after its last are not idle. |
-| **Repack objective** | A figure of the outcome a repack is asked to keep low (`RepackObjective`, listed in order in `RepackOptions(objectives: ...)`): moved events, lone-event sessions, idle sessions. Objectives rank after events placed and gap slots, which they never cost, and before the two weights. None is the default. |
+| **Lone participant-session** | A participant and a session in which that participant has exactly one event, pinned events counted, where that event is a movable one (`RepackOutcome::getLoneParticipantSessionCount()`): the participant turns up for one event. A figure of a participant, counted once for each participant and session; a session with two events between four participants holds four. |
+| **Repack objective** | A figure of the outcome a repack is asked to keep low (`RepackObjective`, listed in order in `RepackOptions(objectives: ...)`): moved events, lone-event sessions, lone participant-sessions, idle sessions, and gap slots themselves (`FewestGapSlots`). Every objective ranks after events placed, which none ever costs, and before the two weights. Gap slots rank first among the figures unless the list names `FewestGapSlots`; an objective listed before it is **ranked ahead of gap slots**. None is the default. |
 | **Shortest grid** | The fewest sessions on which a repack places every event (`ShortestGridFinder`), for a grid the caller describes as a function of its number of sessions. Searched one number at a time, upwards, and reported with what happened at every smaller number. |
 | **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the steps after the packing (the last placement step and the search for fewer gap slots) have a second one of their own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. The searches that count their own work and not steps (laying the events out before any session is chosen, the last placement step, the search for fewer gap slots) have limits that are fixed at the default budget and above, and the same share of those limits as the budget is of the default below it, so a smaller budget shortens every search. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
 | **Last placement step** | The part of a repack that runs only when an event is still unplaced: it moves placed events along alternating paths, and exchanges one placed event for one unplaced event where that lets a further one in, to place events the earlier phases left over. It never double-books, never moves a pin and never exceeds a slot's capacity. |
@@ -513,14 +514,15 @@ Because purity is not part of `ConstraintInterface`, the library does not
 assume it where assuming it would change what a constraint that breaks the
 rule gets back. Two shortcuts are taken only for a `ConstraintSet` made of
 `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint`
-and `SeedProtectionConstraint` objects, which run no code of yours: a round
-robin that cannot be completed is analysed once and not once per order
-tried, and a Swiss round search skips the branches that hold no pairing.
-Any other set gets the same results without the shortcuts, which on those
-two failure paths takes longer: a set that holds a `CallableConstraint`, a
-`MetadataConstraint` or a `ConsecutiveRoleConstraint` (each holds a
-callable, also when one of its factories built it), or a class of your
-own.
+and `SeedProtectionConstraint` objects, and of `ConsecutiveRoleConstraint`
+objects built by `homeAway()` or `position()`, which run no code of yours: a
+round robin that cannot be completed is analysed once and not once per
+order tried, and a Swiss round search skips the branches that hold no
+pairing. Any other set gets the same results without the shortcuts, which
+on those two failure paths takes longer: a set that holds a
+`CallableConstraint`, a `MetadataConstraint` (which holds a callable, also
+when one of its factories built it), a `ConsecutiveRoleConstraint` given a
+role extractor of your own, or a class of your own.
 
 ### Role-Based Constraints
 
@@ -2818,9 +2820,12 @@ scheduler that holds one continues its sequence, and two calls give two
 schedules.
 
 Every round count the scheduler accepts is generated when it has no
-constraints. A round is paired without a look at the rounds to come, so at
-the larger round counts a draw can reach a round that has no pairing left
-without a repeat. The scheduler then draws again: with a seed, each later
+constraints, and in a field of odd size nobody has a second bye. A round is
+paired without a look at the rounds to come, so at the larger round counts
+a draw can reach a round that has no pairing left without a repeat, and at
+the largest counts of a field of odd size it can give a participant a
+second bye, which the engine does where the round has no pairing otherwise.
+The scheduler takes either as a failed draw and draws again: with a seed, each later
 draw from a seed of its own that the seed gives (a `Xoshiro256StarStar`
 sequence from the seed, advanced by one `jumpLong()`), and with a
 `Randomizer`, continuing its sequence. Either way the schedule is still a
@@ -2829,12 +2834,16 @@ first draw gives. If twenty draws are
 not enough, or there is nothing to draw from, it builds the rounds by the
 rotation that lays out a round robin, which cannot fail. Without a source of
 draws there is one draw, and it needs the rotation at a few of the largest
-round counts (of the fields up to 44: 26 participants from 24 rounds on, 34
-from 32, and 37 at 36). The first round is the list as given there too,
-with the bye of a field of odd size at the last position; the later rounds
-are those of the rotation, in which nobody has a second bye. With constraints a
-schedule may not exist at all, and an `IncompleteScheduleException` reports
-the round the last draw could not pair.
+round counts (of the fields up to 44: 26 participants from 24 rounds on, 33
+at 32, 34 from 32, and 37 at 36). The first round is the list as given there
+too, with the bye of a field of odd size at the last position; the later
+rounds are those of the rotation, in which nobody has a second bye. With
+constraints a schedule may not exist at all, and the rotation is not tried,
+since the constraints may reject it: an `IncompleteScheduleException`
+reports the round the last draw could not pair, and where every draw that
+is complete gives a participant a second bye (the constraints may leave a
+participant too few opponents to play every round), the first of them is
+the schedule.
 
 An event of a round that is never played is recorded with an
 [awarded result](#awarded-results), which counts in the table like any other
@@ -5502,9 +5511,26 @@ $violations = (new CompositionValidator())->validateChain(16, [
 ```
 
 The validator counts; it runs nothing. It reads a `MatchOutcomeSelector`
-as the hand-off after one knockout round of the previous stage's entrants:
-winners are half of them, rounded up for a bye, and losers half, rounded
-down. That is the arithmetic of a chain whose stages are single knockout
+as the hand-off after one knockout round of the previous stage's entrants,
+paired as the elimination engines pair the first round of a bracket: byes
+fill the field up to the next power of two, so the winners are half of
+that power (the winner of each tie and every entrant with a bye) and the
+losers are one for each tie. Where the field is a power of two that is
+half of it each; a field of 5 plays 1 tie and has 3 byes, so 4 go on and
+1 goes out, and a field of 12 plays 4 ties and has 4 byes:
+
+```php
+$fromFive = (new CompositionValidator())->validateChain(5, [
+    new StageTransition('next', 3, MatchOutcomeSelector::winners()),
+]);
+echo $fromFive[0] . "\n";
+// Stage 'next' expects 3 entrants but its selection yields 4 from the previous stage's 5.
+
+echo MatchOutcomeSelector::winners()->getYield()->countFrom(12) . "\n"; // 8
+echo MatchOutcomeSelector::losers()->getYield()->countFrom(12) . "\n"; // 4
+```
+
+That is the arithmetic of a chain whose stages are single knockout
 rounds, as declared above. It is not what the selector returns from the
 outcome of a whole bracket played by one of the elimination engines, which
 is the one winner (or loser) of the final. The validator cannot see which
@@ -5530,8 +5556,8 @@ selector of your own is counted the way the library's are. A
 | `RankRangeSelector::overall(from, to)`, `BestOfRankSelector::ofRank(rank, count)` | `Fixed` | the count |
 | `RankRangeSelector::perGroup(from, to)`, `topPerGroup(n)` | `PerPool` | the count per pool times the pools |
 | `BracketQualifiersSelector::of(perGroup, bestOfRank)` | `PerPoolPlusFixed` | the count per pool times the pools, plus the count across them; nothing from fewer pools than `getMinimumPools()`, which the validator reports |
-| `MatchOutcomeSelector::winners()` | `WinnersOfLastRound` | half the entrants rounded up; 1 after a whole bracket |
-| `MatchOutcomeSelector::losers()` | `LosersOfLastRound` | half the entrants rounded down; 1 after a whole bracket |
+| `MatchOutcomeSelector::winners()` | `WinnersOfLastRound` | half the next power of two of the entrants (the ties and the byes of a first bracket round); 1 after a whole bracket |
+| `MatchOutcomeSelector::losers()` | `LosersOfLastRound` | the ties of that round: the entrants beyond half the next power of two; 1 after a whole bracket |
 | a selector whose count only the outcome gives | `DependsOnOutcome` | not counted |
 
 The yield is stated before any outcome exists, so it cannot know of a
@@ -6003,22 +6029,28 @@ The rules of the mechanism:
   and round 3 from 28 February: a schedule of rounds 1 and 2 is
   assigned, and one that holds round 3 as well is refused. The order is
   the order of the round numbers, so a later round at an earlier time is
-  refused like one at the same time. `assignRound()` is given one round
-  and keeps nothing between calls, so it compares that round with the
-  one before it by number, which a stage that plays its rounds in order
-  from round 1 has played. Round 1 is compared with nothing, and so is
-  no round with the one after it: an overlap of two rounds is reported
-  when the later of them is assigned. The round before is the one before
-  by number whether or not it was played. A caller whose rounds have a
-  gap (a number skipped, or a pairing with no events) has a round
-  compared with one nobody played, which can refuse it, and the two
-  played rounds on either side of the gap compared with each other by
-  no call; `assign()` given a schedule of the rounds played compares
-  exactly those.
+  refused like one at the same time. `assignRound()` applies the same
+  rule, each round compared with the round played before it, but it is
+  given one round and keeps nothing between calls, so it is told which
+  round that was: `assignRound($pairing, $timeline, previousRound: 3)`,
+  or `previousRound: 0` for the first round played. Not told, it takes
+  the round numbered before it, which is the round played before for a
+  stage whose rounds are numbered 1, 2, 3 and so on (the rounds of a
+  `StageState` are); round 1 then has none. No round is compared with
+  the one after it: an overlap of two rounds is reported when the later
+  of them is assigned. A caller whose rounds have a gap (a number
+  skipped, or a pairing with no events) passes the round played before;
+  told it for every round, the calls refuse exactly what `assign()`
+  refuses for the schedule of the same rounds, with the same two rounds
+  named. Not told, a round after the gap is compared with a round nobody
+  played, which can refuse it, and not with the round before the gap. A
+  round named as played before that is not below the round's number, or
+  is below 0, is refused (`RoundOutOfSequence`).
 - **A round too far away is refused.** A round whose time is more than
-  some 270 billion years from the start, which is past what PHP's
-  timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
-  return a date that has wrapped round. Short of that a round number has
+  some 270 billion years from the start, or past either end of what PHP's
+  timestamps hold (some 291 billion years from 1970, which a start far
+  from 1970 reaches sooner), fails with the reason `ValueOutOfRange`;
+  PHP would return a date that has wrapped round. Short of that a round number has
   no limit where the interval is a duration: the steps are multiplied
   out, so round a million costs what round two costs. An interval made by
   `DateInterval::createFromDateString()` has no multiple and is added once
@@ -6076,6 +6108,39 @@ P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00
 PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
 ```
 
+A definition answers for slot times without a schedule.
+`getSlotTime($round, $slot)` gives one slot, in UTC.
+`getRoundSlotTimes(...$rounds)` gives every slot of each round asked for,
+filled or not: a list per round, keyed by round number, in the order the
+rounds are given, each round computed when its list is read. The times are
+the ones `getSlotTime()` gives. Given in rising order, the rounds are
+computed in one pass: under an interval made by
+`DateInterval::createFromDateString()`, which is added one step at a time,
+each round's first slot is counted on from the round before it in the list,
+so the rounds of a whole schedule cost what its last round costs alone.
+This is how `assign()` computes the rounds of a schedule:
+
+```php
+$evenings = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('PT90M'),
+);
+
+foreach ($evenings->getRoundSlotTimes(1, 3) as $round => $slots) {
+    $times = array_map(fn (DateTimeImmutable $slot): string => $slot->format('j M H:i'), $slots);
+    echo "Round {$round}: " . implode(', ', $times) . " UTC\n";
+}
+echo $evenings->getSlotTime(3, 1)->format('j M H:i') . " UTC\n";
+```
+
+```text
+Round 1: 17 Oct 18:00, 17 Oct 19:30 UTC
+Round 3: 31 Oct 19:00, 31 Oct 20:30 UTC
+31 Oct 20:30 UTC
+```
+
 The assigner places events on slots and checks that a round fits and that
 it ends before the next round starts. It also refuses a round that puts
 one participant in two events at the same time, which a slot with two or
@@ -6122,10 +6187,45 @@ $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
 `assignRound()` makes the checks `assign()` makes, on the one round: the
-round fits, its slots rise, it starts after the round numbered before it
+round fits, its slots rise, it starts after the round played before it
 has ended, and it satisfies the rules the assigner was built with (see
 [Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
 events and no others, since the assigner keeps nothing between calls.
+
+A stage whose rounds on the timeline have a gap tells it the round
+played before. Monthly rounds from 31 December with two slots 30 days
+apart have round 2 run into round 3; a stage that plays rounds 1 and 3
+is assigned round 3 when it says round 1 came before it, and refused when
+it does not say, because round 3 is then compared with round 2:
+
+```php
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\RoundPairing;
+
+$monthly = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+    roundInterval: new DateInterval('P1M'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('P30D'),
+);
+$roundThree = new RoundPairing(3, null, [new Event([$participants[0], $participants[1]], new Round(3))]);
+
+$afterRoundOne = (new TimelineAssigner())->assignRound($roundThree, $monthly, previousRound: 1);
+echo $afterRoundOne[0]->getKickoff()->format('Y-m-d H:i') . "\n";
+
+try {
+    (new TimelineAssigner())->assignRound($roundThree, $monthly);
+} catch (InvalidConfigurationException $e) {
+    echo $e->getReason()?->name . ': round ' . $e->getContext()['round'] . "\n";
+}
+```
+
+```text
+2027-02-28 19:00
+OverlappingTime: round 2
+```
 
 Definitions are plain-data constructible for config-driven platforms,
 with ISO 8601 durations:
@@ -6159,15 +6259,42 @@ refused are:
   interval of whole days, months and years that `diff()` returned is
   written;
 - one with a fraction of a second, an inverted one, and one with a negative
-  part.
+  part;
+- one with a part of more than twelve digits (a day count set by hand to
+  100,000,000,000,000), because PHP reads no more than twelve for a part of
+  a duration and would refuse `P100000000000000D` when it is read back.
 
 Build the interval as `new DateInterval('PT25M')` where the configuration
 has to be stored. A start with a fraction of a second is written with it
 (`2026-08-01 18:00:00.250000`), and so are a session start of a grid and
-a bound of a blackout window. A `MinimumRestRule` adds its rest once and
+a bound of a blackout window. So are the kickoffs assigned from such a
+start: `ScheduledEvent::toArray()` (and with it
+`ScheduledSchedule::toArray()`) and `SlotAssignment::toArray()` write a
+kickoff to the second (`2026-08-01T17:00:00Z`), and with its fraction
+after the seconds when it has one (`2026-08-01T17:00:00.250000Z`), so a
+kickoff read back is the slot time the definition gives:
+
+```php
+use MissionGaming\Tactician\Timeline\ScheduledSchedule;
+
+$quarterPast = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-08-01 18:00:00.25', new DateTimeZone('Europe/London')),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('PT1H'),
+);
+$stored = (new TimelineAssigner())->assign($schedule, $quarterPast)->toArray();
+echo $stored['events'][0]['kickoff'], "\n"; // 2026-08-01T17:00:00.250000Z
+
+$readBack = ScheduledSchedule::fromArray($stored)->getScheduledEvents()[0]->getKickoff();
+var_dump($readBack == $quarterPast->getSlotTime(1, 0)); // bool(true)
+```
+
+A `MinimumRestRule` adds its rest once and
 in UTC, so its `toArray()` writes a rest of amounts of time from either
 source (`48 hours` is `PT48H`) and refuses only what has no duration: a
-relative string that is more than amounts, a fraction of a second, a sign.
+relative string that is more than amounts, a fraction of a second, a sign,
+a part of more than twelve digits.
 
 **A datetime in plain data states its date in full**: the year, the month
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
@@ -6182,6 +6309,35 @@ from plain data: the `start` of a timeline, the `from` and `to` of a
 blackout window and the `sessions` of a session grid. The `kickoff` of a
 serialized scheduled event declares no zone: it is UTC unless the string
 carries one, and any zone the string carries is accepted.
+
+**A declared timezone is a region or an offset.** The `timezone` field is
+a region identifier of the timezone database (`Europe/London`,
+`America/New_York`, `UTC`) or an explicit offset (`+01:00`, `-05:00`). An
+abbreviation is refused with the reason `TimezoneAbbreviation`, before the
+datetime is read: PHP reads one as a fixed offset all year, so `BST` is
+`+01:00` in January as well, and a caller who meant London would get
+kickoffs an hour out for half the year. Every abbreviation PHP knows is
+refused, `GMT` included (it is London's winter time, an hour out all
+summer), except the names of UTC itself: `Z`, `UTC` and `UCT`, in any
+case. Write the offset itself (`+01:00`) where a fixed one is meant. The context of the error has that offset under `fixed_offset`
+([ADR 0023](adr/0023-a-declared-timezone-is-a-region-or-an-offset.md)).
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\InvalidConfigurationException" -->
+```php
+// BST is +01:00 all year: London's winter kickoffs would be an hour out
+TimelineDefinition::fromArray([
+    'start' => '2026-08-01 18:00',
+    'timezone' => 'BST',
+    'round_interval' => 'P7D',
+]);
+```
+
+A definition or a session grid built in code with a start in an
+abbreviation (`new DateTimeZone('BST')`) works, as that fixed offset, and
+its `toArray()` refuses it with the reason `NotSerializable`, since
+`fromArray()` would refuse what it wrote. Build the start in a region or an
+offset where the configuration has to be stored. A blackout rule writes its
+bounds in UTC and is not affected.
 
 Two kinds of string are rejected, with the reason `UnparseableTime` (the
 kickoff with an `InvalidInputException`):
@@ -6277,6 +6433,15 @@ between rounds is checked there. Both built-in
 rules are plain-data constructible with `fromArray()`/`toArray()`, and
 custom rules implement the two-method `TimelineRule` interface.
 
+A `MinimumRestRule` refuses a rest longer than
+`MinimumRestRule::MAX_REST_DAYS` days (some 270 billion years, each part of
+the rest counted as positive and a month as 31 days) when it is built, with
+the reason `ValueOutOfRange`: PHP adds a longer rest to a kickoff without
+complaint and returns a time that has wrapped round to before it, and the
+rule would find no kickoff too close. A rest it accepts that still passes
+the end of the times PHP holds, from a kickoff billions of years out, covers
+every later kickoff of that participant.
+
 ## Schedule Repacking
 
 Generation invents events; repacking repairs a schedule whose events
@@ -6322,7 +6487,7 @@ shape-only grid has no instants and is not
 checked. Every slot time is computed from its session's start, never from
 the slot before it.
 
-**A grid has at most 100,000 positions** (`SessionGrid::MAX_POSITIONS`):
+**A grid has at most 200,000 positions** (`SessionGrid::MAX_POSITIONS`):
 the slot counts of its sessions added up, overrides applied. The number
 of sessions (`session_count`, or the length of `sessions`),
 `slots_per_session`, each slot count in `slots_per_session_overrides`
@@ -6330,8 +6495,21 @@ and their sum are each refused above it, with the reason
 `ValueOutOfRange`, before anything of that size is allocated or visited.
 The limit is the same for both forms of grid, and its value comes from
 the instant-based one, which keeps the instant of every position
-(`docs/design/schedule-repack.md` says why). 100,000 positions are a
-slot every five minutes, day and night, for nearly a year.
+(`docs/design/schedule-repack.md` says why). 200,000 positions are a
+slot every five minutes, day and night, for nearly two years; a leap year
+of them is 105,408. The memory a grid takes rises with its positions:
+about 0.4 KB a position for an instant-based grid, some 40 MB for that
+leap year, and next to nothing for a shape-only one. A repack holds more,
+some 1.2 KB a position with instants and 0.8 KB without, so a repack of a
+grid of 100,000 positions or more needs a `memory_limit` above PHP's
+default of 128 MB: about 130 MB for the leap year and 250 MB at the
+limit. A grid of the sessions still to be played, and not of the whole
+season, costs less.
+A slot interval made by `DateInterval::createFromDateString()` (`5
+minutes`), which only the constructor takes, is added one step at a time,
+so a session of it has the limit on steps of a timeline as well: 100,001
+slots, the first and 100,000 steps after it. Written as an ISO 8601
+duration (`PT5M`) it has no such limit.
 `capacity_per_slot` has a limit as well, of a million million
 (`SessionGrid::MAX_CAPACITY_PER_SLOT`); see
 [Unbounded Capacity](#unbounded-capacity).
@@ -6713,7 +6891,7 @@ unplaced as `participant_over_capacity`.
 
 ### Figures to Rank an Outcome By
 
-The violations say what is wrong with a schedule. Five figures say how
+The violations say what is wrong with a schedule. Six figures say how
 good it is, and each is an accessor of the outcome, so two outcomes can
 be compared without the request they came from:
 
@@ -6722,11 +6900,12 @@ be compared without the request they came from:
 | Unplaced events | `getUnplacedCount()` | The movable events with no position: the size of `getUnplaced()`. It comes first: an outcome that places more events is the better one. |
 | Gap slots | `getGapSlotCount()` | The slots participants wait through between two of their own events in a session: the gap slots of every `ContiguityBroken`, added up. |
 | Lone-event sessions | `getLoneEventSessionCount()`, `getLoneEventSessions()` | The sessions that hold exactly one event, pinned events counted, where that one is a movable event: a session opened for a single event. |
+| Lone participant-sessions | `getLoneParticipantSessionCount()` | For each participant, the sessions in which it has exactly one event, pinned events counted, where that one is a movable event; summed over the participants. |
 | Idle sessions | `getIdleSessionCount()` | For each participant with a placed movable event, the sessions it has no event in between two sessions it has one in, pinned events counted; summed over the participants. |
 | Moved events | `getMovedCount()`, `getMovedEventIds()` | The events placed somewhere other than their **current position** (below). |
 
-Every outcome has all five, whatever the options were. They are figures
-and not compromises: `isClean()` does not look at the last three. Three
+Every outcome has all six, whatever the options were. They are figures
+and not compromises: `isClean()` does not look at the last four. Four
 of them need defining exactly:
 
 - A **lone-event session** is a figure of the grid, not of a
@@ -6734,6 +6913,12 @@ of them need defining exactly:
   four participants has a single event in it. A session whose one event
   is pinned is not counted, because the repack did not arrange it, and
   an empty session is not counted either.
+- A **lone participant-session** is a figure of a participant: a
+  session with two events between four participants is one for each of
+  the four, and a participant with two events in a session has none
+  there. A participant whose one event in a session is pinned is not
+  counted there, and neither is one with a pinned event and a movable
+  one, which has two.
 - An **idle session** lies strictly between a participant's first and
   last session with an event. With events in sessions 1, 2 and 5, the
   participant has two idle sessions, 3 and 4; sessions 0 and 6 are not
@@ -6771,17 +6956,20 @@ $plain = (new ScheduleRepacker())->repack(new RepackRequest($outstanding, $fixed
 echo $plain->getUnplacedCount(), "\n";                          // 0
 echo $plain->getGapSlotCount(), "\n";                           // 0
 echo json_encode($plain->getLoneEventSessions()), "\n";         // [2]
+echo $plain->getLoneParticipantSessionCount(), "\n";            // 4
 echo $plain->getIdleSessionCount(), "\n";                       // 0
 echo json_encode($plain->getMovedEventIds()), "\n";             // ["n08"]
 
 echo json_encode($plain->toArray()['metrics']), "\n";
-// {"unplaced":0,"gap_slots":0,"lone_event_sessions":[2],"idle_sessions":0,"moved":["n08"]}
+// {"unplaced":0,"gap_slots":0,"lone_event_sessions":[2],"lone_participant_sessions":4,"idle_sessions":0,"moved":["n08"]}
 ```
 
 The repack moved `n08` from the last session to the middle one, where
 its two participants already play, and left `n07` alone in the last:
 that is the consolidation weight at work, and the figures show what it
-cost. `toArray()` writes the five under `metrics`, because three of them
+cost. Four participant-sessions are lone: Athletic and Napoli turn up
+for one event in the middle session, and again in the last. `toArray()` writes the six under
+`metrics`, because four of them
 cannot be worked out from the rest of the array (it holds neither the
 participants of an event nor the pinned events). The fingerprint does
 not cover them: they follow from the request and the assignments, which
@@ -6839,13 +7027,22 @@ have the repacker keep events where they are, name the objective.
 ### Objectives
 
 `RepackOptions(objectives: [...])` names figures for the repacker to
-keep low, most important first. There are three (`RepackObjective`):
+keep low, most important first. There are five (`RepackObjective`):
 
 | Objective | Keeps low | Identifier in plain data |
 |---|---|---|
 | `LeastChurn` | Moved events | `least_churn` |
 | `FewestLoneEventSessions` | Lone-event sessions | `fewest_lone_event_sessions` |
+| `FewestLoneParticipantSessions` | Lone participant-sessions | `fewest_lone_participant_sessions` |
 | `FewestIdleSessions` | Idle sessions | `fewest_idle_sessions` |
+| `FewestGapSlots` | Gap slots | `fewest_gap_slots` |
+
+`FewestGapSlots` names the figure every repack already keeps low, so
+that the list can say where it ranks: what is listed before it is
+ranked ahead of gap slots ([Objectives Ahead of Gap
+Slots](#objectives-ahead-of-gap-slots)). This section is about lists
+that do not name it, or name it first, which rank gap slots where they
+have always been.
 
 ```php
 use MissionGaming\Tactician\Repack\RepackObjective;
@@ -6887,9 +7084,11 @@ has no more gap slots. Among schedules level on those two, the
 objectives decide in the order given, a later one only between schedules
 level on every earlier one. The two weights and the late starts come
 after every objective. An objective can be named once; its place in the
-list is its rank.
+list is its rank. A list that starts with `FewestGapSlots` is repacked
+exactly as the same list without it, and `[FewestGapSlots]` alone
+exactly as no objective.
 
-**What each objective does, and how well.** None of the three is
+**What each objective does, and how well.** None of them is
 optimised exactly, and they are not pursued alike:
 
 - **`LeastChurn` is searched for.** The repacker first makes the
@@ -6904,14 +7103,17 @@ optimised exactly, and they are not pursued alike:
   tries again, three times at most. The best schedule of all these, the
   one with no objective included, is returned. It needs events with
   current positions to act on.
-- **`FewestLoneEventSessions` and `FewestIdleSessions` are a tie-break
-  and a repair.** They decide between the schedules the repacker makes
-  anyway where those are level on everything that ranks before them.
-  Then single events are moved to a free position (the one event of a
-  lone-event session to a session that has events, or another event
-  into it; an event of a participant into a session that participant
-  sits out) wherever that makes the figure smaller and makes nothing
-  that ranks before it worse.
+- **`FewestLoneEventSessions`, `FewestLoneParticipantSessions` and
+  `FewestIdleSessions` are a tie-break and a repair.** They decide
+  between the schedules the repacker makes anyway where those are level
+  on everything that ranks before them. Then single events are moved to
+  a free position (the one event of a lone-event session to a session
+  that has events, or another event into it; the one event of a
+  participant in a session to another session of that participant, or
+  another of its events into that session; an event of a participant
+  into a session that participant sits out) wherever that makes the
+  figure smaller and makes nothing that ranks before it worse. Ranked
+  ahead of gap slots, they are searched for as well (below).
 
 How close that comes was measured against every placement of 6,000 small
 requests (three to six events on up to six positions), among the
@@ -7018,6 +7220,143 @@ The fewest moved events cost little on a season, where nearly every
 event is held and few are placed, and two to three times the repack on
 scattered pins, where the schedule that exists rarely survives and the
 attempts are whole repacks.
+
+### Objectives Ahead of Gap Slots
+
+A repack keeps a participant's events in a session back to back before
+anything else it is asked, so it fills the sessions from the first on.
+That costs something an application may care about more. A round robin
+whose rounds do not divide into the sessions ends with a short session,
+in which every participant turns up for one event; and an event that
+would stay where it is at the price of a wait is moved to close the
+wait. Naming `FewestGapSlots` in the list says where gap slots rank, and
+what is listed before it is ranked ahead of them:
+
+```php
+// A league of five that plays every event on two match nights of four
+// slots, two events to a slot
+$five = [];
+foreach (['ajax', 'benfica', 'celtic', 'dinamo', 'esbjerg'] as $id) {
+    $five[] = new Participant($id, ucfirst($id));
+}
+$league = [];
+foreach ($five as $i => $home) {
+    foreach (array_slice($five, $i + 1) as $away) {
+        $league[] = new MovableEvent("{$home->getId()}-{$away->getId()}", $home, $away);
+    }
+}
+$matchNights = SessionGrid::shapeOnly(sessions: 2, slotsPerSession: 4, capacityPerSlot: 2);
+
+$figures = static fn(RepackOutcome $outcome): array => [
+    $outcome->getUnplacedCount(),
+    $outcome->getLoneParticipantSessionCount(),
+    $outcome->getGapSlotCount(),
+];
+
+$compact = (new ScheduleRepacker())->repack(new RepackRequest($league, [], $matchNights));
+echo json_encode($figures($compact)), "\n";    // [0,2,0]
+
+$together = (new ScheduleRepacker())->repack(new RepackRequest($league, [], $matchNights, new RepackOptions(objectives: [
+    RepackObjective::FewestLoneParticipantSessions,
+    RepackObjective::FewestGapSlots,
+])));
+echo json_encode($figures($together)), "\n";   // [0,0,2]
+
+// Ranked after gap slots, the same objective only breaks ties
+$after = (new ScheduleRepacker())->repack(new RepackRequest($league, [], $matchNights, new RepackOptions(objectives: [
+    RepackObjective::FewestLoneParticipantSessions,
+])));
+echo json_encode($figures($after)), "\n";      // [0,2,0]
+
+// An event that stays where it is, at the price of a wait
+$night = SessionGrid::shapeOnly(sessions: 1, slotsPerSession: 3, capacityPerSlot: 2);
+$calendar = [
+    new MovableEvent('m1', $celtic, $athletic, 0, 0),
+    new MovableEvent('m2', $livorno, $rayo, 0, 0),
+    new MovableEvent('m3', $celtic, $livorno, 0, 2),
+];
+$closed = (new ScheduleRepacker())->repack(new RepackRequest($calendar, [], $night, new RepackOptions(objectives: [
+    RepackObjective::LeastChurn,
+])));
+echo json_encode($closed->getMovedEventIds()), ' ', $closed->getGapSlotCount(), "\n";   // ["m3"] 0
+
+$kept = (new ScheduleRepacker())->repack(new RepackRequest($calendar, [], $night, new RepackOptions(objectives: [
+    RepackObjective::LeastChurn,
+    RepackObjective::FewestGapSlots,
+])));
+echo json_encode($kept->getMovedEventIds()), ' ', $kept->getGapSlotCount(), "\n";       // [] 2
+
+echo json_encode(RepackOptions::fromArray(['objectives' => ['least_churn', 'fewest_gap_slots']])->toArray()['objectives']), "\n";
+// ["least_churn","fewest_gap_slots"]
+```
+
+With no objective, the five play seven events on the first night and
+three on the second, and Ajax and Dinamo each turn up on the second
+night for one. With the lone participant-sessions ranked ahead of gap
+slots, six and four: nobody turns up for one event, and two
+participants wait a slot. Which is better is the application's to say;
+the figures say what each schedule costs.
+
+**What stays.** Events placed always come first: an outcome with an
+objective ahead of gap slots places at least as many events as the same
+request with no objective. The schedule with no objective is made first,
+exactly as without one, and every other schedule is compared with it on
+events placed and then on the figures in the order the list ranks them,
+so where nothing better on that order is found, that is the schedule
+returned. The two weights and the late starts still come last.
+
+**What is searched for.** Ranking an objective ahead of gap slots does
+not only break ties with it:
+
+- **The lone participant-sessions, the lone-event sessions and the idle
+  sessions.** The events are placed again on the first sessions of the
+  grid with their slots cut to as many as the events need (as many as
+  the busiest participant has events, or one more where no shape of
+  that many places every event), spread evenly over the fewest sessions that hold them and
+  over up to two more. A session with a pinned event keeps all its
+  slots, and a shape that would leave a session fewer than two slots is
+  not tried. Each shape is a repack of its own, and the best of them by
+  the ranking, with the search for fewer gap slots run once on it, is
+  kept where it is better than the schedule with no objective. Then the
+  repairs of the tie-break run, by the ranking.
+- **The moved events.** The schedule with no objective is made first.
+  Then every event that can stay at its current position is held there
+  and the others are placed around them, as when `LeastChurn` ranks
+  after gap slots, but the result is compared with the schedule with no
+  objective on events placed and on what is listed before `LeastChurn`
+  only: no event is moved to close a gap unless what ranks before it
+  asks for that. Where held events must be let go, they are the ones
+  around the gaps and the lone participant-sessions. A list such as
+  `[LeastChurn, FewestGapSlots]` leaves a schedule that has nothing
+  wrong with it but its gaps where it is.
+
+**What it gives.** On every complete single round robin of 4 to 24
+participants with nothing pinned, on sessions of four slots and from the
+fewest sessions that hold the rounds up to two more (63 requests, no
+limit on the events of a slot), `[FewestLoneParticipantSessions,
+FewestIdleSessions, FewestGapSlots]` placed every event and left no lone
+participant-session and no idle session, where the repack with no
+objective left 406 lone participant-sessions and 91 idle sessions; it
+left 150 gap slots for 20. On seasons in which nothing had changed since
+the schedule was made (200 seasons of 8 to 30 participants, whole rounds
+played and pinned, every other event at its place),
+`[LeastChurn, FewestGapSlots]` moved none of 39,296 events, where
+`LeastChurn` alone moved 4,427 and no objective 37,453; it left 360 gap
+slots for 100. The design note has the measurements, and what the
+other kinds of season give.
+
+**What it costs.** Each shape tried is a repack of its own, made on what
+the two budgets have left after the schedule with no objective, so a
+repack still spends at most twice `stepBudget`. On the 63 round robins
+(PHP 8.4, no OPcache), the median was 7 ms for 2 with no objective, the
+90th percentile 210 ms for 126, and the slowest 419 ms for 234.
+
+**Earlier releases.** The repack options are still version 1 of their
+form: a new identifier of the `objectives` key is not a new key ([Format
+Versions](#format-versions)). 0.3.x reads options written by 0.4.0 as
+they are where they name neither new objective, and refuses options that
+name `fewest_gap_slots` or `fewest_lone_participant_sessions` as an
+unknown identifier.
 
 ### The Shortest Grid
 
@@ -7341,8 +7680,9 @@ these keys:
 Each key holds what `toArray()` of the record holds under it: an event ID
 as a string, a session, a slot and a count as integers, a participant as
 its ID or null, a kind and a reason as their backing strings, the lists
-as lists, and a kickoff as the string `2026-08-12T19:00:00Z` or null. The
-keys are named because they are the scheme: a key that a `toArray()`
+as lists, and a kickoff as the string `2026-08-12T19:00:00Z`, or
+`2026-08-12T19:00:00.250000Z` when it has a fraction of a second, or null.
+The keys are named because they are the scheme: a key that a `toArray()`
 gains in a later version is not part of scheme `v1` and does not change a
 `v1` fingerprint.
 
@@ -7367,7 +7707,8 @@ What follows from that:
 - Every field the records have today is covered. A participant is covered
   by its ID and by nothing else of it, so a changed label or changed
   metadata leaves the fingerprint as it was. A kickoff is covered to the
-  second and is null for a shape-only grid.
+  microsecond (a kickoff on a whole second is written to the second, as
+  it always was) and is null for a shape-only grid.
 - `isBudgetExhausted()` is not covered: two outcomes holding the same
   plan are the same plan, however each search ended.
 - Nothing in it depends on the PHP version, the platform, the locale or
@@ -7460,7 +7801,7 @@ interval. The integer and the null in the first two types are how
 `shapeOnly()` reaches the constructor (a session count and no interval);
 do not pass them yourself, call `shapeOnly()`. The constant `SessionGrid::UNBOUNDED` is
 the plain-data word for an unbounded capacity; `SessionGrid::MAX_POSITIONS`
-(100,000) is the most positions, sessions or slots of one session a grid
+(200,000) is the most positions, sessions or slots of one session a grid
 can have, and `SessionGrid::MAX_CAPACITY_PER_SLOT` (a million million) the
 largest capacity that is a number.
 
@@ -7495,14 +7836,17 @@ weight.
 
 | Method | Returns |
 |---|---|
-| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget`, `throw_on_violations` and `objectives`, a list of objective identifiers (static) |
-| `toArray()` | The same plain data, with `format_version` first; `objectives` is written only when there is one |
+| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget`, `throw_on_violations` and `objectives`, a list of objective identifiers (static). An identifier it does not know is refused (`InvalidConfigurationException`, reason `UnknownIdentifier`); 0.3.x knows the first three only |
+| `toArray()` | The same plain data, with `format_version` (1) first; `objectives` is written only when there is one |
 
 #### `RepackObjective`
 
 An enum. Cases: `LeastChurn` (`least_churn`), `FewestLoneEventSessions`
-(`fewest_lone_event_sessions`) and `FewestIdleSessions`
-(`fewest_idle_sessions`). See [Objectives](#objectives).
+(`fewest_lone_event_sessions`), `FewestIdleSessions`
+(`fewest_idle_sessions`), `FewestGapSlots` (`fewest_gap_slots`) and
+`FewestLoneParticipantSessions` (`fewest_lone_participant_sessions`). See
+[Objectives](#objectives) and [Objectives Ahead of Gap
+Slots](#objectives-ahead-of-gap-slots).
 
 #### `RepackOutcome`
 
@@ -7525,21 +7869,23 @@ The constant `RepackOutcome::FINGERPRINT_SCHEME` is the scheme
 | `getGapSlotCount()` | The gap slots of every `ContiguityBroken`, added up |
 | `getLoneEventSessions()` | The sessions holding one event and no more, that one movable, ascending |
 | `getLoneEventSessionCount()` | How many of those there are |
+| `getLoneParticipantSessionCount()` | The lone participant-sessions: for each participant, the sessions in which it has one event and that one movable, summed over the participants |
 | `getIdleSessionCount()` | The idle sessions, summed over the participants |
 | `getMovedEventIds()` | The IDs of the events placed anywhere but at their current position, ascending |
 | `getMovedCount()` | How many of those there are |
 | `isClean()` | Whether nothing is unplaced and there is no violation |
 | `isBudgetExhausted()` | Whether the step budget stopped a search |
 | `fingerprint()` | The outcome's fingerprint |
-| `toArray()` | `['format_version' => 1, 'assignments' => ..., 'unplaced' => ..., 'violations' => ..., 'metrics' => ...]`, each list holding the `toArray()` of its records without their own `format_version` (see [Format Versions](#format-versions)), and `metrics` the five figures: `unplaced`, `gap_slots`, `lone_event_sessions`, `idle_sessions`, `moved` |
+| `toArray()` | `['format_version' => 2, 'assignments' => ..., 'unplaced' => ..., 'violations' => ..., 'metrics' => ...]`, each list holding the `toArray()` of its records without their own `format_version` (see [Format Versions](#format-versions)), and `metrics` the six figures: `unplaced`, `gap_slots`, `lone_event_sessions`, `lone_participant_sessions`, `idle_sessions`, `moved` |
 
 Building one by hand takes the three lists and, optionally, the budget
-flag and the three figures an outcome cannot work out from its lists:
-`new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false, array $loneEventSessions = [], int $idleSessions = 0, array $movedEventIds = [])`.
+flag and the four figures an outcome cannot work out from its lists:
+`new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false, array $loneEventSessions = [], int $idleSessions = 0, array $movedEventIds = [], int $loneParticipantSessions = 0)`.
 A list that holds anything other than the objects or values it is for,
-or a negative count of idle sessions, throws an `InvalidInputException`.
-An outcome built without the figures has none: no lone-event session, no
-idle session, no moved event.
+or a negative count of idle sessions or of lone participant-sessions,
+throws an `InvalidInputException`. An outcome built without the figures
+has none: no lone-event session, no lone participant-session, no idle
+session, no moved event.
 
 #### `SlotAssignment`
 
@@ -7554,7 +7900,7 @@ hand, in a test for example.
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
 | `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, in the timezone it was given in); throws an `UnavailableValueException` when there is none |
-| `toArray()` | `format_version`, `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
+| `toArray()` | `format_version`, `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in, and written with its fraction of a second when it has one (`2026-08-12T19:30:00.250000Z`) |
 
 #### `UnplacedEvent`
 
@@ -7913,7 +8259,13 @@ records with its reasons:
 - **Forms are versioned one by one.** When a release changes a form, that
   form takes the next number, the changelog says what differs, and
   `fromArray()` keeps reading the earlier versions. A patch release never
-  changes a form.
+  changes a form. 0.4.0 gives one form version 2: the repack outcome,
+  whose `metrics` hold `lone_participant_sessions`. Every other form is
+  still version 1. A new identifier among the values of an existing key
+  is not a change of the form: repack options that name the objectives
+  0.4.0 added, `fewest_gap_slots` and `fewest_lone_participant_sessions`,
+  are version 1, and a release that does not know them refuses them as
+  unknown identifiers.
 - **An earlier release does not check the version.** 0.2.x reads an array
   written by 0.3.0 as it read its own, ignoring `format_version` and every
   other key it does not know, so an application that rolls back keeps
@@ -7922,7 +8274,8 @@ records with its reasons:
   before reading them with those releases. What 0.2.x has no key for it
   does not see: it reads an awarded result as one that was played, a
   stage state without its adjustments, and a level tie settled by a decider
-  as one that nobody settled.
+  as one that nobody settled. 0.3.x does check it, and refuses the
+  version 2 repack outcome 0.4.0 writes, which has no `fromArray()`.
 
 `format_version` is not the `v1` or `v2` inside an engine fingerprint
 ([Recording Which Engine Pairs a State](#recording-which-engine-pairs-a-state))
@@ -8555,6 +8908,7 @@ identifier for logs and stored data):
 | `PositionOutOfRange` | `position_out_of_range` | A session, slot, round or resource index is outside the grid or timeline |
 | `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
+| `TimezoneAbbreviation` | `timezone_abbreviation` | A declared timezone is an abbreviation (`BST`, `EST`, `GMT`), which PHP reads as a fixed offset all year; the context has that offset under `fixed_offset` |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `OverlappingTime` | `overlapping_time` | The slots of one round of a timeline, or of one session of a grid, run up to or past the first slot of the next, or two slots of one round or session are not at rising times |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
