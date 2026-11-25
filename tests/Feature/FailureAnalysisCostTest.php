@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\CallableConstraint;
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\NoRepeatPairings;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
@@ -10,6 +11,7 @@ use MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\ConstraintPurity;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
@@ -71,6 +73,43 @@ describe('The cost of a round robin that fails or retries', function (): void {
         $schedule = new RoundRobinScheduler($constraints)->schedule(analysisCostField(32), new RoundRobinOptions(legs: 2));
 
         expect(count($schedule))->toBe(992);
+    });
+
+    // A limit on streaks of one role that a factory built runs no code of
+    // the caller's, so a failure under it is analysed once, as under the
+    // listed classes; the same rule under a role extractor of the caller's
+    // is analysed for every ordering. Both report the analysis of the last
+    // ordering, which is the same analysis. Round parity is named, and the
+    // legs are repeated: under that role assignment every rotated order is
+    // generated and fails, so the rotations are the whole run.
+    it('analyses a failure under a factory-built limit on role streaks once, with the report of every ordering analysed', function (): void {
+        $factoryBuilt = new ConstraintSet([ConsecutiveRoleConstraint::homeAway(1)]);
+        $ofTheCallers = new ConstraintSet([new ConsecutiveRoleConstraint(
+            1,
+            static fn(Event $event, Participant $participant): string => $event->getParticipants()[0]->getId() === $participant->getId() ? 'home' : 'away',
+            'Home/Away consecutive limit (1)'
+        )]);
+        expect(ConstraintPurity::isKnown($factoryBuilt))->toBeTrue()
+            ->and(ConstraintPurity::isKnown($ofTheCallers))->toBeFalse();
+
+        $options = new RoundRobinOptions(legs: 3, strategy: new RepeatedLegStrategy(), roleAssignment: new RoundParityRoleAssignment());
+        $failureUnder = static function (ConstraintSet $constraints) use ($options): ?IncompleteScheduleException {
+            try {
+                new RoundRobinScheduler($constraints)->schedule(analysisCostField(8), $options);
+            } catch (IncompleteScheduleException $exception) {
+                return $exception;
+            }
+
+            return null;
+        };
+        $factoryFailure = $failureUnder($factoryBuilt);
+        $callerFailure = $failureUnder($ofTheCallers);
+
+        expect($factoryFailure)->toBeInstanceOf(IncompleteScheduleException::class)
+            ->and($callerFailure)->toBeInstanceOf(IncompleteScheduleException::class);
+        expect($factoryFailure?->getAnalysis()?->getMissingPairings())->not->toBeEmpty();
+        expect($factoryFailure?->getMessage())->toBe($callerFailure?->getMessage());
+        expect($factoryFailure?->getAnalysis()?->toString())->toBe($callerFailure?->getAnalysis()?->toString());
     });
 
     it('reports the analysis of the last ordering tried', function (): void {

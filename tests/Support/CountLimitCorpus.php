@@ -19,6 +19,7 @@ use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Timeline\IntervalArithmetic;
+use MissionGaming\Tactician\Timeline\ScheduledSchedule;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use Throwable;
@@ -154,6 +155,26 @@ final class CountLimitCorpus
             // anchor again would take hours to get there
             ['series: a relative second read to the limit of steps', 'loaded', static fn() => iterator_to_array(IntervalArithmetic::series($start, $relative('1 second'), 100_001))],
             ['series: a relative second read one step past the limit', $range, static fn() => iterator_to_array(IntervalArithmetic::series($start, $relative('1 second'), 100_002))],
+            // Every round from the round before, in one pass: from the start
+            // again for each round, 20,000 rounds were two hundred million
+            // additions, and 100,001 rounds five thousand million
+            ['assign: a schedule of 20,000 rounds a relative week apart', 'loaded', static function () use ($a, $b, $start, $relative): ScheduledSchedule {
+                $events = [];
+                for ($round = 1; $round <= 20_000; ++$round) {
+                    $events[] = new Event([$a, $b], new Round($round));
+                }
+
+                return new TimelineAssigner()->assign(new Schedule($events), new TimelineDefinition($start, $relative('1 week')));
+            }],
+            ['timeline: the slots of 100,001 rounds a relative week apart, read together', 'loaded', static function () use ($start, $relative): int {
+                $read = 0;
+                foreach (new TimelineDefinition($start, $relative('1 week'))->getRoundSlotTimes(...range(1, 100_001)) as $slots) {
+                    $read += count($slots);
+                }
+
+                return $read;
+            }],
+            ['timeline: the slots of rounds 1 and 100,002 a relative week apart, read together', $range, static fn() => iterator_to_array(new TimelineDefinition($start, $relative('1 week'))->getRoundSlotTimes(1, 100_002))],
             ['assign: a schedule with an event in the largest round number, weekly', $range, static fn() => new TimelineAssigner()->assign($inRound($huge), $timeline([]))],
             ['assign: a schedule with an event in the largest round number, a relative week apart', $range, static fn() => new TimelineAssigner()->assign($inRound($huge), new TimelineDefinition($start, $relative('1 week')))],
             ['assignRound: a pairing of the largest round number, weekly', $range, static fn() => new TimelineAssigner()->assignRound($pairing($huge), $timeline([]))],

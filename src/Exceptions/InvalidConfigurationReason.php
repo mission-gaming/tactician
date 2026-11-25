@@ -239,7 +239,9 @@ enum InvalidConfigurationReason: string
 
     /**
      * A round was recorded out of play order: its number is not above the
-     * number of the last round recorded.
+     * number of the last round recorded. Also a round named as the one
+     * played before another (TimelineAssigner::assignRound()) that is not
+     * below it, or is below 0.
      */
     case RoundOutOfSequence = 'round_out_of_sequence';
 

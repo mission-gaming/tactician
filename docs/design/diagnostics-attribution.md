@@ -71,7 +71,9 @@ is the consequence).
   during one ordering's analysis then decides what the next ordering
   gets. So the analysis of a discarded ordering is skipped only for a
   constraint set `ConstraintPurity` knows (a `ConstraintSet` of the four
-  built-in classes that hold no callable). For any other set every
+  built-in classes that hold no callable, and, from 0.4.0, of
+  `ConsecutiveRoleConstraint` objects built by `homeAway()` or
+  `position()`, whose role extractor is the library's). For any other set every
   ordering is analysed as before, and the result is what it was before.
 - **Honest scope**: probing answers "could this pairing join what was
   built?" — attribution against a *different* partial schedule could
