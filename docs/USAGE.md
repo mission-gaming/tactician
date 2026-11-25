@@ -513,14 +513,15 @@ Because purity is not part of `ConstraintInterface`, the library does not
 assume it where assuming it would change what a constraint that breaks the
 rule gets back. Two shortcuts are taken only for a `ConstraintSet` made of
 `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint`
-and `SeedProtectionConstraint` objects, which run no code of yours: a round
-robin that cannot be completed is analysed once and not once per order
-tried, and a Swiss round search skips the branches that hold no pairing.
-Any other set gets the same results without the shortcuts, which on those
-two failure paths takes longer: a set that holds a `CallableConstraint`, a
-`MetadataConstraint` or a `ConsecutiveRoleConstraint` (each holds a
-callable, also when one of its factories built it), or a class of your
-own.
+and `SeedProtectionConstraint` objects, and of `ConsecutiveRoleConstraint`
+objects built by `homeAway()` or `position()`, which run no code of yours: a
+round robin that cannot be completed is analysed once and not once per
+order tried, and a Swiss round search skips the branches that hold no
+pairing. Any other set gets the same results without the shortcuts, which
+on those two failure paths takes longer: a set that holds a
+`CallableConstraint`, a `MetadataConstraint` (which holds a callable, also
+when one of its factories built it), a `ConsecutiveRoleConstraint` given a
+role extractor of your own, or a class of your own.
 
 ### Role-Based Constraints
 
@@ -2818,9 +2819,12 @@ scheduler that holds one continues its sequence, and two calls give two
 schedules.
 
 Every round count the scheduler accepts is generated when it has no
-constraints. A round is paired without a look at the rounds to come, so at
-the larger round counts a draw can reach a round that has no pairing left
-without a repeat. The scheduler then draws again: with a seed, each later
+constraints, and in a field of odd size nobody has a second bye. A round is
+paired without a look at the rounds to come, so at the larger round counts
+a draw can reach a round that has no pairing left without a repeat, and at
+the largest counts of a field of odd size it can give a participant a
+second bye, which the engine does where the round has no pairing otherwise.
+The scheduler takes either as a failed draw and draws again: with a seed, each later
 draw from a seed of its own that the seed gives (a `Xoshiro256StarStar`
 sequence from the seed, advanced by one `jumpLong()`), and with a
 `Randomizer`, continuing its sequence. Either way the schedule is still a
@@ -2829,12 +2833,16 @@ first draw gives. If twenty draws are
 not enough, or there is nothing to draw from, it builds the rounds by the
 rotation that lays out a round robin, which cannot fail. Without a source of
 draws there is one draw, and it needs the rotation at a few of the largest
-round counts (of the fields up to 44: 26 participants from 24 rounds on, 34
-from 32, and 37 at 36). The first round is the list as given there too,
-with the bye of a field of odd size at the last position; the later rounds
-are those of the rotation, in which nobody has a second bye. With constraints a
-schedule may not exist at all, and an `IncompleteScheduleException` reports
-the round the last draw could not pair.
+round counts (of the fields up to 44: 26 participants from 24 rounds on, 33
+at 32, 34 from 32, and 37 at 36). The first round is the list as given there
+too, with the bye of a field of odd size at the last position; the later
+rounds are those of the rotation, in which nobody has a second bye. With
+constraints a schedule may not exist at all, and the rotation is not tried,
+since the constraints may reject it: an `IncompleteScheduleException`
+reports the round the last draw could not pair, and where every draw that
+is complete gives a participant a second bye (the constraints may leave a
+participant too few opponents to play every round), the first of them is
+the schedule.
 
 An event of a round that is never played is recorded with an
 [awarded result](#awarded-results), which counts in the table like any other
@@ -5952,18 +5960,23 @@ The rules of the mechanism:
   and round 3 from 28 February: a schedule of rounds 1 and 2 is
   assigned, and one that holds round 3 as well is refused. The order is
   the order of the round numbers, so a later round at an earlier time is
-  refused like one at the same time. `assignRound()` is given one round
-  and keeps nothing between calls, so it compares that round with the
-  one before it by number, which a stage that plays its rounds in order
-  from round 1 has played. Round 1 is compared with nothing, and so is
-  no round with the one after it: an overlap of two rounds is reported
-  when the later of them is assigned. The round before is the one before
-  by number whether or not it was played. A caller whose rounds have a
-  gap (a number skipped, or a pairing with no events) has a round
-  compared with one nobody played, which can refuse it, and the two
-  played rounds on either side of the gap compared with each other by
-  no call; `assign()` given a schedule of the rounds played compares
-  exactly those.
+  refused like one at the same time. `assignRound()` applies the same
+  rule, each round compared with the round played before it, but it is
+  given one round and keeps nothing between calls, so it is told which
+  round that was: `assignRound($pairing, $timeline, previousRound: 3)`,
+  or `previousRound: 0` for the first round played. Not told, it takes
+  the round numbered before it, which is the round played before for a
+  stage whose rounds are numbered 1, 2, 3 and so on (the rounds of a
+  `StageState` are); round 1 then has none. No round is compared with
+  the one after it: an overlap of two rounds is reported when the later
+  of them is assigned. A caller whose rounds have a gap (a number
+  skipped, or a pairing with no events) passes the round played before;
+  told it for every round, the calls refuse exactly what `assign()`
+  refuses for the schedule of the same rounds, with the same two rounds
+  named. Not told, a round after the gap is compared with a round nobody
+  played, which can refuse it, and not with the round before the gap. A
+  round named as played before that is not below the round's number, or
+  is below 0, is refused (`RoundOutOfSequence`).
 - **A round too far away is refused.** A round whose time is more than
   some 270 billion years from the start, or past either end of what PHP's
   timestamps hold (some 291 billion years from 1970, which a start far
@@ -6026,6 +6039,39 @@ P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00
 PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
 ```
 
+A definition answers for slot times without a schedule.
+`getSlotTime($round, $slot)` gives one slot, in UTC.
+`getRoundSlotTimes(...$rounds)` gives every slot of each round asked for,
+filled or not: a list per round, keyed by round number, in the order the
+rounds are given, each round computed when its list is read. The times are
+the ones `getSlotTime()` gives. Given in rising order, the rounds are
+computed in one pass: under an interval made by
+`DateInterval::createFromDateString()`, which is added one step at a time,
+each round's first slot is counted on from the round before it in the list,
+so the rounds of a whole schedule cost what its last round costs alone.
+This is how `assign()` computes the rounds of a schedule:
+
+```php
+$evenings = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('PT90M'),
+);
+
+foreach ($evenings->getRoundSlotTimes(1, 3) as $round => $slots) {
+    $times = array_map(fn (DateTimeImmutable $slot): string => $slot->format('j M H:i'), $slots);
+    echo "Round {$round}: " . implode(', ', $times) . " UTC\n";
+}
+echo $evenings->getSlotTime(3, 1)->format('j M H:i') . " UTC\n";
+```
+
+```text
+Round 1: 17 Oct 18:00, 17 Oct 19:30 UTC
+Round 3: 31 Oct 19:00, 31 Oct 20:30 UTC
+31 Oct 20:30 UTC
+```
+
 The assigner places events on slots and checks that a round fits and that
 it ends before the next round starts. It also refuses a round that puts
 one participant in two events at the same time, which a slot with two or
@@ -6072,10 +6118,45 @@ $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
 `assignRound()` makes the checks `assign()` makes, on the one round: the
-round fits, its slots rise, it starts after the round numbered before it
+round fits, its slots rise, it starts after the round played before it
 has ended, and it satisfies the rules the assigner was built with (see
 [Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
 events and no others, since the assigner keeps nothing between calls.
+
+A stage whose rounds on the timeline have a gap tells it the round
+played before. Monthly rounds from 31 December with two slots 30 days
+apart have round 2 run into round 3; a stage that plays rounds 1 and 3
+is assigned round 3 when it says round 1 came before it, and refused when
+it does not say, because round 3 is then compared with round 2:
+
+```php
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\RoundPairing;
+
+$monthly = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+    roundInterval: new DateInterval('P1M'),
+    slotsPerRound: 2,
+    slotInterval: new DateInterval('P30D'),
+);
+$roundThree = new RoundPairing(3, null, [new Event([$participants[0], $participants[1]], new Round(3))]);
+
+$afterRoundOne = (new TimelineAssigner())->assignRound($roundThree, $monthly, previousRound: 1);
+echo $afterRoundOne[0]->getKickoff()->format('Y-m-d H:i') . "\n";
+
+try {
+    (new TimelineAssigner())->assignRound($roundThree, $monthly);
+} catch (InvalidConfigurationException $e) {
+    echo $e->getReason()?->name . ': round ' . $e->getContext()['round'] . "\n";
+}
+```
+
+```text
+2027-02-28 19:00
+OverlappingTime: round 2
+```
 
 Definitions are plain-data constructible for config-driven platforms,
 with ISO 8601 durations:

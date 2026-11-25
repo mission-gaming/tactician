@@ -73,6 +73,23 @@ describe('ConsecutiveRoleConstraint', function (): void {
             ->and($constraint->isSatisfied(new Event([$this->bob, $this->alice], new Round(3)), $context))->toBeTrue();
     })->with([['home and away'], ['position']]);
 
+    // With more than two participants in an event the two factories differ:
+    // homeAway() gives every participant after the first-named the one role
+    // `away`, and position() gives each position a role of its own. Carol is
+    // third-named and then second-named, which is a streak of `away` and no
+    // streak of positions; nobody else repeats a position.
+    it('gives every later position one role under homeAway() and each its own under position()', function (): void {
+        $carol = new Participant('p3', 'Carol');
+        $participants = [$this->alice, $this->bob, $carol];
+        $context = roundRobinContext($participants, [
+            new Event([$this->alice, $this->bob, $carol], new Round(1)),
+        ]);
+        $candidate = new Event([$this->bob, $carol, $this->alice], new Round(2));
+
+        expect(ConsecutiveRoleConstraint::homeAway(1)->isSatisfied($candidate, $context))->toBeFalse()
+            ->and(ConsecutiveRoleConstraint::position(1)->isSatisfied($candidate, $context))->toBeTrue();
+    });
+
     // Extracted roles are compared by identity, so an extractor that
     // yields the same value (even null) for consecutive events counts as
     // a streak - custom extractors must return distinct role values
