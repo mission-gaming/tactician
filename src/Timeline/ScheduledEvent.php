@@ -71,10 +71,12 @@ final readonly class ScheduledEvent
 
     /**
      * Convert to a serializable array; the kickoff is an ISO 8601 UTC
-     * string to the second (`2026-08-01T18:00:00Z`; a fraction of a second
-     * is not written), the event in its own array form (participants by
-     * ID). The first key is `format_version`, the version of this form
-     * (1); the event is written without one.
+     * string to the second (`2026-08-01T18:00:00Z`), with the fraction of a
+     * second after the seconds when the kickoff has one
+     * (`2026-08-01T18:00:00.250000Z`), so that fromArray() reads back the
+     * instant the event holds; the event in its own array form
+     * (participants by ID). The first key is `format_version`, the version
+     * of this form (1); the event is written without one.
      *
      * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}
      */
@@ -86,7 +88,7 @@ final readonly class ScheduledEvent
         return [
             PlainData::VERSION_KEY => PlainData::VERSION,
             'event' => $event,
-            'kickoff' => $this->kickoff->format('Y-m-d\TH:i:s\Z'),
+            'kickoff' => ZonedTime::writeUtc($this->kickoff),
             'resource' => $this->resource,
         ];
     }

@@ -8,8 +8,9 @@ use MissionGaming\Tactician\Repack\RepackObjective;
 
 /**
  * The figures of a schedule that an outcome reports and an objective
- * ranks by: gap slots, lone-event sessions, idle sessions and moved
- * events, each counted from where the events are and from nothing else.
+ * ranks by: gap slots, lone-event sessions, lone participant-sessions,
+ * idle sessions and moved events, each counted from where the events are
+ * and from nothing else.
  *
  * One instance is made for a request (the participants of every movable
  * event, the pinned events, the current positions), and is then asked
@@ -134,6 +135,54 @@ final readonly class PlacementMetrics
     }
 
     /**
+     * The lone participant-sessions of each participant that has one: the
+     * sessions in which it has exactly one event, pinned events counted,
+     * where that event is a movable one. A session in which its one event
+     * is pinned is history and is not counted.
+     *
+     * @param array<int, array{int, int}> $positions Placed movable event index => [session, slot]
+     *
+     * @return array<int, array<int, int>> Participant => session => its one movable event there
+     */
+    public function loneParticipantSessionsByParticipant(array $positions): array
+    {
+        /** @var array<int, array<int, list<int>>> $eventsOf Participant => session => its movable events there */
+        $eventsOf = [];
+        foreach ($positions as $eventIndex => [$session]) {
+            foreach ($this->participantsOf[$eventIndex] as $pid) {
+                $eventsOf[$pid][$session][] = $eventIndex;
+            }
+        }
+
+        $lone = [];
+        foreach ($eventsOf as $pid => $bySession) {
+            foreach ($bySession as $session => $events) {
+                if (count($events) === 1 && !isset($this->pinnedSlots[$pid][$session])) {
+                    $lone[$pid][$session] = $events[0];
+                }
+            }
+        }
+
+        return $lone;
+    }
+
+    /**
+     * How many lone participant-sessions there are, over every
+     * participant.
+     *
+     * @param array<int, array{int, int}> $positions Placed movable event index => [session, slot]
+     */
+    public function loneParticipantSessions(array $positions): int
+    {
+        $count = 0;
+        foreach ($this->loneParticipantSessionsByParticipant($positions) as $sessions) {
+            $count += count($sessions);
+        }
+
+        return $count;
+    }
+
+    /**
      * The idle sessions of each participant that has one: the sessions
      * strictly between its first and its last session with an event in
      * which it has none. Pinned events count as events; a participant
@@ -246,6 +295,8 @@ final readonly class PlacementMetrics
                 RepackObjective::LeastChurn => count($this->moved($positions)),
                 RepackObjective::FewestLoneEventSessions => count($this->loneEventSessions($positions)),
                 RepackObjective::FewestIdleSessions => $this->idleSessions($positions),
+                RepackObjective::FewestGapSlots => $this->gapSlots($positions),
+                RepackObjective::FewestLoneParticipantSessions => $this->loneParticipantSessions($positions),
             };
         }
 
