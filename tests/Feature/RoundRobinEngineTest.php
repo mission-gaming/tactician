@@ -30,7 +30,6 @@ use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
-use Override;
 use PHPUnit\Framework\Assert;
 use Random\Engine\Mt19937;
 use Random\Engine\Xoshiro256StarStar;
