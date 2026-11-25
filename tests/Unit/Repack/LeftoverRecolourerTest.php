@@ -356,6 +356,37 @@ describe('LeftoverRecolourer', function (): void {
         }
     });
 
+    it('counts a position it checks again towards the work limit, as often as it checks it', function (): void {
+        // The request where both events in the way are lifted. Each check
+        // counts once, whether insert() has checked the position before or
+        // not (the limit decides the outcome of a request that reaches it,
+        // so what it counts must not change with how a check is answered):
+        // the direct pass checks slots 1 and 2 (2), the path's first pass
+        // the same two (4), the lift of one event all three (7) and the lift
+        // of two slot 0 (8); the first lifted event then checks slots 0, 1
+        // and 2 (11), and the second may start only at a limit of 11.
+        // Counting only the checks first made in a pass would let it start
+        // at 8.
+        foreach ([10 => [2], 11 => []] as $limit => $expectedLeft) {
+            $positions = [0 => [0, 0], 1 => [0, 0]];
+
+            $left = new LeftoverRecolourer(new StepBudget(1_000), $limit)->place(
+                [[0, 2], [1, 3], [0, 1]],
+                $positions,
+                [2],
+                [0 => [0 => [1], 7 => [1], 1 => [2], 8 => [2]]],
+                [0 => [1 => 1, 2 => 1]],
+                [0 => 3],
+                2
+            );
+
+            expect($left)->toBe($expectedLeft, "limit {$limit}")
+                ->and($positions)->toBe($expectedLeft === []
+                    ? [0 => [0, 2], 1 => [0, 1], 2 => [0, 0]]
+                    : [0 => [0, 0], 1 => [0, 0]], "limit {$limit}");
+        }
+    });
+
     it('has the share of its work limit that a budget below the default leaves, and tells the budget when that stops a search', function (): void {
         // The exchange request above, on steps that do not run out. At the
         // default budget the step has its whole limit of 500,000 position
