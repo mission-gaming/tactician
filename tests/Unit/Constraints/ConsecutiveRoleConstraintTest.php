@@ -140,6 +140,99 @@ describe('ConsecutiveRoleConstraint', function (): void {
         'a method that does not exist' => [fn(): array => [new ConsecutiveRoleProbe(), 'missing']],
     ]);
 
+    // The class docblock: a streak is counted over the participant's events
+    // in round order, the candidate included, an event without a round as
+    // round 0; events of one round keep their order, the candidate after
+    // the history. The extractor is asked about every one of them, in that
+    // order, on every question. The histories are listed in any order and
+    // with rounds that tie, and the candidate may come before them.
+    it('counts streaks in round order and asks the extractor about every event in it', function (): void {
+        $randomizer = new Random\Randomizer(new Random\Engine\Xoshiro256StarStar(254));
+        $field = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C')];
+        $sides = static fn(): array => $randomizer->getInt(0, 1) === 0 ? [$field[0], $field[1]] : [$field[1], $field[0]];
+        $round = static fn(): ?Round => match ($n = $randomizer->getInt(0, 6)) {
+            0 => null,
+            default => new Round($n),
+        };
+
+        $rejected = 0;
+        for ($case = 0; $case < 500; ++$case) {
+            $history = [];
+            for ($e = $randomizer->getInt(0, 7); $e > 0; --$e) {
+                $history[] = $randomizer->getInt(0, 4) === 0
+                    ? new Event([$field[0], $field[2]], $round())
+                    : new Event($sides(), $round());
+            }
+            if ($randomizer->getInt(0, 1) === 0) {
+                usort($history, fn(Event $x, Event $y): int => ($x->getRound()?->getNumber() ?? 0) <=> ($y->getRound()?->getNumber() ?? 0));
+            }
+            $candidate = new Event($sides(), $round());
+            $limit = $randomizer->getInt(1, 3);
+
+            $asked = [];
+            $constraint = new ConsecutiveRoleConstraint(
+                $limit,
+                static function (Event $event, Participant $participant) use (&$asked): string {
+                    $asked[] = [$event, $participant->getId()];
+
+                    return $event->getParticipants()[0]->getId() === $participant->getId() ? 'home' : 'away';
+                }
+            );
+            $verdict = $constraint->isSatisfied($candidate, roundRobinContext($field, $history));
+
+            // The rule, stated as a stable sort of each participant's events
+            $expectedAsked = [];
+            $expectedVerdict = true;
+            foreach ($candidate->getParticipants() as $participant) {
+                $own = array_values(array_filter($history, fn(Event $event): bool => $event->hasParticipant($participant)));
+                $own[] = $candidate;
+                usort($own, fn(Event $x, Event $y): int => ($x->getRound()?->getNumber() ?? 0) <=> ($y->getRound()?->getNumber() ?? 0));
+                $run = 0;
+                $previous = null;
+                foreach ($own as $event) {
+                    $expectedAsked[] = [$event, $participant->getId()];
+                    $role = $event->getParticipants()[0]->getId() === $participant->getId() ? 'home' : 'away';
+                    $run = $role === $previous ? $run + 1 : 1;
+                    $previous = $role;
+                    if ($run > $limit) {
+                        $expectedVerdict = false;
+                    }
+                }
+                if (!$expectedVerdict) {
+                    break;
+                }
+            }
+
+            expect($verdict)->toBe($expectedVerdict, "case {$case}")
+                ->and($asked)->toBe($expectedAsked, "case {$case}");
+            if (!$verdict) {
+                ++$rejected;
+            }
+        }
+
+        expect($rejected)->toBeGreaterThan(100)->toBeLessThan(400);
+    });
+
+    // SchedulingContext accepts events under any keys and keeps them, so a
+    // participant's history can come with string keys, in round order and
+    // so not re-sorted. The streak is the same as for the same events in a
+    // list.
+    it('counts the streak of a history the context holds under string keys', function (): void {
+        $carol = new Participant('p3', 'Carol');
+        $dave = new Participant('p4', 'Dave');
+        $field = [$this->alice, $this->bob, $carol, $dave];
+        $history = [
+            'first' => new Event([$this->alice, $this->bob], new Round(1)),
+            'second' => new Event([$this->alice, $carol], new Round(2)),
+        ];
+        $candidate = new Event([$this->alice, $dave], new Round(3));
+        $constraint = ConsecutiveRoleConstraint::homeAway(2);
+
+        expect($constraint->isSatisfied($candidate, roundRobinContext($field, $history)))->toBeFalse()
+            ->and($constraint->isSatisfied($candidate, roundRobinContext($field, array_values($history))))->toBeFalse()
+            ->and(ConsecutiveRoleConstraint::homeAway(3)->isSatisfied($candidate, roundRobinContext($field, $history)))->toBeTrue();
+    });
+
     // An event with no round sorts as round 0, before every numbered round
     it('is satisfied when the history is empty and the event has no round', function (): void {
         $constraint = new ConsecutiveRoleConstraint(1, 'consecutiveRoleProbe');

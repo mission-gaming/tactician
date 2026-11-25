@@ -508,6 +508,17 @@ none.
   No output changes: the schedules, the violations and the failure
   analysis are what they were. No public signature changes.
 
+- **A Swiss round and a role streak limit cost less to check** (#253,
+  #254). The Swiss round search built a string key from two ids every
+  time it asked whether a pair had played; it now remembers the answer
+  for each list of participants it pairs. `ConsecutiveRoleConstraint` sorted each
+  participant's whole history by round on every question; it now sorts
+  only a history that is out of round order, and asks the role extractor
+  about the same events in the same order as before. Measured with
+  `composer bench-compare` (fastest of five rounds): 24 participants to
+  the last round, 33.3 ms to 29.5; under a role streak limit of 2, 20.5 ms
+  to 18.0. No output changes and no public signature changes.
+
 - **The last placement step of a repack checks each position once per
   insertion** (#255). Finding a position for an event left over, the step
   scans the positions up to three times, and checked each one again in
