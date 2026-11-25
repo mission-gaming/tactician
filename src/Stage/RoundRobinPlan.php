@@ -270,7 +270,11 @@ final readonly class RoundRobinPlan implements PairwisePlan
             $participantLabels[$participant->getId()] = $participant->getLabel();
         }
 
-        $expectedPairings = $this->buildExpectedPairings();
+        // How often each pairing appears, under its ids in event order: the
+        // two orders of a pairing are added up where it is read. A string
+        // key per event and per expected pairing was half of generating an
+        // unconstrained schedule.
+        /** @var array<array-key, array<array-key, int>> $actualPairings */
         $actualPairings = [];
 
         foreach ($schedule->getEvents() as $index => $event) {
@@ -301,50 +305,47 @@ final readonly class RoundRobinPlan implements PairwisePlan
                 continue;
             }
 
-            $pairingKey = $this->pairingKey($firstId, $secondId);
-            $actualPairings[$pairingKey] = ($actualPairings[$pairingKey] ?? 0) + 1;
+            $actualPairings[$firstId][$secondId] = ($actualPairings[$firstId][$secondId] ?? 0) + 1;
         }
 
-        foreach ($expectedPairings as $pairingKey => [$firstId, $secondId]) {
-            $actualCount = $actualPairings[$pairingKey] ?? 0;
-            $expectedCount = $this->legs;
-            if ($actualCount !== $expectedCount) {
-                $violations[] = sprintf(
-                    'Pairing %s vs %s appears %d time(s), expected %d.',
-                    $participantLabels[$firstId],
-                    $participantLabels[$secondId],
-                    $actualCount,
-                    $expectedCount
-                );
+        // Every pairing of the field, in field order. A field that lists an
+        // id twice has a pairing of two ids once, where it first appears,
+        // and a pairing of the id with itself.
+        $participantCount = count($this->participants);
+        $fieldHasRepeatedIds = count($this->participantIds) !== $participantCount;
+        /** @var array<array-key, array<array-key, true>> $listed */
+        $listed = [];
+        $expectedCount = $this->legs;
+        for ($i = 0; $i < $participantCount - 1; ++$i) {
+            $id = $this->participants[$i]->getId();
+            for ($j = $i + 1; $j < $participantCount; ++$j) {
+                $otherId = $this->participants[$j]->getId();
+                if ($fieldHasRepeatedIds) {
+                    if (isset($listed[$id][$otherId])) {
+                        continue;
+                    }
+                    $listed[$id][$otherId] = true;
+                    $listed[$otherId][$id] = true;
+                }
+
+                // An event of an id with itself was reported above and not
+                // counted, so a pairing of an id with itself counts 0 here
+                $actualCount = ($actualPairings[$id][$otherId] ?? 0) + ($actualPairings[$otherId][$id] ?? 0);
+                if ($actualCount !== $expectedCount) {
+                    // Named in key order, as a pairing is everywhere else
+                    [$firstId, $secondId] = PairKey::order([$id, $otherId]);
+                    $violations[] = sprintf(
+                        'Pairing %s vs %s appears %d time(s), expected %d.',
+                        $participantLabels[$firstId],
+                        $participantLabels[$secondId],
+                        $actualCount,
+                        $expectedCount
+                    );
+                }
             }
         }
 
         return $violations;
-    }
-
-    /**
-     * Every pairing the plan expects, each meeting `legs` times: the two
-     * ids in key order, under the pairing's key. The ids are kept beside
-     * the key because a key is not meant to be read back.
-     *
-     * @return array<string, array{0: string, 1: string}>
-     */
-    private function buildExpectedPairings(): array
-    {
-        $expectedPairings = [];
-        $participantCount = count($this->participants);
-
-        for ($i = 0; $i < $participantCount - 1; ++$i) {
-            for ($j = $i + 1; $j < $participantCount; ++$j) {
-                [$firstId, $secondId] = PairKey::order([
-                    $this->participants[$i]->getId(),
-                    $this->participants[$j]->getId(),
-                ]);
-                $expectedPairings[PairKey::join([$firstId, $secondId])] = [$firstId, $secondId];
-            }
-        }
-
-        return $expectedPairings;
     }
 
     private function pairingKey(string $firstId, string $secondId): string
