@@ -771,8 +771,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$plain->getLoneEventSessions()',
             [
-                "0\n0\n[2]\n0\n[\"n08\"]\n"
-                . "{\"unplaced\":0,\"gap_slots\":0,\"lone_event_sessions\":[2],\"idle_sessions\":0,\"moved\":[\"n08\"]}\n",
+                "0\n0\n[2]\n4\n0\n[\"n08\"]\n"
+                . "{\"unplaced\":0,\"gap_slots\":0,\"lone_event_sessions\":[2],\"lone_participant_sessions\":4,\"idle_sessions\":0,\"moved\":[\"n08\"]}\n",
             ],
             [],
         ],
@@ -785,6 +785,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 . '{"format_version":1,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,'
                 . "\"throw_on_violations\":false,\"objectives\":[\"least_churn\",\"fewest_idle_sessions\"]}\n",
             ],
+            [],
+        ],
+        'repack objectives ahead of gap slots' => [
+            'docs/USAGE.md',
+            'echo json_encode($figures($compact))',
+            ["[0,2,0]\n[0,0,2]\n[0,2,0]\n[\"m3\"] 0\n[] 2\n[\"least_churn\",\"fewest_gap_slots\"]\n"],
             [],
         ],
         'the shortest grid' => [

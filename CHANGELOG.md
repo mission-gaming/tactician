@@ -109,6 +109,41 @@ heading **Output change (fix)**.
   (below, under **Changed**). New cases may be added in any release, so a
   `match` over the reason already has a `default` arm.
 
+- **Repack objectives ranked ahead of gap slots, opt-in** (#176, #209). A
+  repack keeps every participant's events in a session back to back
+  before anything it is asked; a list of objectives may now say where gap
+  slots rank, by naming the new case `RepackObjective::FewestGapSlots`
+  (`fewest_gap_slots`). What is listed before it ranks ahead of gap
+  slots; a list that does not name it, or names it first, ranks gap slots
+  first exactly as before, and the default (no objective) is unchanged.
+  Events placed always rank first: an outcome with an objective ahead of
+  gap slots places at least as many events as the same request with no
+  objective. Ahead of gap slots an objective is searched for and not only
+  a tie-break: for the fewest moved events, the schedule made around the
+  events held in place is no longer pulled back to close a gap, so
+  `[LeastChurn, FewestGapSlots]` leaves a schedule in which nothing
+  changed where it is (none of 39,296 events moved on 200 such seasons,
+  where `LeastChurn` alone moved 4,427); for the lone participant-sessions,
+  the lone-event sessions and the idle sessions, the events are also
+  placed again on the sessions in other shapes, with the slots spread
+  evenly over the fewest sessions that hold them and up to two more. On
+  the 63 complete single round robins of 4 to 24 participants on sessions
+  of four slots, `[FewestLoneParticipantSessions, FewestIdleSessions,
+  FewestGapSlots]` left no lone participant-session and no idle session
+  (406 and 91 with no objective), for 150 gap slots against 20. The usage
+  guide ("Objectives Ahead of Gap Slots") and the design note
+  (`docs/design/schedule-repack.md`, "Objectives ahead of gap slots") say
+  what is searched for and what it costs.
+- **Lone participant-sessions** (#209): the new objective
+  `RepackObjective::FewestLoneParticipantSessions`
+  (`fewest_lone_participant_sessions`) and the figure
+  `RepackOutcome::getLoneParticipantSessionCount()`, on every outcome
+  whatever the options: for each participant, the sessions in which it
+  has exactly one event, pinned events counted, where that event is a
+  movable one, summed over the participants. `RepackOutcome`'s
+  constructor takes it as an eighth argument, `loneParticipantSessions`
+  (0 when left out; a negative count is refused).
+
 ### Changed
 
 - The release checklist (`docs/RELEASING.md`) says what the notes of a GitHub
@@ -180,6 +215,16 @@ heading **Output change (fix)**.
   as before. Build the start in a region identifier or an offset where the
   configuration is stored. `BlackoutRule::toArray()` writes its bounds in
   UTC and is not affected.
+
+- **Repack outcomes are format version 2.** `toArray()` writes
+  `'format_version' => 2`, and `metrics` holds `lone_participant_sessions`
+  after `lone_event_sessions`. An outcome's array has no `fromArray()`;
+  code that reads the array it stored should expect the new key. Repack
+  options stay version 1: a new identifier of the `objectives` key is not
+  a new key (ADR 0005 now says so). 0.3.x reads options written by 0.4.0
+  that name neither new objective, and refuses options that name
+  `fewest_gap_slots` or `fewest_lone_participant_sessions` as an unknown
+  identifier (`InvalidConfigurationException`, reason `UnknownIdentifier`).
 
 ### Fixed
 

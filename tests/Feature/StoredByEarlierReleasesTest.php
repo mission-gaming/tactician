@@ -170,7 +170,7 @@ describe('every form as 0.2.3 wrote it', function (): void {
         }
     });
 
-    it('loads, and is written back as the same data with the version in front', function (string $name): void {
+    it('loads, and is written back as the same data with the newest version of its form in front', function (string $name): void {
         $case = formsWrittenByZeroTwoThree()[$name];
 
         $read = readStoredCase($case);
@@ -181,7 +181,16 @@ describe('every form as 0.2.3 wrote it', function (): void {
             default => $this->fail($read::class . ' cannot be written.'),
         };
 
-        expect($written)->toBe('{"format_version":1,' . substr($case['stored'], 1));
+        // In the newest version of its form, which is 1 for every form that
+        // has not changed since
+        $version = 1;
+        foreach (PlainDataForms::all() as $form => $entry) {
+            if ($entry['class'] === $read::class) {
+                $version = max($version, PlainDataForms::versionOf($form));
+            }
+        }
+
+        expect($written)->toBe('{"format_version":' . $version . ',' . substr($case['stored'], 1));
     })->with(fn(): array => array_values(array_diff(array_keys(formsWrittenByZeroTwoThree()), array_keys(storedCasesNoLongerRead()))));
 
     it('is refused in the cases the changelogs of 0.3.0 and 0.4.0 state, and in no other', function (): void {
