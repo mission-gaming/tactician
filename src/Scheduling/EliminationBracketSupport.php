@@ -849,7 +849,8 @@ trait EliminationBracketSupport
      * entrant of the slots in it does not go on alone. Where the round has
      * an extra tie (the last round with a third-place tie), a tie it marks
      * as the final is read as a tie of the round also where neither of its
-     * entrants stood in a slot.
+     * entrants stood in a slot, as long as both are in the round (in its
+     * slots or in the extra tie).
      *
      * @param list<Participant|null> $slots The slots the round is entered with, in bracket order
      * @param RoundPairing|null $recorded The recorded round, or null where the round is not recorded
@@ -904,8 +905,13 @@ trait EliminationBracketSupport
             }
         }
         $extraKey = $extraTie === null ? null : 'tie ' . PairKey::of($extraTie[0]->getId(), $extraTie[1]->getId());
+        // Who is in the round: the entrants of its slots, and the two of
+        // the tie that stands in no slot
+        $inRound = $position;
         if ($extraTie !== null) {
             $derived[(string) $extraKey] = $extraTie;
+            $inRound[$extraTie[0]->getId()] = -1;
+            $inRound[$extraTie[1]->getId()] = -1;
         }
 
         $ties = $this->recordedTies($recorded);
@@ -959,11 +965,11 @@ trait EliminationBracketSupport
             // of whom is in the round, or with an entrant who is in another
             // tie of the round already.
             // The final of a last round drawn by hand is the tie marked as
-            // the final, whoever it holds.
+            // the final, whichever two of the round it holds.
             if (
                 !$isExtra
                 && $key !== $extraKey
-                && !($extraTie !== null && $tie['final'])
+                && !($extraTie !== null && $tie['final'] && isset($inRound[$first->getId()], $inRound[$second->getId()]))
                 && (
                     (!isset($position[$first->getId()]) && !isset($position[$second->getId()]))
                     || isset($inTie[$first->getId()])

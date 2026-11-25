@@ -67,7 +67,10 @@ the round and given its tie away.
 read as drawn.** The tie of the round marked `BracketTie::ThirdPlace` is
 the third-place tie, whoever it holds, and the one other tie of the round
 is the final, whoever it holds; a tie marked `BracketTie::Final` is the
-final also where neither of its entrants stood in a slot of the round. An
+final also where neither of its entrants stood in a slot of the round, as
+long as both are in the round (the two of the third-place tie the engine
+would have paired); a tie between two who went out earlier is no tie of the
+bracket, marked or not, and is read by nothing. An
 entrant of the third-place tie is in a tie of the round, and never goes on
 alone. The bracket ends with the round: its winner is the entrant who went
 on from the final, the one it beat is second, and the two of the third-place

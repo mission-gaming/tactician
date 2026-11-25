@@ -355,6 +355,34 @@ describe('a last round drawn by hand across the final and the third-place tie (i
             ->and(handDrawnTiers($engine, $state))->toBe(['p1' => 0, 'p2' => 2, 'p3' => 2, 'p4' => 0]);
     });
 
+    it('reads a tie marked as the final between two who are not in the round as no tie of the bracket', function (): void {
+        // Given: Eight entrants with a third-place tie, the first-named
+        // winning: p1 and p2 reach the final, p4 and p3 the third-place tie.
+        // The last round is recorded with a tie marked as the final between
+        // p8 and p5, who went out in the quarterfinals
+        $field = handDrawnField(8);
+        $engine = new SingleEliminationEngine(new EliminationOptions(thirdPlace: true));
+        $state = StageState::start(array_values($field));
+        for ($round = 0; $round < 2; ++$round) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, handDrawnFirstWins($pairing->getEvents()));
+        }
+        $last = new RoundPairing(3, 'final', [
+            new Event([$field['p8'], $field['p5']], new Round(3), [BracketTie::METADATA_KEY => BracketTie::Final->value]),
+            new Event([$field['p4'], $field['p3']], new Round(3), [BracketTie::METADATA_KEY => BracketTie::ThirdPlace->value]),
+        ]);
+        $state = $state->withRoundPlayed($last, handDrawnFirstWins($last->getEvents()));
+
+        // Then: The two who went out stay out, level with the other
+        // quarterfinal losers, and the final is still to be paired between
+        // the two who are in it
+        $tiers = handDrawnTiers($engine, $state);
+        expect($engine->isComplete($state))->toBeFalse()
+            ->and(handDrawnShape($engine->pairNextRound($state)))->toBe('p1 v p2')
+            ->and([$tiers['p8'], $tiers['p5']])->toBe([$tiers['p6'], $tiers['p7']])
+            ->and($tiers['p8'])->toBeGreaterThan($tiers['p3']);
+    });
+
     it('reads a last round without the marks as any round: nothing in it says which tie is which', function () use ($lastRoundDrawnByHand): void {
         [$engine, $state, $last] = $lastRoundDrawnByHand(['p1', 'p4'], ['p2', 'p3'], false);
         $state = $state->withRoundPlayed($last, handDrawnFirstWins($last->getEvents()));
