@@ -64,6 +64,23 @@ heading **Output change (fix)**.
 
 ### Fixed
 
+- **A repack no longer searches to its limit for fewer gap slots where no
+  placement has fewer** (#169). The search for fewer gap slots now works
+  out, from the request, a number of gap slots that no placement of every
+  event goes below (by the parity of each participant's slots, by the
+  order of a session of one event to a slot, and exactly for a small group
+  of events that can only be played in one session and share participants
+  with nothing else there), and stops where the schedule it holds has that
+  few. Three events among three participants on one session of 1,000 slots
+  took 0.5 seconds at the default budget and now take 2 milliseconds, and a
+  session of 100,000 slots 1 second where it now takes 0.17; the time no
+  longer follows `stepBudget` on such requests. What the search returns is
+  what it returned before: on 6,000 small requests at three budgets, 200
+  round robins with scattered pins and 160 seasons, every assignment is
+  the same. `isBudgetExhausted()` is now false on an outcome whose search
+  ended at the bound where a budget below the default used to stop it
+  instead (19 of the 6,000 small requests at 100 steps and 3 at 2,000; never
+  the other way).
 - The `Benchmarks` job installs the benchmark runner again. Composer refused
   the runner's lock file (`tools/phpbench/composer.lock`) over a security
   advisory against `symfony/filesystem` (CVE-2026-135803); the lock file now
