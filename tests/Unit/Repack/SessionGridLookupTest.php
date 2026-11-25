@@ -159,6 +159,32 @@ describe('SessionGrid lookups', function (): void {
             ->and($grid->positionOf(new DateTimeImmutable('2026-08-12 17:35', new DateTimeZone('UTC'))))->toBeNull();
     });
 
+    it('finds every slot time of a grid declared in a zone that changes its clocks inside a session', function (string $day): void {
+        // Sessions of six half-hour slots from 00:30 London time on the
+        // night the clocks go back (25 October) or forward (29 March): the
+        // instants rise in UTC whatever the wall clock does, and each is
+        // found given in UTC or in London time, and nothing a microsecond
+        // either side of it
+        $london = new DateTimeZone('Europe/London');
+        $utc = new DateTimeZone('UTC');
+        $grid = new SessionGrid(
+            [new DateTimeImmutable("{$day} 00:30", $london), new DateTimeImmutable("{$day} 12:00", $london)],
+            new DateInterval('PT30M'),
+            6
+        );
+
+        $first = new DateTimeImmutable("{$day} 00:30", $london);
+        for ($slot = 0; $slot < 6; ++$slot) {
+            $time = $first->setTimezone($utc)->modify('+' . (30 * $slot) . ' minutes');
+
+            expect($grid->getSlotTime(0, $slot) <=> $time)->toBe(0)
+                ->and($grid->positionOf($time))->toBe(['session' => 0, 'slot' => $slot])
+                ->and($grid->positionOf($time->setTimezone($london)))->toBe(['session' => 0, 'slot' => $slot])
+                ->and($grid->positionOf($time->modify('-1 microsecond')))->toBeNull()
+                ->and($grid->positionOf($time->modify('+1 microsecond')))->toBeNull();
+        }
+    })->with(['the clocks go back' => ['2026-10-25'], 'the clocks go forward' => ['2026-03-29']]);
+
     it('has no empty session to look up: every session has a slot', function (): void {
         expect(fn() => SessionGrid::shapeOnly(3, 2, [1 => 0]))->toThrow(InvalidConfigurationException::class, 'An overridden session still needs at least 1 slot');
     });
