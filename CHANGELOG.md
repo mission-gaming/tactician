@@ -23,6 +23,16 @@ heading **Output change (fix)**.
   the same release, so the `Dependency audit` job passes again. Tooling and
   development dependencies only; no output and no public signature changes.
 
+- A warning PHP raises while it compiles a file now fails the suite. A
+  test file without a namespace imported `Override`, which PHP 8.4 and 8.5
+  warn has no effect; the warning is raised when Pest loads the file,
+  before the run's own handling of warnings is in place, so the run printed
+  it and passed. The import is gone, and
+  `tests/Feature/CompileTimeWarningsTest.php` compiles every PHP file of
+  `src/`, `tests/` and `examples/` with `php -l` under the PHP that runs
+  the suite and fails on anything it says besides "No syntax errors
+  detected" (#221). Test suite only; the library is unchanged.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)

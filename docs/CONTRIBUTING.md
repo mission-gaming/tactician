@@ -147,6 +147,13 @@ failed:
 vendor/bin/pest --order-by=random --random-order-seed=<seed>
 ```
 
+A warning or deprecation that PHP raises while it compiles a file, such as
+an import that has no effect, comes before PHPUnit handles warnings: a test
+file is compiled when Pest loads it. So the suite compiles every PHP file of
+`src/`, `tests/` and `examples/` with `php -l` under the PHP that runs it,
+and fails on anything PHP says besides "No syntax errors detected"
+(`tests/Feature/CompileTimeWarningsTest.php`).
+
 A run does not depend on the `memory_limit` PHP is configured with. A plain
 run needs about as much as PHP's default of 128M allows and a run with
 coverage about 1.1 GB, so every process that runs tests raises a limit below
