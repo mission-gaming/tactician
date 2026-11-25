@@ -367,8 +367,8 @@ describe('SchedulingDiagnostics', function (): void {
     // left out, so that pairings go missing in rounds of every kind.
     it('finds for a known set what the same constraints find when asked everything', function (): void {
         $randomizer = new Random\Randomizer(new Random\Engine\Xoshiro256StarStar(252));
-        $passOn = static fn(ConstraintInterface $inner): ConstraintInterface => new class ($inner) implements ConstraintInterface {
-            public function __construct(private readonly ConstraintInterface $inner) {}
+        $passOn = static fn(ConstraintInterface $inner): ConstraintInterface => new readonly class ($inner) implements ConstraintInterface {
+            public function __construct(private ConstraintInterface $inner) {}
 
             #[\Override]
             public function isSatisfied(Event $event, SchedulingContext $context): bool
