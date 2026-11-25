@@ -273,7 +273,8 @@ has more changes than a job gets through, split over several shards by the
 sets of mutators each one makes the changes of (`mutators:
 --mutator=SetNumber,SetReturn` in the workflow, and one shard with
 `--except=` and the sets the others name, for the rest of Pest's default
-set). The round robin scheduler is split over five shards that way.
+set). The round robin scheduler is split over five shards that way, and
+the leftover recolourer with the round colouring over two.
 `tests/Feature/CiConfigurationTest.php` fails when a file is in no shard or
 when a change to it would be made by no shard or by two, so when you add a
 file to either directory, add it to a shard of that workflow, and to every

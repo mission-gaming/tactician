@@ -480,6 +480,16 @@ No golden fixture changed.
   `tests/Feature/CiConfigurationTest.php` now checks that for every file
   (#222). CI only; the library is unchanged.
 
+- The `repack recolouring` shard of the `Mutation testing` workflow is split
+  into four shards, so that each ends well inside its limit: it took 118 of
+  its 170 minutes, the longest job of the run, and the repack work of 0.4.0
+  adds to its files. The structural order and the gap search are a shard
+  each (`repack structural order`, `repack gap search`), and the leftover
+  recolourer and the round colouring are split by mutator set into two
+  (`repack recolouring, numbers, control structures and arithmetic` and
+  `repack recolouring, removals, logic and equality`), so that each change
+  is still made once (#243). CI only; the library is unchanged.
+
 ## [0.3.0] - 2026-11-03
 
 ### Output change (fix)
