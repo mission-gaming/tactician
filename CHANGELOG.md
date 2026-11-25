@@ -13,6 +13,12 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Changed
+
+- The release checklist (`docs/RELEASING.md`) says what the notes of a GitHub
+  release hold when the changelog section is longer than GitHub accepts.
+  Documentation only; no output and no public signature changes.
+
 ### Fixed
 
 - The `Benchmarks` job installs the benchmark runner again. Composer refused
