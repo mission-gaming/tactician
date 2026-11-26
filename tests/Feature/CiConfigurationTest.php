@@ -326,8 +326,11 @@ it('measures coverage with a self-contained script whose report the workflow upl
     $script = $composer['scripts']['test-coverage'];
 
     // Xdebug measures nothing unless its mode includes `coverage`; the
-    // variable has to be set before the command that needs it
+    // variable has to be set before the command that needs it. The suite
+    // runs longer than Composer's default process timeout of 300 seconds
+    // (see the test below), and coverage makes it slower still
     expect($script)->toBe([
+        'Composer\\Config::disableProcessTimeout',
         '@putenv XDEBUG_MODE=coverage',
         'pest --coverage --coverage-clover=build/clover.xml',
     ]);
@@ -337,6 +340,29 @@ it('measures coverage with a self-contained script whose report the workflow upl
 
     // The report is a build product, never a tracked file
     expect(file($root . '/.gitignore', FILE_IGNORE_NEW_LINES))->toContain('/build');
+});
+
+// Composer stops a script's process after `process-timeout` seconds, 300 by
+// default, and the whole suite runs longer than that (about 400 seconds on a
+// laptop, 560 on a CI runner). CI never shows it, because setup-php sets
+// COMPOSER_PROCESS_TIMEOUT=0 on the runner, so a local `composer test`,
+// `composer ci` or `composer test-coverage` was cut off part way through.
+// Each script that runs the whole suite lifts the limit itself, first;
+// `ci` reaches the suite through `@test`, which lifts it for the rest of
+// the run.
+it('lifts the process timeout in every script that runs the whole suite', function () use ($root): void {
+    $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
+
+    /** @var array{scripts: array<string, string|list<string>>} $composer */
+    $scripts = $composer['scripts'];
+
+    foreach (['test', 'test-coverage', 'mutation'] as $name) {
+        expect($scripts[$name])->toBeArray()
+            ->and(((array) $scripts[$name])[0])->toBe('Composer\\Config::disableProcessTimeout', $name);
+    }
+
+    expect($scripts['test'])->toBe(['Composer\\Config::disableProcessTimeout', 'pest'])
+        ->and($scripts['ci'])->toContain('@test');
 });
 
 // A run for a pull request from a fork, or from Dependabot, receives no
