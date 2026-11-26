@@ -17,7 +17,7 @@ see [What is next](#what-is-next).
 | 0.2.2 | 2026-10-09 | The additions under [0.2.2](#022), and fixes to output that was broken |
 | 0.2.3 | 2026-10-13 | No additions: three fixes to repack output that was broken ([placement fixes](design/schedule-repack.md#placement-fixes-023)) |
 | 0.3.0 | 2026-11-03 | PHP 8.4; the additions under [0.3.0](#030), breaking changes with migration notes, and fixes to output that was broken |
-| 0.4.0 | 2026-11-25 | The additions under [0.4.0](#040), breaking changes with migration notes, and fixes to output that was broken |
+| 0.4.0 | 2026-11-26 | The additions under [0.4.0](#040), breaking changes with migration notes, and fixes to output that was broken |
 
 The work before 0.1.0 was planned in five phases. All five were complete in
 0.1.0, and the names are kept because the design notes refer to them.
@@ -105,7 +105,7 @@ their migration notes, and the output changes.
 - **Brackets**: a round drawn by hand read as drawn ([ADR 0025](adr/0025-a-round-drawn-by-hand-is-read-as-drawn.md)), and only a winners tie its results decided drops its loser ([ADR 0026](adr/0026-only-a-winners-tie-its-results-decided-drops-its-loser.md))
 - **Composition**: the yield of a knockout round counted with the byes of the bracket
 - **Swiss**: a pre-drawn schedule of a field of odd size gives nobody a second bye
-- **Cost**: one failure analysis for a round robin that fails under a factory-built `ConsecutiveRoleConstraint`
+- **Cost**: one failure analysis for a round robin that fails under a factory-built `ConsecutiveRoleConstraint`, each known constraint asked once per role order there, and less bookkeeping in round robin validation, seed protection, the Swiss round search, role streaks and the repack's leftover insertion
 
 ## Known limitations
 
